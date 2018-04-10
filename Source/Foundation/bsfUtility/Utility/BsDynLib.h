@@ -9,7 +9,7 @@
 	typedef struct HINSTANCE__* hInstance;
 #endif
 
-namespace bs 
+namespace bs
 {
 	/** @addtogroup General
 	 *  @{
@@ -30,7 +30,7 @@ namespace bs
 #endif
 
 	/** Class that holds data about a dynamic library. */
-	class BS_UTILITY_EXPORT DynLib
+	class BS_UTILITY_EXPORT DynLib final
 	{
 	public:
 		/** Platform-specific file extension for a dynamic library (e.g. "dll"). */
@@ -56,7 +56,7 @@ namespace bs
 #endif
 
 		/** Constructs the dynamic library object and loads the library with the specified name. */
-		DynLib(const String& name);
+		DynLib(String name);
 		~DynLib() = default;
 
 		/** Loads the library. Does nothing if library is already loaded. */
@@ -83,8 +83,8 @@ namespace bs
 		String dynlibError();
 
 	protected:
-		String mName;
-		DYNLIB_HANDLE mHandle;
+		const String mName;
+		DYNLIB_HANDLE mHandle = nullptr;
 	};
 
 	/** @} */
