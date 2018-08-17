@@ -105,8 +105,8 @@ namespace bs
 		numGenericCurves = 0;
 	}
 
-	void AnimationProxy::rebuild(const SPtr<Skeleton>& skeleton, const SkeletonMask& mask, 
-		Vector<AnimationClipInfo>& clipInfos, const Vector<AnimatedSceneObject>& sceneObjects, 
+	void AnimationProxy::rebuild(const SPtr<Skeleton>& skeleton, const SkeletonMask& mask,
+		Vector<AnimationClipInfo>& clipInfos, const Vector<AnimatedSceneObject>& sceneObjects,
 		const SPtr<MorphShapes>& morphShapes)
 	{
 		this->skeleton = skeleton;
@@ -119,14 +119,14 @@ namespace bs
 
 		numSceneObjects = (UINT32)sceneObjects.size();
 		if (numSceneObjects > 0)
-			sceneObjectPose = LocalSkeletonPose(numSceneObjects);
+			sceneObjectPose = LocalSkeletonPose(numSceneObjects, true);
 		else
 			sceneObjectPose = LocalSkeletonPose();
 
 		rebuild(clipInfos, sceneObjects, morphShapes);
 	}
 
-	void AnimationProxy::rebuild(Vector<AnimationClipInfo>& clipInfos, const Vector<AnimatedSceneObject>& sceneObjects, 
+	void AnimationProxy::rebuild(Vector<AnimationClipInfo>& clipInfos, const Vector<AnimatedSceneObject>& sceneObjects,
 		const SPtr<MorphShapes>& morphShapes)
 	{
 		clear();
@@ -144,7 +144,7 @@ namespace bs
 				else
 					layer += 1;
 
-				auto iterFind = std::find_if(tempLayers.begin(), tempLayers.end(), 
+				auto iterFind = std::find_if(tempLayers.begin(), tempLayers.end(),
 					[&](auto& x)
 				{
 					return x.index == layer;
@@ -165,7 +165,7 @@ namespace bs
 				clipIdx++;
 			}
 
-			std::sort(tempLayers.begin(), tempLayers.end(), 
+			std::sort(tempLayers.begin(), tempLayers.end(),
 				[&](auto& x, auto& y)
 			{
 				return x.index < y.index;
@@ -174,7 +174,7 @@ namespace bs
 			numLayers = (UINT32)tempLayers.size();
 			UINT32 numClips = (UINT32)clipInfos.size();
 			UINT32 numBones;
-			
+
 			if (skeleton != nullptr)
 				numBones = skeleton->getNumBones();
 			else
@@ -247,7 +247,7 @@ namespace bs
 				numMorphChannels = morphShapes->getNumChannels();
 				numMorphVertices = morphShapes->getNumVertices();
 
-				numMorphShapes = 0; 
+				numMorphShapes = 0;
 				for (UINT32 i = 0; i < numMorphChannels; i++)
 					numMorphShapes += morphShapes->getChannel(i)->getNumShapes();
 			}
@@ -272,7 +272,7 @@ namespace bs
 			UINT32 morphChannelSize = numMorphChannels * sizeof(MorphChannelInfo);
 			UINT32 morphShapeSize = numMorphShapes * sizeof(MorphShapeInfo);
 
-			UINT8* data = (UINT8*)bs_alloc(layersSize + clipsSize + boneMappingSize + posCacheSize + rotCacheSize + 
+			UINT8* data = (UINT8*)bs_alloc(layersSize + clipsSize + boneMappingSize + posCacheSize + rotCacheSize +
 				scaleCacheSize + genCacheSize + genericCurveOutputSize + sceneObjectIdsSize + sceneObjectTransformsSize +
 				morphChannelSize + morphShapeSize);
 
@@ -377,7 +377,7 @@ namespace bs
 							SPtr<MorphChannel> morphChannel = morphShapes->getChannel(i);
 							MorphChannelInfo& channelInfo = morphChannelInfos[i];
 
-							clipInfo.clip->getMorphMapping(morphChannel->getName(), channelInfo.frameCurveIdx, 
+							clipInfo.clip->getMorphMapping(morphChannel->getName(), channelInfo.frameCurveIdx,
 								channelInfo.weightCurveIdx);
 						}
 					}
@@ -385,7 +385,7 @@ namespace bs
 
 				morphChannelWeightsDirty = true;
 			}
-			
+
 			UINT32 curLayerIdx = 0;
 			UINT32 curStateIdx = 0;
 
@@ -506,7 +506,7 @@ namespace bs
 						invRootTransform = so->getWorldMatrix().inverseAffine();
 
 					break;
-				}				
+				}
 			}
 
 			UINT32 boneIdx = 0;
@@ -743,6 +743,7 @@ namespace bs
 			clipInfo->playbackType = AnimPlaybackType::Normal;
 		}
 
+		mSampleStep = AnimSampleStep::None;
 		mDirty |= AnimDirtyStateFlag::Value;
 	}
 
@@ -756,6 +757,7 @@ namespace bs
 			HAnimationClip nullClip;
 			addClip(nullClip, layer);
 
+			mSampleStep = AnimSampleStep::None;
 			return;
 		}
 
@@ -775,6 +777,8 @@ namespace bs
 			}
 
 			clipInfo->playbackType = AnimPlaybackType::Normal;
+
+			mSampleStep = AnimSampleStep::None;
 			mDirty |= AnimDirtyStateFlag::Value;
 		}
 	}
@@ -870,6 +874,7 @@ namespace bs
 			}
 		}
 
+		mSampleStep = AnimSampleStep::None;
 		mDirty |= AnimDirtyStateFlag::Value;
 	}
 
@@ -892,7 +897,7 @@ namespace bs
 		{
 			topRightClipInfo->state.time = 0.0f;
 			topRightClipInfo->state.stopped = true;
-			topLeftClipInfo->state.speed = 0.0f;
+			topRightClipInfo->state.speed = 0.0f;
 			topRightClipInfo->state.weight = t.x * (1.0f - t.y);
 			topRightClipInfo->state.wrapMode = AnimWrapMode::Clamp;
 
@@ -904,7 +909,7 @@ namespace bs
 		{
 			botLeftClipInfo->state.time = 0.0f;
 			botLeftClipInfo->state.stopped = true;
-			topLeftClipInfo->state.speed = 0.0f;
+			botLeftClipInfo->state.speed = 0.0f;
 			botLeftClipInfo->state.weight = (1.0f - t.x) * t.y;
 			botLeftClipInfo->state.wrapMode = AnimWrapMode::Clamp;
 
@@ -923,6 +928,7 @@ namespace bs
 			botRightClipInfo->playbackType = AnimPlaybackType::Normal;
 		}
 
+		mSampleStep = AnimSampleStep::None;
 		mDirty |= AnimDirtyStateFlag::Value;
 	}
 
@@ -971,6 +977,7 @@ namespace bs
 			}
 		}
 
+		mSampleStep = AnimSampleStep::None;
 		mDirty |= AnimDirtyStateFlag::Value;
 	}
 
@@ -986,6 +993,7 @@ namespace bs
 			clipInfo->playbackType = AnimPlaybackType::Sampled;
 		}
 
+		mSampleStep = AnimSampleStep::Frame;
 		mDirty |= AnimDirtyStateFlag::Value;
 	}
 
@@ -1012,6 +1020,8 @@ namespace bs
 	void Animation::stopAll()
 	{
 		mClipInfos.clear();
+
+		mSampleStep = AnimSampleStep::None;
 		mDirty |= AnimDirtyStateFlag::Layout;
 	}
 
@@ -1065,7 +1075,7 @@ namespace bs
 
 			output = &newInfo;
 		}
-		
+
 		return output;
 	}
 
@@ -1156,7 +1166,7 @@ namespace bs
 				return true;
 			}
 		}
-		
+
 		return false;
 	}
 
@@ -1175,6 +1185,7 @@ namespace bs
 		clipInfo->state = state;
 		clipInfo->playbackType = AnimPlaybackType::Normal;
 
+		mSampleStep = AnimSampleStep::None;
 		mDirty |= AnimDirtyStateFlag::Value;
 	}
 
@@ -1281,6 +1292,16 @@ namespace bs
 			clipInfo.fadeTime = Math::clamp(fadeTime, 0.0f, clipInfo.fadeLength);
 		}
 
+		if(mSampleStep == AnimSampleStep::None)
+			mAnimProxy->sampleStep = AnimSampleStep::None;
+		else if(mSampleStep == AnimSampleStep::Frame)
+		{
+			if(mAnimProxy->sampleStep == AnimSampleStep::None)
+				mAnimProxy->sampleStep = AnimSampleStep::Frame;
+			else
+				mAnimProxy->sampleStep = AnimSampleStep::Done;
+		}
+
 		if (mDirty.isSet(AnimDirtyStateFlag::Culling))
 		{
 			mAnimProxy->mCullEnabled = mCull;
@@ -1363,6 +1384,12 @@ namespace bs
 
 	void Animation::updateFromProxy()
 	{
+		// When sampling a single frame we don't want to keep updating the scene objects so they can be moved through other
+		// means (e.g. for the purposes of recording new keyframes if running from the editor).
+		const bool disableSOUpdates = mAnimProxy->sampleStep == AnimSampleStep::Done;
+		if(disableSOUpdates)
+			return;
+
 		HSceneObject rootSO;
 
 		// Write TRS animation results to relevant SceneObjects
@@ -1458,12 +1485,14 @@ namespace bs
 			}
 			else
 			{
-				if (mAnimProxy->sceneObjectPose.hasOverride[i])
-					continue;
+				if (!mAnimProxy->sceneObjectPose.hasOverride[i * 3 + 0])
+					so->setPosition(mAnimProxy->sceneObjectPose.positions[i]);
 
-				so->setPosition(mAnimProxy->sceneObjectPose.positions[i]);
-				so->setRotation(mAnimProxy->sceneObjectPose.rotations[i]);
-				so->setScale(mAnimProxy->sceneObjectPose.scales[i]);
+				if (!mAnimProxy->sceneObjectPose.hasOverride[i * 3 + 1])
+					so->setRotation(mAnimProxy->sceneObjectPose.rotations[i]);
+
+				if (!mAnimProxy->sceneObjectPose.hasOverride[i * 3 + 2])
+					so->setScale(mAnimProxy->sceneObjectPose.scales[i]);
 			}
 		}
 

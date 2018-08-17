@@ -7,6 +7,8 @@
 
 namespace bs
 {
+	class HardwareBuffer;
+
 	/** @addtogroup RenderAPI
 	 *  @{
 	 */
@@ -22,7 +24,7 @@ namespace bs
 	class BS_CORE_EXPORT GpuParamBlockBuffer : public CoreObject
 	{
 	public:
-		GpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage);
+		GpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage);
 		virtual ~GpuParamBlockBuffer();
 
 		/**
@@ -56,7 +58,7 @@ namespace bs
 		SPtr<ct::GpuParamBlockBuffer> getCore() const;
 
 		/** @copydoc HardwareBufferManager::createGpuParamBlockBuffer */
-		static SPtr<GpuParamBlockBuffer> create(UINT32 size, GpuParamBlockUsage usage = GPBU_DYNAMIC);
+		static SPtr<GpuParamBlockBuffer> create(UINT32 size, GpuBufferUsage usage = GBU_DYNAMIC);
 
 	protected:
 		/** @copydoc CoreObject::createCore */
@@ -65,7 +67,7 @@ namespace bs
 		/** @copydoc CoreObject::syncToCore */
 		CoreSyncData syncToCore(FrameAlloc* allocator) override;
 
-		GpuParamBlockUsage mUsage;
+		GpuBufferUsage mUsage;
 		UINT32 mSize;
 		UINT8* mCachedData;
 	};
@@ -86,7 +88,7 @@ namespace bs
 	class BS_CORE_EXPORT GpuParamBlockBuffer : public CoreObject
 	{
 	public:
-		GpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage, GpuDeviceFlags deviceMask);
+		GpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage, GpuDeviceFlags deviceMask);
 		virtual ~GpuParamBlockBuffer();
 
 		/** 
@@ -95,7 +97,7 @@ namespace bs
 		 * @param[in]	data		Data to write. Must match the size of the buffer.
 		 * @param[in]	queueIdx	Device queue to perform the write operation on. See @ref queuesDoc.
 		 */
-		virtual void writeToGPU(const UINT8* data, UINT32 queueIdx = 0) = 0;
+		void writeToGPU(const UINT8* data, UINT32 queueIdx = 0);
 
 		/** 
 		 * Flushes any cached data into the actual GPU buffer. 
@@ -131,14 +133,21 @@ namespace bs
 		UINT32 getSize() const { return mSize; }
 
 		/** @copydoc HardwareBufferManager::createGpuParamBlockBuffer */
-		static SPtr<GpuParamBlockBuffer> create(UINT32 size, GpuParamBlockUsage usage = GPBU_DYNAMIC,
+		static SPtr<GpuParamBlockBuffer> create(UINT32 size, GpuBufferUsage usage = GBU_DYNAMIC,
 			GpuDeviceFlags deviceMask = GDF_DEFAULT);
 
 	protected:
+		friend class HardwareBufferManager;
+
 		/** @copydoc CoreObject::syncToCore */
 		void syncToCore(const CoreSyncData& data)  override;
 
-		GpuParamBlockUsage mUsage;
+		/** @copydoc CoreObject::initialize */
+		void initialize() override;
+
+		HardwareBuffer* mBuffer;
+
+		GpuBufferUsage mUsage;
 		UINT32 mSize;
 
 		UINT8* mCachedData;

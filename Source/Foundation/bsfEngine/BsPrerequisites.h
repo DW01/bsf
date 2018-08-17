@@ -21,10 +21,6 @@
  *  Entry point into the application.
  */
 
-/** @defgroup Components Components
-  *	Built-in components.
-  */
-
 /** @defgroup GUI GUI
   *	Graphical user interface, including elements, styles, events and GUI manager.
   */
@@ -178,7 +174,7 @@ namespace bs
 	class GUIContextMenu;
 	class GUIDropDownHitBox;
 	class GUIDropDownContent;
-	class RenderableElement;
+	class RenderElement;
 	class GUISlider;
 	class GUISliderVert;
 	class GUISliderHorz;
@@ -187,7 +183,7 @@ namespace bs
 
 	class RenderableHandler;
 	class CProfilerOverlay;
-	class ProfilerOverlayInternal;
+	class ProfilerOverlay;
 	class DrawHelper;
 	class PlainText;
 	class ScriptCode;
@@ -197,14 +193,12 @@ namespace bs
 	// 2D
 	class TextSprite;
 	class ImageSprite;
-	class SpriteTexture;
 	class SpriteMaterial;
 	struct SpriteMaterialInfo;
 
 	typedef GameObjectHandle<CGUIWidget> HGUIWidget;
 	typedef GameObjectHandle<CProfilerOverlay> HProfilerOverlay;
 
-	typedef ResourceHandle<SpriteTexture> HSpriteTexture;
 	typedef ResourceHandle<PlainText> HPlainText;
 	typedef ResourceHandle<ScriptCode> HScriptCode;
 	typedef ResourceHandle<GUISkin> HGUISkin;
@@ -214,7 +208,7 @@ namespace bs
 	{
 		/* TID_CCamera = 30000, */
 		/* TID_CRenderable = 30001, */
-		TID_SpriteTexture = 30002,
+		/* TID_SpriteTexture = 30002, */
 		/* TID_Camera = 30003, */
 		/* TID_Renderable = 30004, */
 		TID_PlainText = 30005,

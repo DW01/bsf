@@ -4,7 +4,7 @@
 #include "GUI/BsGUIManager.h"
 #include "2D/BsImageSprite.h"
 #include "GUI/BsGUISkin.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "2D/BsTextSprite.h"
 #include "GUI/BsGUIDimensions.h"
 #include "GUI/BsGUITextInputEvent.h"
@@ -16,6 +16,7 @@
 #include "GUI/BsGUIHelper.h"
 #include "Utility/BsTime.h"
 #include "Platform/BsPlatform.h"
+#include "String/BsUnicode.h"
 
 namespace bs
 {
@@ -31,8 +32,7 @@ namespace bs
 	}
 
 	GUIInputBox::GUIInputBox(const String& styleName, const GUIDimensions& dimensions, bool multiline)
-		: GUIElement(styleName, dimensions), mIsMultiline(multiline), mHasFocus(false), mFocusGainedFrame((UINT64)-1)
-		, mIsMouseOver(false), mState(State::Normal), mCaretShown(false), mSelectionShown(false), mDragInProgress(false)
+		: GUIElement(styleName, dimensions, GUIElementOption::AcceptsKeyFocus), mIsMultiline(multiline)
 	{
 		mImageSprite = bs_new<ImageSprite>();
 		mTextSprite = bs_new<TextSprite>();
@@ -59,7 +59,7 @@ namespace bs
 		return new (bs_alloc<GUIInputBox>()) GUIInputBox(getStyleName<GUIInputBox>(styleName), GUIDimensions::create(options), false);
 	}
 
-	void GUIInputBox::setText(const WString& text)
+	void GUIInputBox::setText(const String& text)
 	{
 		if (mText == text)
 			return;
@@ -74,8 +74,8 @@ namespace bs
 		{
 			Vector2I origSize = mDimensions.calculateSizeRange(_getOptimalSize()).optimal;
 
-			WString oldText = mText;
 			mText = text;
+			mNumChars = UTF8::count(mText);
 
 			if (mHasFocus)
 			{
@@ -84,8 +84,8 @@ namespace bs
 				gGUIManager().getInputCaretTool()->updateText(this, textDesc);
 				gGUIManager().getInputSelectionTool()->updateText(this, textDesc);
 
-				if (mText.size() > 0)
-					gGUIManager().getInputCaretTool()->moveCaretToChar((UINT32)mText.size() - 1, CARET_AFTER);
+				if (mNumChars > 0)
+					gGUIManager().getInputCaretTool()->moveCaretToChar(mNumChars - 1, CARET_AFTER);
 				else
 					gGUIManager().getInputCaretTool()->moveCaretToChar(0, CARET_BEFORE);
 
@@ -481,7 +481,7 @@ namespace bs
 					showCaret();
 				}
 
-				if (mText.size() > 0)
+				if (mNumChars > 0)
 					gGUIManager().getInputCaretTool()->moveCaretToPos(ev.getPosition());
 				else
 					gGUIManager().getInputCaretTool()->moveCaretToStart();
@@ -532,7 +532,7 @@ namespace bs
 			{
 				if (!ev.isShiftDown())
 				{
-					if (mText.size() > 0)
+					if (mNumChars > 0)
 						gGUIManager().getInputCaretTool()->moveCaretToPos(ev.getPosition());
 					else
 						gGUIManager().getInputCaretTool()->moveCaretToStart();
@@ -564,8 +564,10 @@ namespace bs
 		bool filterOkay = true;
 		if(mFilter != nullptr)
 		{
-			WString newText = mText;
-			newText.insert(newText.begin() + charIdx, ev.getInputChar());
+			String newText = mText;
+			UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+			String utf8chars = UTF8::fromUTF32(U32String(1, ev.getInputChar()));
+			newText.insert(newText.begin() + byteIdx, utf8chars.begin(), utf8chars.end());
 
 			filterOkay = mFilter(newText);
 		}
@@ -644,7 +646,7 @@ namespace bs
 		
 		if(ev.getType() == GUICommandEventType::Backspace)
 		{
-			if(mText.size() > 0)
+			if(mNumChars > 0)
 			{
 				Vector2I origSize = mDimensions.calculateSizeRange(_getOptimalSize()).optimal;
 				if(mSelectionShown)
@@ -655,13 +657,15 @@ namespace bs
 				{
 					UINT32 charIdx = gGUIManager().getInputCaretTool()->getCharIdxAtCaretPos() - 1;
 
-					if(charIdx < (UINT32)mText.size())
+					if(charIdx < mNumChars)
 					{
 						bool filterOkay = true;
 						if(mFilter != nullptr)
 						{
-							WString newText = mText;
-							newText.erase(charIdx, 1);
+							String newText = mText;
+							UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+							UINT32 byteCount = UTF8::charByteCount(mText, charIdx);
+							newText.erase(byteIdx, byteCount);
 
 							filterOkay = mFilter(newText);
 						}
@@ -699,7 +703,7 @@ namespace bs
 
 		if(ev.getType() == GUICommandEventType::Delete)
 		{
-			if(mText.size() > 0)
+			if(mNumChars > 0)
 			{
 				Vector2I origSize = mDimensions.calculateSizeRange(_getOptimalSize()).optimal;
 				if(mSelectionShown)
@@ -709,13 +713,15 @@ namespace bs
 				else
 				{
 					UINT32 charIdx = gGUIManager().getInputCaretTool()->getCharIdxAtCaretPos();
-					if(charIdx < (UINT32)mText.size())
+					if(charIdx < mNumChars)
 					{
 						bool filterOkay = true;
 						if(mFilter != nullptr)
 						{
-							WString newText = mText;
-							newText.erase(charIdx, 1);
+							String newText = mText;
+							UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+							UINT32 byteCount = UTF8::charByteCount(mText, charIdx);
+							newText.erase(byteIdx, byteCount);
 
 							filterOkay = mFilter(newText);
 						}
@@ -889,8 +895,9 @@ namespace bs
 				bool filterOkay = true;
 				if (mFilter != nullptr)
 				{
-					WString newText = mText;
-					newText.insert(newText.begin() + charIdx, '\n');
+					String newText = mText;
+					UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+					newText.insert(newText.begin() + byteIdx, '\n');
 
 					filterOkay = mFilter(newText);
 				}
@@ -983,7 +990,7 @@ namespace bs
 
 	void GUIInputBox::clearSelection()
 	{
-		gGUIManager().getInputSelectionTool()->clearSelection();
+		gGUIManager().getInputSelectionTool()->clearSelectionVisuals();
 		mSelectionShown = false;
 	}
 
@@ -1052,9 +1059,12 @@ namespace bs
 		}
 	}
 
-	void GUIInputBox::insertString(UINT32 charIdx, const WString& string)
+	void GUIInputBox::insertString(UINT32 charIdx, const String& string)
 	{
-		mText.insert(mText.begin() + charIdx, string.begin(), string.end());
+		UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+
+		mText.insert(mText.begin() + byteIdx, string.begin(), string.end());
+		mNumChars = UTF8::count(mText);
 
 		TEXT_SPRITE_DESC textDesc = getTextDesc();
 
@@ -1064,7 +1074,11 @@ namespace bs
 
 	void GUIInputBox::insertChar(UINT32 charIdx, UINT32 charCode)
 	{
-		mText.insert(mText.begin() + charIdx, charCode);
+		UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+		String utf8chars = UTF8::fromUTF32(U32String(1, (char32_t)charCode));
+
+		mText.insert(mText.begin() + byteIdx, utf8chars.begin(), utf8chars.end());
+		mNumChars = UTF8::count(mText);
 
 		TEXT_SPRITE_DESC textDesc = getTextDesc();
 
@@ -1074,7 +1088,11 @@ namespace bs
 
 	void GUIInputBox::eraseChar(UINT32 charIdx)
 	{
-		mText.erase(charIdx, 1);
+		UINT32 byteIdx = UTF8::charToByteIndex(mText, charIdx);
+		UINT32 byteCount = UTF8::charByteCount(mText, charIdx);
+
+		mText.erase(byteIdx, byteCount);
+		mNumChars = UTF8::count(mText);
 
 		TEXT_SPRITE_DESC textDesc = getTextDesc();
 
@@ -1087,11 +1105,14 @@ namespace bs
 		UINT32 selStart = gGUIManager().getInputSelectionTool()->getSelectionStart();
 		UINT32 selEnd = gGUIManager().getInputSelectionTool()->getSelectionEnd();
 
+		UINT32 byteStart = UTF8::charToByteIndex(mText, selStart);
+		UINT32 byteEnd = UTF8::charToByteIndex(mText, selEnd);
+
 		bool filterOkay = true;
 		if (!internal && mFilter != nullptr)
 		{
-			WString newText = mText;
-			newText.erase(newText.begin() + selStart, newText.begin() + selEnd);
+			String newText = mText;
+			newText.erase(newText.begin() + byteStart, newText.begin() + byteEnd);
 
 			filterOkay = mFilter(newText);
 		}
@@ -1101,7 +1122,8 @@ namespace bs
 
 		if(filterOkay)
 		{
-			mText.erase(mText.begin() + selStart, mText.begin() + selEnd);
+			mText.erase(mText.begin() + byteStart, mText.begin() + byteEnd);
+			mNumChars = UTF8::count(mText);
 
 			TEXT_SPRITE_DESC textDesc = getTextDesc();
 			gGUIManager().getInputCaretTool()->updateText(this, textDesc);
@@ -1126,12 +1148,15 @@ namespace bs
 		clearSelection();
 	}
 
-	WString GUIInputBox::getSelectedText()
+	String GUIInputBox::getSelectedText()
 	{
 		UINT32 selStart = gGUIManager().getInputSelectionTool()->getSelectionStart();
 		UINT32 selEnd = gGUIManager().getInputSelectionTool()->getSelectionEnd();
 
-		return mText.substr(selStart, selEnd - selStart);
+		UINT32 byteStart = UTF8::charToByteIndex(mText, selStart);
+		UINT32 byteEnd = UTF8::charToByteIndex(mText, selEnd);
+
+		return mText.substr(byteStart, byteEnd - byteStart);
 	}
 
 	Vector2I GUIInputBox::getTextOffset() const
@@ -1202,13 +1227,13 @@ namespace bs
 		{
 			contextMenu = bs_shared_ptr_new<GUIContextMenu>();
 
-			contextMenu->addMenuItem(L"Cut", std::bind(&GUIInputBox::cutText, const_cast<GUIInputBox*>(this)), 0);
-			contextMenu->addMenuItem(L"Copy", std::bind(&GUIInputBox::copyText, const_cast<GUIInputBox*>(this)), 0);
-			contextMenu->addMenuItem(L"Paste", std::bind(&GUIInputBox::pasteText, const_cast<GUIInputBox*>(this)), 0);
+			contextMenu->addMenuItem("Cut", std::bind(&GUIInputBox::cutText, const_cast<GUIInputBox*>(this)), 0);
+			contextMenu->addMenuItem("Copy", std::bind(&GUIInputBox::copyText, const_cast<GUIInputBox*>(this)), 0);
+			contextMenu->addMenuItem("Paste", std::bind(&GUIInputBox::pasteText, const_cast<GUIInputBox*>(this)), 0);
 
-			contextMenu->setLocalizedName(L"Cut", HString(L"Cut"));
-			contextMenu->setLocalizedName(L"Copy", HString(L"Copy"));
-			contextMenu->setLocalizedName(L"Paste", HString(L"Paste"));
+			contextMenu->setLocalizedName("Cut", HString("Cut"));
+			contextMenu->setLocalizedName("Copy", HString("Copy"));
+			contextMenu->setLocalizedName("Paste", HString("Paste"));
 		}
 
 		if (!_isDisabled())
@@ -1238,17 +1263,18 @@ namespace bs
 
 	void GUIInputBox::pasteText()
 	{
-		if (mSelectionShown)
-			deleteSelectedText(true);
+		deleteSelectedText(true);
 
-		WString textInClipboard = Platform::copyFromClipboard();
+		String textInClipboard = Platform::copyFromClipboard();
 		UINT32 charIdx = gGUIManager().getInputCaretTool()->getCharIdxAtCaretPos();
 
 		bool filterOkay = true;
 		if(mFilter != nullptr)
 		{
-			WString newText = mText;
-			newText.insert(newText.begin() + charIdx, textInClipboard.begin(), textInClipboard.end());
+			String newText = mText;
+
+			UINT32 byteIdx = UTF8::charToByteIndex(newText, charIdx);
+			newText.insert(newText.begin() + byteIdx, textInClipboard.begin(), textInClipboard.end());
 
 			filterOkay = mFilter(newText);
 		}
@@ -1258,8 +1284,9 @@ namespace bs
 			Vector2I origSize = mDimensions.calculateSizeRange(_getOptimalSize()).optimal;
 			insertString(charIdx, textInClipboard);
 
-			if(textInClipboard.size() > 0)
-				gGUIManager().getInputCaretTool()->moveCaretToChar(charIdx + ((UINT32)textInClipboard.size() - 1), CARET_AFTER);
+			UINT32 numChars = UTF8::count(textInClipboard);
+			if(numChars > 0)
+				gGUIManager().getInputCaretTool()->moveCaretToChar(charIdx + (numChars - 1), CARET_AFTER);
 
 			scrollTextToCaret();
 

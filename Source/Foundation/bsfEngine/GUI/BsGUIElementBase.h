@@ -43,7 +43,7 @@ namespace bs
 		};
 
 	public:
-		GUIElementBase();
+		GUIElementBase() = default;
 		GUIElementBase(const GUIDimensions& dimensions);
 		virtual ~GUIElementBase();
 
@@ -318,13 +318,16 @@ namespace bs
 		 */
 		void setUpdateParent(GUIElementBase* updateParent);
 
-		GUIWidget* mParentWidget;
-		GUIPanel* mAnchorParent;
-		GUIElementBase* mUpdateParent;
-		GUIElementBase* mParentElement;
+		/** Unregisters and destroys all child elements. */
+		void destroyChildElements();
+
+		GUIWidget* mParentWidget = nullptr;
+		GUIPanel* mAnchorParent = nullptr;
+		GUIElementBase* mUpdateParent = nullptr;
+		GUIElementBase* mParentElement = nullptr;
 
 		Vector<GUIElementBase*> mChildren;	
-		UINT8 mFlags;
+		UINT8 mFlags = GUIElem_Dirty;
 
 		GUIDimensions mDimensions;
 		GUILayoutData mLayoutData;

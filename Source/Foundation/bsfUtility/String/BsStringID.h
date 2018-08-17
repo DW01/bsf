@@ -90,10 +90,10 @@ namespace bs
 		}
 
 		/**	Returns the null-terminated name of the string id. */
-		const char* cstr() const
+		const char* c_str() const
 		{
 			if (mData == nullptr)
-				return nullptr;
+				return "";
 
 			return mData->chars;
 		}
@@ -148,8 +148,8 @@ namespace bs
 
 			if (!isEmpty)
 			{
-				UINT32 length = (UINT32)strlen(data.cstr());
-				memcpy(memory, data.cstr(), length * sizeof(char));
+				UINT32 length = (UINT32)strlen(data.c_str());
+				memcpy(memory, data.c_str(), length * sizeof(char));
 			}
 		}
 
@@ -166,11 +166,12 @@ namespace bs
 			{
 				UINT32 length = (size - sizeof(UINT32) - sizeof(bool)) / sizeof(char);
 
-				char* name = (char*)bs_alloc(length + 1);
+				auto name = (char*)bs_stack_alloc(length + 1);
 				memcpy(name, memory, length);
 				name[length] = '\0';
 
 				data = StringID(name);
+				bs_stack_free(name);
 			}
 
 			return size;
@@ -183,7 +184,7 @@ namespace bs
 			bool isEmpty = data.empty();
 			if (!isEmpty)
 			{
-				UINT32 length = (UINT32)strlen(data.cstr());
+				UINT32 length = (UINT32)strlen(data.c_str());
 				dataSize += length * sizeof(char);
 			}
 

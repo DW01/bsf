@@ -8,9 +8,8 @@
 namespace bs
 {
 	OAAudioSource::OAAudioSource()
-		: mSavedTime(0.0f), mSavedState(AudioSourceState::Stopped), mState(AudioSourceState::Stopped)
-		, mGloballyPaused(false), mStreamBuffers(), mBusyBuffers(), mStreamProcessedPosition(0), mStreamQueuedPosition(0)
-		, mIsStreaming(false)
+		: mSavedTime(0.0f), mSavedState(AudioSourceState::Stopped), mGloballyPaused(false), mStreamBuffers()
+		, mBusyBuffers(), mStreamProcessedPosition(0), mStreamQueuedPosition(0), mIsStreaming(false)
 	{
 		gOAAudio()._registerSource(this);
 		rebuild();
@@ -116,7 +115,7 @@ namespace bs
 			if (contexts.size() > 1)
 				alcMakeContextCurrent(contexts[i]);
 
-			alSourcef(mSourceIDs[i], AL_LOOPING, loop);
+			alSourcei(mSourceIDs[i], AL_LOOPING, loop);
 		}
 	}
 
@@ -159,8 +158,6 @@ namespace bs
 
 	void OAAudioSource::play()
 	{
-		mState = AudioSourceState::Playing;
-
 		if (mGloballyPaused)
 			return;
 
@@ -171,7 +168,7 @@ namespace bs
 			if (!mIsStreaming)
 			{
 				startStreaming();
-				stream(); // Stream first block on this thread to ensure something can play right away
+				streamUnlocked(); // Stream first block on this thread to ensure something can play right away
 			}
 		}
 		
@@ -195,8 +192,6 @@ namespace bs
 
 	void OAAudioSource::pause()
 	{
-		mState = AudioSourceState::Paused;
-
 		auto& contexts = gOAAudio()._getContexts();
 		UINT32 numContexts = (UINT32)contexts.size();
 		for (UINT32 i = 0; i < numContexts; i++)
@@ -210,8 +205,6 @@ namespace bs
 
 	void OAAudioSource::stop()
 	{
-		mState = AudioSourceState::Stopped;
-
 		auto& contexts = gOAAudio()._getContexts();
 		UINT32 numContexts = (UINT32)contexts.size();
 		for (UINT32 i = 0; i < numContexts; i++)
@@ -334,6 +327,24 @@ namespace bs
 		}
 	}
 
+	AudioSourceState OAAudioSource::getState() const
+	{
+		ALint state;
+		alGetSourcei(mSourceIDs[0], AL_SOURCE_STATE, &state);
+
+		switch(state)
+		{
+		case AL_PLAYING:
+			return AudioSourceState::Playing;
+		case AL_PAUSED:
+			return AudioSourceState::Paused;
+		case AL_INITIAL:
+		case AL_STOPPED:
+		default:
+			return AudioSourceState::Stopped;
+		}
+	}
+
 	void OAAudioSource::clear()
 	{
 		mSavedState = getState();
@@ -386,9 +397,9 @@ namespace bs
 			alSourcef(mSourceIDs[i], AL_ROLLOFF_FACTOR, mAttenuation);
 
 			if(requiresStreaming())
-				alSourcef(mSourceIDs[i], AL_LOOPING, false);
+				alSourcei(mSourceIDs[i], AL_LOOPING, false);
 			else
-				alSourcef(mSourceIDs[i], AL_LOOPING, mLoop);
+				alSourcei(mSourceIDs[i], AL_LOOPING, mLoop);
 
 			if (is3D())
 			{
@@ -471,6 +482,11 @@ namespace bs
 	{
 		Lock lock(mMutex);
 
+		streamUnlocked();
+	}
+
+	void OAAudioSource::streamUnlocked()
+	{
 		AudioDataInfo info;
 		info.bitDepth = mAudioClip->getBitDepth();
 		info.numChannels = mAudioClip->getNumChannels();

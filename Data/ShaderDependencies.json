@@ -1,13 +1,17 @@
 ﻿{
     "Blit.bsl": null,
     "Clear.bsl": null,
+    "ClearLoadStore.bsl": null,
     "DebugDraw.bsl": null,
     "Default.bsl": [
+        {
+            "Path": "BasePass.bslinc"
+        },
         {
             "Path": "GBufferOutput.bslinc"
         },
         {
-            "Path": "BasePass.bslinc"
+            "Path": "SurfaceData.bslinc"
         },
         {
             "Path": "PerCameraData.bslinc"
@@ -17,15 +21,9 @@
         },
         {
             "Path": "VertexInput.bslinc"
-        },
-        {
-            "Path": "SurfaceData.bslinc"
         }
     ],
     "DeferredDirectionalLight.bsl": [
-        {
-            "Path": "LightingCommon.bslinc"
-        },
         {
             "Path": "DeferredLightCommon.bslinc"
         },
@@ -37,6 +35,9 @@
         },
         {
             "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
         },
         {
             "Path": "SurfaceData.bslinc"
@@ -67,6 +68,21 @@
     ],
     "DeferredIBLProbe.bsl": [
         {
+            "Path": "GBufferInput.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
+        },
+        {
+            "Path": "SurfaceData.bslinc"
+        },
+        {
             "Path": "ImageBasedLighting.bslinc"
         },
         {
@@ -74,15 +90,6 @@
         },
         {
             "Path": "ReflectionCubemapCommon.bslinc"
-        },
-        {
-            "Path": "GBufferInput.bslinc"
-        },
-        {
-            "Path": "PerCameraData.bslinc"
-        },
-        {
-            "Path": "SurfaceData.bslinc"
         }
     ],
     "DeferredIBLSetup.bsl": [
@@ -110,6 +117,21 @@
     ],
     "DeferredIBLSky.bsl": [
         {
+            "Path": "GBufferInput.bslinc"
+        },
+        {
+            "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
+        },
+        {
+            "Path": "SurfaceData.bslinc"
+        },
+        {
             "Path": "ImageBasedLighting.bslinc"
         },
         {
@@ -119,22 +141,10 @@
             "Path": "ReflectionCubemapCommon.bslinc"
         },
         {
-            "Path": "GBufferInput.bslinc"
-        },
-        {
-            "Path": "PerCameraData.bslinc"
-        },
-        {
             "Path": "PPBase.bslinc"
-        },
-        {
-            "Path": "SurfaceData.bslinc"
         }
     ],
     "DeferredPointLight.bsl": [
-        {
-            "Path": "LightingCommon.bslinc"
-        },
         {
             "Path": "DeferredLightCommon.bslinc"
         },
@@ -148,15 +158,21 @@
             "Path": "DirectLightAccumulator.bslinc"
         },
         {
+            "Path": "DirectLighting.bslinc"
+        },
+        {
             "Path": "SurfaceData.bslinc"
         }
     ],
     "Diffuse.bsl": [
         {
+            "Path": "BasePass.bslinc"
+        },
+        {
             "Path": "GBufferOutput.bslinc"
         },
         {
-            "Path": "BasePass.bslinc"
+            "Path": "SurfaceData.bslinc"
         },
         {
             "Path": "PerCameraData.bslinc"
@@ -166,12 +182,19 @@
         },
         {
             "Path": "VertexInput.bslinc"
-        },
-        {
-            "Path": "SurfaceData.bslinc"
         }
     ],
-    "FlatFramebufferToTexture.bsl": null,
+    "GpuParticleClear.bsl": [
+        {
+            "Path": "GpuParticleTileVertex.bslinc"
+        }
+    ],
+    "GpuParticleInject.bsl": null,
+    "GpuParticleSimulate.bsl": [
+        {
+            "Path": "GpuParticleTileVertex.bslinc"
+        }
+    ],
     "IrradianceAccumulateCubeSH.bsl": [
         {
             "Path": "PPBase.bslinc"
@@ -257,13 +280,13 @@
             "Path": "ReflectionCubemapCommon.bslinc"
         },
         {
-            "Path": "LightingCommon.bslinc"
-        },
-        {
             "Path": "PerCameraData.bslinc"
         },
         {
             "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
         },
         {
             "Path": "SurfaceData.bslinc"
@@ -479,6 +502,29 @@
             "Path": "PPTonemapCommon.bslinc"
         }
     ],
+    "ParticlesUnlit.bsl": [
+        {
+            "Path": "ParticleVertex.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        }
+    ],
+    "RadixSortCount.bsl": [
+        {
+            "Path": "RadixSortCommon.bslinc"
+        }
+    ],
+    "RadixSortPrefixScan.bsl": [
+        {
+            "Path": "RadixSortCommon.bslinc"
+        }
+    ],
+    "RadixSortReorder.bsl": [
+        {
+            "Path": "RadixSortCommon.bslinc"
+        }
+    ],
     "ReflectionCubeDownsample.bsl": [
         {
             "Path": "ReflectionCubemapCommon.bslinc"
@@ -521,6 +567,17 @@
         }
     ],
     "ShadowDepthNormal.bsl": [
+        {
+            "Path": "ShadowDepthBase.bslinc"
+        },
+        {
+            "Path": "PerObjectData.bslinc"
+        },
+        {
+            "Path": "VertexInput.bslinc"
+        }
+    ],
+    "ShadowDepthNormalNoPS.bsl": [
         {
             "Path": "ShadowDepthBase.bslinc"
         },
@@ -589,6 +646,7 @@
             "Path": "PerCameraData.bslinc"
         }
     ],
+    "TextureArrayToMSAATexture.bsl": null,
     "TiledDeferredImageBasedLighting.bsl": [
         {
             "Path": "ImageBasedLighting.bslinc"
@@ -600,9 +658,6 @@
             "Path": "ReflectionCubemapCommon.bslinc"
         },
         {
-            "Path": "LightingCommon.bslinc"
-        },
-        {
             "Path": "GBufferInput.bslinc"
         },
         {
@@ -610,6 +665,9 @@
         },
         {
             "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
         },
         {
             "Path": "SurfaceData.bslinc"
@@ -626,9 +684,6 @@
             "Path": "ReflectionCubemapCommon.bslinc"
         },
         {
-            "Path": "LightingCommon.bslinc"
-        },
-        {
             "Path": "GBufferInput.bslinc"
         },
         {
@@ -636,6 +691,9 @@
         },
         {
             "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
         },
         {
             "Path": "SurfaceData.bslinc"
@@ -655,13 +713,13 @@
             "Path": "ReflectionCubemapCommon.bslinc"
         },
         {
-            "Path": "LightingCommon.bslinc"
-        },
-        {
             "Path": "PerCameraData.bslinc"
         },
         {
             "Path": "DirectLightAccumulator.bslinc"
+        },
+        {
+            "Path": "DirectLighting.bslinc"
         },
         {
             "Path": "SurfaceData.bslinc"
@@ -677,9 +735,6 @@
         },
         {
             "Path": "PerObjectData.bslinc"
-        },
-        {
-            "Path": "GBufferOutput.bslinc"
         }
     ]
 }

@@ -77,7 +77,7 @@ namespace bs
 		Vector<ButtonCode> keyCodeMap; /**< Maps system-specific X11 KeyCode to Banshee ButtonCode. */
 
 		// Clipboard
-		WString clipboardData;
+		String clipboardData;
 
 		// Cursor
 		::Cursor currentCursor = None;
@@ -185,6 +185,12 @@ namespace bs
 		}
 
 		return false;
+	}
+
+	void clipCursorDisable(Platform::Pimpl* data)
+	{
+		data->cursorClipEnabled = false;
+		data->cursorClipWindow = None;
 	}
 
 	void setCurrentCursor(Platform::Pimpl* data, ::Cursor cursor)
@@ -370,8 +376,7 @@ namespace bs
 	{
 		Lock lock(mData->lock);
 
-		mData->cursorClipEnabled = false;
-		mData->cursorClipWindow = None;
+		bs::clipCursorDisable(mData);
 	}
 
 	void Platform::setCursor(PixelData& pixelData, const Vector2I& hotSpot)
@@ -445,7 +450,7 @@ namespace bs
 		usleep(duration * 1000);
 	}
 
-	void Platform::copyToClipboard(const WString& string)
+	void Platform::copyToClipboard(const String& string)
 	{
 		Lock lock(mData->lock);
 		mData->clipboardData = string;
@@ -454,14 +459,14 @@ namespace bs
 		XSetSelectionOwner(mData->xDisplay, clipboardAtom, mData->mainXWindow, CurrentTime);
 	}
 
-	WString Platform::copyFromClipboard()
+	String Platform::copyFromClipboard()
 	{
 		Lock lock(mData->lock);
 		Atom clipboardAtom = XInternAtom(mData->xDisplay, "CLIPBOARD", 0);
 		::Window selOwner = XGetSelectionOwner(mData->xDisplay, clipboardAtom);
 
 		if(selOwner == None)
-			return L"";
+			return "";
 
 		if(selOwner == mData->mainXWindow)
 			return mData->clipboardData;
@@ -497,12 +502,12 @@ namespace bs
 					&unused, &data);
 
 			if(result == Success)
-				return UTF8::toWide(String((const char*)data));
+				return String((const char*)data);
 
 			XFree(data);
 		}
 
-		return L"";
+		return "";
 	}
 
 	/** Maps X11 mouse button codes to Banshee button codes. */
@@ -673,7 +678,7 @@ namespace bs
 		return nullptr;
 	}
 
-	WString Platform::keyCodeToUnicode(UINT32 buttonCode)
+	String Platform::keyCodeToUnicode(UINT32 buttonCode)
 	{
 		Lock lock(mData->lock);
 
@@ -681,14 +686,14 @@ namespace bs
 		if(keyName == nullptr)
 		{
 			// Not a printable key
-			return L"";
+			return "";
 		}
 
 		auto iterFind = mData->keyNameMap.find(String(keyName));
 		if(iterFind == mData->keyNameMap.end())
 		{
 			// Cannot find mapping, although this shouldn't really happen
-			return L"";
+			return "";
 		}
 
 		XKeyPressedEvent event;
@@ -708,10 +713,10 @@ namespace bs
 		{
 			buffer[length] = '\0';
 
-			return UTF8::toWide(String(buffer));
+			return String(buffer);
 		}
 
-		return L"";
+		return "";
 	}
 
 	void Platform::openFolder(const Path& path)
@@ -762,6 +767,9 @@ namespace bs
 			return true;
 		case XK_Delete:
 			command = InputCommandType::Delete;
+			return true;
+		case XK_Tab:
+			command = InputCommandType::Tab;
 			return true;
 		}
 
@@ -889,35 +897,34 @@ namespace bs
 				// Process text input
 				KeySym keySym = XkbKeycodeToKeysym(mData->xDisplay, (KeyCode)event.xkey.keycode, 0, 0);
 
-				//// Check if input manager wants this event. If not, we process it.
-				if(XFilterEvent(&event, None) == False)
+				// Handle input commands
+				InputCommandType command = InputCommandType::Backspace;
+				bool shift = (event.xkey.state & ShiftMask) != 0;
+
+				bool isInputCommand = parseInputCommand(keySym, shift, command);
+
+				// Check if input manager wants this event. If not, we process it.
+				if(XFilterEvent(&event, None) == False && !isInputCommand)
 				{
-					// Don't consider Return key a character
-					if(keySym != XK_Return)
+					// Send a text input event
+					Status status;
+					char buffer[16];
+
+					INT32 length = Xutf8LookupString(mData->IC, &event.xkey, buffer, sizeof(buffer), nullptr,
+							&status);
+
+					if (length > 0)
 					{
-						Status status;
-						char buffer[16];
+						buffer[length] = '\0';
 
-						INT32 length = Xutf8LookupString(mData->IC, &event.xkey, buffer, sizeof(buffer), nullptr,
-								&status);
-
-						if (length > 0)
-						{
-							buffer[length] = '\0';
-
-							U32String utfStr = UTF8::toUTF32(String(buffer));
-							if (utfStr.length() > 0)
-								onCharInput((UINT32) utfStr[0]);
-						}
+						U32String utfStr = UTF8::toUTF32(String(buffer));
+						if (utfStr.length() > 0)
+							onCharInput((UINT32) utfStr[0]);
 					}
 				}
 
-				// Handle input commands
-				InputCommandType command = InputCommandType::Backspace;
-
-				bool shift = (event.xkey.state & ShiftMask) != 0;
-
-				if(parseInputCommand(keySym, shift, command))
+				// Send an input command event
+				if(isInputCommand)
 				{
 					if(!onInputCommand.empty())
 						onInputCommand(command);
@@ -1155,7 +1162,7 @@ namespace bs
 				XEvent response;
 				if(selReq.target == XA_STRING || selReq.target == compoundTextAtom || selReq.target == utf8StringAtom)
 				{
-					String utf8data = UTF8::fromWide(mData->clipboardData);
+					String utf8data = mData->clipboardData;
 
 					const UINT8* data = (const UINT8*)utf8data.c_str();
 					INT32 dataLength = (INT32)utf8data.length();
@@ -1329,11 +1336,12 @@ namespace bs
 			mData->keyNameMap[String(name)] = keyCode;
 		}
 
+		// Initialize "X11 keycode" -> "Banshee ButtonCode" map, based on the keyNameMap and keyCodeToKeyName()
+		mData->keyCodeMap.resize(desc->max_key_code + 1, BC_UNASSIGNED);
+
 		XkbFreeNames(desc, XkbKeyNamesMask, True);
 		XkbFreeKeyboard(desc, 0, True);
 
-		// Initialize "X11 keycode" -> "Banshee ButtonCode" map, based on the keyNameMap and keyCodeToKeyName()
-		mData->keyCodeMap.resize(desc->max_key_code + 1, BC_UNASSIGNED);
 		for (UINT32 buttonCodeNum = BC_UNASSIGNED; buttonCodeNum <= BC_NumKeys; buttonCodeNum++)
 		{
 			ButtonCode buttonCode = (ButtonCode) buttonCodeNum;
@@ -1446,7 +1454,7 @@ namespace bs
 		if(iterFind != mData->windowMap.end())
 		{
 			if(mData->cursorClipEnabled && mData->cursorClipWindow == iterFind->second)
-				clipCursorDisable();
+				bs::clipCursorDisable(mData);
 
 			mData->windowMap.erase(iterFind);
 		}

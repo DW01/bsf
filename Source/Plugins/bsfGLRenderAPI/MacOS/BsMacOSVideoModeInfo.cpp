@@ -53,8 +53,25 @@ namespace bs::ct
 			auto keys = (CFStringRef*)bs_stack_alloc(numNames * sizeof(CFTypeRef));
 			CFDictionaryGetKeysAndValues(locNames, (const void**)keys, nullptr);
 
-			CFStringRef value = (CFStringRef)CFDictionaryGetValue(locNames, keys[0]);
-			mName = CFStringGetCStringPtr(value, kCFStringEncodingUTF8);
+			auto value = (CFStringRef)CFDictionaryGetValue(locNames, keys[0]);
+			if(value)
+			{
+				const char* chars = CFStringGetCStringPtr(value, kCFStringEncodingUTF8);
+				if(chars)
+					mName = chars;
+				else
+				{
+					CFIndex stringLength = CFStringGetLength(value) + 1;
+					auto buffer = bs_stack_alloc<char>((UINT32)stringLength);
+
+					CFStringGetCString(value, buffer, stringLength, kCFStringEncodingUTF8);
+
+					mName = buffer;
+					bs_stack_free(buffer);
+				}
+			}
+			else
+				mName = "Unknown";
 
 			bs_stack_free(keys);
 		}
@@ -70,6 +87,8 @@ namespace bs::ct
 			for(int i = 0; i < count; i++)
 			{
 				auto modeRef = (CGDisplayModeRef) CFArrayGetValueAtIndex(modes, i);
+				CGDisplayModeRetain(modeRef);
+
 				VideoMode* videoMode = new (bs_alloc<MacOSVideoMode>()) MacOSVideoMode(modeRef, linkRef, outputIdx);
 
 				mVideoModes.push_back(videoMode);

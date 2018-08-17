@@ -24,6 +24,7 @@ set(BS_CORE_INC_COMPONENTS
 	"bsfCore/Components/BsCReflectionProbe.h"
 	"bsfCore/Components/BsCSkybox.h"
 	"bsfCore/Components/BsCLightProbeVolume.h"
+	"bsfCore/Components/BsCParticleSystem.h"
 )
 
 set(BS_CORE_INC_PHYSICS
@@ -107,6 +108,7 @@ set(BS_CORE_INC_RENDERER
 	"bsfCore/Renderer/BsSkybox.h"
 	"bsfCore/Renderer/BsLightProbeVolume.h"
 	"bsfCore/Renderer/BsIBLUtility.h"
+	"bsfCore/Renderer/BsGpuResourcePool.h"
 )
 
 set(BS_CORE_SRC_LOCALIZATION
@@ -227,6 +229,7 @@ set(BS_CORE_INC_IMAGE
 	"bsfCore/Image/BsPixelData.h"
 	"bsfCore/Image/BsPixelUtil.h"
 	"bsfCore/Image/BsPixelVolume.h"
+	"bsfCore/Image/BsSpriteTexture.h"
 )
 
 set(BS_CORE_SRC_UTILITY
@@ -274,6 +277,7 @@ set(BS_CORE_SRC_COMPONENTS
 	"bsfCore/Components/BsCReflectionProbe.cpp"
 	"bsfCore/Components/BsCSkybox.cpp"
 	"bsfCore/Components/BsCLightProbeVolume.cpp"
+	"bsfCore/Components/BsCParticleSystem.cpp"
 )
 
 set(BS_CORE_SRC_IMPORTER
@@ -375,6 +379,10 @@ set(BS_CORE_INC_RTTI
 	"bsfCore/Private/RTTI/BsAudioListenerRTTI.h"
 	"bsfCore/Private/RTTI/BsAudioSourceRTTI.h"
 	"bsfCore/Private/RTTI/BsShaderVariationRTTI.h"
+	"bsfCore/Private/RTTI/BsParticleSystemRTTI.h"
+	"bsfCore/Private/RTTI/BsParticleDistributionRTTI.h"
+	"bsfCore/Private/RTTI/BsSpriteTextureRTTI.h"
+	"bsfCore/Private/RTTI/BsCParticleSystemRTTI.h"
 )
 
 set(BS_CORE_SRC_RENDERER
@@ -391,6 +399,7 @@ set(BS_CORE_SRC_RENDERER
 	"bsfCore/Renderer/BsSkybox.cpp"
 	"bsfCore/Renderer/BsLightProbeVolume.cpp"
 	"bsfCore/Renderer/BsIBLUtility.cpp"
+	"bsfCore/Renderer/BsGpuResourcePool.cpp"
 )
 
 set(BS_CORE_SRC_RESOURCES
@@ -417,6 +426,7 @@ set(BS_CORE_SRC_IMAGE
 	"bsfCore/Image/BsPixelData.cpp"
 	"bsfCore/Image/BsTexture.cpp"
 	"bsfCore/Image/BsPixelUtil.cpp"
+	"bsfCore/Image/BsSpriteTexture.cpp"
 )
 
 set(BS_CORE_SRC_MATERIAL
@@ -579,6 +589,23 @@ set(BS_CORE_SRC_ANIMATION
 	"bsfCore/Animation/BsMorphShapes.cpp"
 )
 
+set(BS_CORE_INC_PARTICLES
+	"bsfCore/Particles/BsParticleSystem.h"
+	"bsfCore/Particles/BsParticleEmitter.h"
+	"bsfCore/Particles/BsParticleEvolver.h"
+	"bsfCore/Particles/BsParticleManager.h"
+	"bsfCore/Particles/BsParticleDistribution.h"
+	"bsfCore/Particles/BsParticleModule.h"
+	"bsfCore/Private/Particles/BsParticleSet.h"
+)
+
+set(BS_CORE_SRC_PARTICLES
+	"bsfCore/Particles/BsParticleSystem.cpp"
+	"bsfCore/Particles/BsParticleEmitter.cpp"
+	"bsfCore/Particles/BsParticleEvolver.cpp"
+	"bsfCore/Particles/BsParticleManager.cpp"
+)
+
 set(BS_CORE_INC_PLATFORM
 	"bsfCore/Platform/BsPlatform.h"
 	"bsfCore/Platform/BsFolderMonitor.h"
@@ -615,13 +642,18 @@ set(BS_CORE_INC_PLATFORM_LINUX
 set(BS_CORE_SRC_PLATFORM_LINUX
 	"bsfCore/Private/Linux/BsLinuxPlatform.cpp"
 	"bsfCore/Private/Linux/BsLinuxWindow.cpp"
-	"bsfCore/Private/Linux/BsLinuxDropTarget.cpp"
-	"bsfCore/Private/Linux/BsLinuxFolderMonitor.cpp"
-	"bsfCore/Private/Linux/BsLinuxInput.cpp"
-	"bsfCore/Private/Linux/BsLinuxGamepad.cpp"
 	"bsfCore/Private/Linux/BsLinuxMouse.cpp"
 	"bsfCore/Private/Linux/BsLinuxKeyboard.cpp"
+	"bsfCore/Private/Linux/BsLinuxDropTarget.cpp"
+	"bsfCore/Private/Linux/BsLinuxInput.cpp"
+	"bsfCore/Private/Linux/BsLinuxGamepad.cpp"
+	"bsfCore/Private/Linux/BsLinuxFolderMonitor.cpp"
 )
+
+foreach(source ${BS_CORE_SRC_PLATFORM_LINUX} ${BS_CORE_SRC_PLATFORM_WIN32})
+	set_source_files_properties ("${source}" PROPERTIES
+			COTIRE_EXCLUDED "True")
+endforeach()
 
 set(BS_CORE_INC_PLATFORM_MACOS
 	"bsfCore/Private/MacOS/BsMacOSInput.h"
@@ -677,6 +709,7 @@ source_group("Audio" FILES ${BS_CORE_INC_AUDIO} ${BS_CORE_SRC_AUDIO})
 source_group("Animation" FILES ${BS_CORE_INC_ANIMATION} ${BS_CORE_SRC_ANIMATION})
 source_group("Image" FILES ${BS_CORE_INC_IMAGE} ${BS_CORE_SRC_IMAGE})
 source_group("Mesh" FILES ${BS_CORE_INC_MESH} ${BS_CORE_SRC_MESH})
+source_group("Particles" FILES ${BS_CORE_INC_PARTICLES} ${BS_CORE_SRC_PARTICLES})
 source_group("" FILES ${BS_CORE_INC_NOFILTER} ${BS_CORE_SRC_NOFILTER})
 
 if(APPLE)
@@ -728,4 +761,6 @@ set(BS_CORE_SRC
 	${BS_CORE_SRC_IMAGE}
 	${BS_CORE_INC_MESH}
 	${BS_CORE_SRC_MESH}
+	${BS_CORE_INC_PARTICLES}
+	${BS_CORE_SRC_PARTICLES}
 )

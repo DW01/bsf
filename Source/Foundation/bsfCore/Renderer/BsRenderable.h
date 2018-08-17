@@ -150,8 +150,11 @@ namespace bs
 		/**	Gets world bounds of the mesh rendered by this object. */
 		Bounds getBounds() const;
 
-		/** Sets the animation that will be used for animating the attached mesh. */
+		/** Determines the animation that will be used for animating the attached mesh. */
 		void setAnimation(const SPtr<Animation>& animation);
+
+		/** @copydoc setAnimation */
+		const SPtr<Animation>& getAnimation() const { return mAnimation; }
 
 		/** Checks is the renderable animated or static. */
 		bool isAnimated() const { return mAnimation != nullptr; }
@@ -198,6 +201,9 @@ namespace bs
 
 		/** @copydoc CoreObject::getCoreDependencies */
 		void getCoreDependencies(Vector<CoreObject*>& dependencies) override;
+
+		/** @copydoc CoreObject::onDependencyDirty */
+		void onDependencyDirty(CoreObject* dependency, UINT32 dirtyFlags) override;
 
 		/** @copydoc IResourceListener::getListenerResources */
 		void getListenerResources(Vector<HResource>& resources) override;

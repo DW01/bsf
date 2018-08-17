@@ -6,6 +6,7 @@
 #include "Animation/BsCurveCache.h"
 #include "Math/BsVector3.h"
 #include "Math/BsQuaternion.h"
+#include "Allocators/BsPoolAlloc.h"
 
 namespace bs
 {
@@ -20,6 +21,14 @@ namespace bs
 		T value; /**< Value of the key. */
 		T inTangent; /**< Input tangent (going from the previous key to this one) of the key. */
 		T outTangent; /**< Output tangent (going from this key to next one) of the key. */
+		float time; /**< Position of the key along the animation spline. */
+	};
+
+	/** Keyframe specialization for integers (no tangents). */
+	template <>
+	struct BS_SCRIPT_EXPORT(m:Animation,n:KeyFrameInt,pl:true) TKeyframe<INT32>
+	{
+		INT32 value; /**< Value of the key. */
 		float time; /**< Position of the key along the animation spline. */
 	};
 
@@ -42,7 +51,7 @@ namespace bs
 		/**
 		 * Creates a new animation curve.
 		 * 
-		 * @param[in]	keyframes	Keyframes to initialize the curve with
+		 * @param[in]	keyframes	Keyframes to initialize the curve with. They must be sorted by time.
 		 */
 		BS_SCRIPT_EXPORT()
 		TAnimationCurve(const Vector<KeyFrame>& keyframes);
@@ -71,8 +80,34 @@ namespace bs
 		 *						value will be clamped.
 		 * @return				Interpolated value from the curve at provided time.
 		 */
-		BS_SCRIPT_EXPORT(n:Evaluate)
+		BS_SCRIPT_EXPORT()
 		T evaluate(float time, bool loop = true) const;
+
+		/**
+		 * Evaluates the integrated animation curve. (e.g. evaluating a curve containing velocity values will return
+		 * a position).
+		 *
+		 * @param[in]	time				%Time to evaluate the curve at.
+		 * @param[in]	integrationCache	Cache storing the values required for integration. Generated the first time
+		 *									this method is called and re-used on subsequent calls. Caller must ensure to
+		 *									use the cache only with the curve it was originally used on. Separate caches
+		 *									need to be used for single and double integration evaluation.
+		 * @return							Interpolated value from the curve at provided time.
+		 */
+		T evaluateIntegrated(float time, const TCurveIntegrationCache<T>& integrationCache) const;
+
+		/**
+		 * Evaluates the double integrated animation curve. (e.g. evaluating a curve containing acceleration values will
+		 * return a position).
+		 *
+		 * @param[in]	time				%Time to evaluate the curve at.
+		 * @param[in]	integrationCache	Cache storing the values required for integration. Generated the first time
+		 *									this method is called and re-used on subsequent calls. Caller must ensure to
+		 *									use the cache only with the curve it was originally used on. Separate caches
+		 *									need to be used for single and double integration evaluation.
+		 * @return							Interpolated value from the curve at provided time.
+		 */
+		T evaluateIntegratedDouble(float time, const TCurveIntegrationCache<T>& integrationCache) const;
 
 		/**
 		 * Evaluate the animation curve at the specified time and returns a new keyframe containing the evaluated value
@@ -100,6 +135,15 @@ namespace bs
 		 * reference keys.
 		 */
 		void makeAdditive();
+
+		/** Calculates the minimal and maximal value of the curve. */
+		std::pair<T, T> calculateRange() const;
+
+		/** Calculates the minimal and maximal value of the integrated curve. */
+		std::pair<T, T> calculateRangeIntegrated(const TCurveIntegrationCache<T>& cache) const;
+
+		/** Calculates the minimal and maximal value of the doubly integrated curve. */
+		std::pair<T, T> calculateRangeIntegratedDouble(const TCurveIntegrationCache<T>& cache) const;
 
 		/** Returns the length of the animation curve, from time zero to last keyframe. */
 		float getLength() const { return mEnd; }
@@ -154,15 +198,11 @@ namespace bs
 		 */
 		KeyFrame evaluateKey(const KeyFrame& lhs, const KeyFrame& rhs, float time) const;
 
-		/** 
-		 * Evaluates a value at the cached curve. Caller must ensure the request time falls within the cached curve range.
-		 *
-		 * @param[in]	time			Time to evaluate the curve at.	
-		 * @param[in]	animInstance	Animation instance data holding the time to evaluate the curve at, and any cached
-		 *								data from previous requests.
-		 * @return						Interpolated value from the curve at provided time.
-		 */
-		T evaluateCache(float time, const TCurveCache<T>& animInstance) const;
+		/** Creates a cache used for quick evaluation of single integrated curves. */
+		void buildIntegrationCache(const TCurveIntegrationCache<T>& cache) const;
+
+		/** Creates a cache used for quick evaluation of double integrated curves. */
+		void buildDoubleIntegrationCache(const TCurveIntegrationCache<T>& cache) const;
 
 		static const UINT32 CACHE_LOOKAHEAD;
 
@@ -176,6 +216,7 @@ namespace bs
 	template class BS_SCRIPT_EXPORT(m:Animation,n:AnimationCurve) TAnimationCurve<float>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:Vector3Curve) TAnimationCurve<Vector3>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:QuaternionCurve) TAnimationCurve<Quaternion>;
+	template class BS_SCRIPT_EXPORT(m:Animation,n:IntegerCurve) TAnimationCurve<INT32>;
 #endif
 
 	/** Flags that describe an animation curve. */
@@ -237,7 +278,10 @@ namespace bs
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedFloatCurve,pl:true) TNamedAnimationCurve<float>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedVector3Curve,pl:true) TNamedAnimationCurve<Vector3>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedQuaternionCurve,pl:true) TNamedAnimationCurve<Quaternion>;
+	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedIntegerCurve,pl:true) TNamedAnimationCurve<INT32>;
 #endif
 
 	/** @} */
+
+	IMPLEMENT_GLOBAL_POOL(TAnimationCurve<float>, 32)
 }

@@ -15,20 +15,14 @@ namespace bs { namespace ct
 	class D3D11GpuParamBlockBuffer : public GpuParamBlockBuffer
 	{
 	public:
-		D3D11GpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage, GpuDeviceFlags deviceMask);
+		D3D11GpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage, GpuDeviceFlags deviceMask);
 		~D3D11GpuParamBlockBuffer();
-
-		/** @copydoc GpuParamBlockBuffer::writeToGPU */
-		void writeToGPU(const UINT8* data, UINT32 queueIdx = 0) override;
 
 		/**	Returns internal DX11 buffer object. */
 		ID3D11Buffer* getD3D11Buffer() const;
 	protected:
 		/** @copydoc GpuParamBlockBuffer::initialize */
 		void initialize() override;
-
-	private:
-		D3D11HardwareBuffer* mBuffer;
 	};
 
 	/** @} */

@@ -8,6 +8,8 @@
 #include "Math/BsVector2I.h"
 #include "BsApplication.h"
 
+#include "ThirdParty/json.hpp"
+
 namespace bs
 {
 	/** @addtogroup Resources-Engine
@@ -17,7 +19,7 @@ namespace bs
 	/**	Types of builtin meshes that are always available. */
 	enum class BuiltinMesh
 	{
-		Box, Sphere, Cone, Quad, Disc
+		Box, Sphere, Cone, Cylinder, Quad, Disc
 	};
 
 	/**	Types of builtin textures that are always available. */
@@ -33,7 +35,9 @@ namespace bs
 		/** Physically based shader used for opaque 3D geometry. */
 		Standard, 
 		/** Physically based shader used for transparent 3D geometry. */
-		Transparent
+		Transparent,
+		/** Special shader used for rendering particles without any lighting. */
+		ParticlesUnlit
 	};
 
 	/**	Holds references to built-in resources used by the core engine. */
@@ -89,7 +93,7 @@ namespace bs
 		const PixelData& getCursorMoveLeftRight(Vector2I& hotSpot);
 
 		/**	Returns the default application icon. */
-		const PixelData& getBansheeIcon();
+		const PixelData& getFrameworkIcon();
 
 		/**	Returns one of the builtin shader types. */
 		HShader getBuiltinShader(BuiltinShader type) const;
@@ -114,7 +118,7 @@ namespace bs
 		 * 
 		 * @param[in]	path	Path relative to the default shader folder with no file extension.
 		 */
-		HShader getShader(const Path& path);
+		HShader getShader(const Path& path) const;
 
 		/** Returns the default font used by the engine. */
 		HFont getDefaultFont() const { return mFont; }
@@ -122,15 +126,18 @@ namespace bs
 		/**	Retrieves one of the builtin textures. */
 		static HTexture getTexture(BuiltinTexture type);
 
+		/**	Returns absolute path to the builtin shader folder where raw shader files are located. */
+		static Path getRawShaderFolder();
+
 		/**	Returns absolute path to the builtin shader include folder. */
 		static Path getShaderIncludeFolder();
 
 		/**	Returns absolute path to the builtin icons folder. */
 		static Path getIconFolder();
 
-		static const WString IconTextureName;
+		static constexpr const char* IconTextureName = "bsfIcon.png";
+		static constexpr const char* MultiLineLabelStyle = "MultiLineLabel";
 
-		static const String MultiLineLabelStyle;
 	private:
 		/**
 		 * Imports all necessary resources and converts them to engine-ready format.
@@ -150,10 +157,10 @@ namespace bs
 		void generateTextures();
 
 		/**	Loads a GUI skin texture with the specified filename. */
-		HSpriteTexture getSkinTexture(const WString& name);
+		HSpriteTexture getSkinTexture(const String& name) const;
 
 		/**	Loads a cursor texture with the specified filename. */
-		HTexture getCursorTexture(const WString& name);
+		HTexture getCursorTexture(const String& name) const;
 
 		HGUISkin mEmptySkin;
 		HGUISkin mSkin;
@@ -169,7 +176,7 @@ namespace bs
 		SPtr<PixelData> mCursorSizeNS;
 		SPtr<PixelData> mCursorSizeNWSE;
 		SPtr<PixelData> mCursorSizeWE;
-		SPtr<PixelData> mBansheeIcon;
+		SPtr<PixelData> mFrameworkIcon;
 
 		HSpriteTexture mWhiteSpriteTexture;
 		HSpriteTexture mDummySpriteTexture;
@@ -182,6 +189,7 @@ namespace bs
 		HShader mShaderSpriteLine;
 		HShader mShaderDiffuse;
 		HShader mShaderTransparent;
+		HShader mShaderParticlesUnlit;
 
 		SPtr<ResourceManifest> mResourceManifest;
 
@@ -194,118 +202,34 @@ namespace bs
 
 		Path ResourceManifestPath;
 
-		static const char* DataListFile;
-		static const char* CursorFolder;
-		static const char* IconFolder;
-		static const char* ShaderFolder;
-		static const char* ShaderIncludeFolder;
-		static const char* SkinFolder;
-		static const char* MeshFolder;
-		static const char* TextureFolder;
-		static const char* SpriteSubFolder;
+		static constexpr const char* SHADER_FOLDER = "Shaders/";
+		static constexpr const char* CURSOR_FOLDER = "Cursors/";
+		static constexpr const char* ICON_FOLDER = "Icons/";
+		static constexpr const char* SKIN_FOLDER = "Skin/"; 
+		static constexpr const char* SHADER_INCLUDE_FOLDER = "Shaders/Includes/";
+		static constexpr const char* MESH_FOLDER = "Meshes/";
+		static constexpr const char* TEXTURE_FOLDER = "Textures/";
+		static constexpr const char* SPRITE_FOLDER = "Sprites/";
 
-		static const WString DefaultFontFilename;
+		static constexpr const char* DATA_LIST_JSON = "DataList.json";
+		static constexpr const char* GUI_SKIN_JSON = "GUISkin.json";
+
+		static const String DefaultFontFilename;
 		static const UINT32 DefaultFontSize;
 
-		static const Color TextNormalColor;
-		static const Color TextActiveColor;
+		static const String GUISkinFile;
+		static const String WhiteTex;
 
-		static const WString GUISkinFile;
-		static const WString WhiteTex;
-
-		static const WString ButtonNormalTex;
-		static const WString ButtonHoverTex;
-		static const WString ButtonActiveTex;
-
-		static const WString ToggleNormalTex;
-		static const WString ToggleHoverTex;
-		static const WString ToggleNormalOnTex;
-		static const WString ToggleHoverOnTex;
-
-		static const WString InputBoxNormalTex;
-		static const WString InputBoxHoverTex;
-		static const WString InputBoxFocusedTex;
-
-		static const WString ScrollBarUpNormalTex;
-		static const WString ScrollBarUpHoverTex;
-		static const WString ScrollBarUpActiveTex;
-
-		static const WString ScrollBarDownNormalTex;
-		static const WString ScrollBarDownHoverTex;
-		static const WString ScrollBarDownActiveTex;
-
-		static const WString ScrollBarLeftNormalTex;
-		static const WString ScrollBarLeftHoverTex;
-		static const WString ScrollBarLeftActiveTex;
-
-		static const WString ScrollBarRightNormalTex;
-		static const WString ScrollBarRightHoverTex;
-		static const WString ScrollBarRightActiveTex;
-
-		static const WString ScrollBarHandleHorzNormalTex;
-		static const WString ScrollBarHandleHorzHoverTex;
-		static const WString ScrollBarHandleHorzActiveTex;
-
-		static const WString ScrollBarHandleVertNormalTex;
-		static const WString ScrollBarHandleVertHoverTex;
-		static const WString ScrollBarHandleVertActiveTex;
-
-		static const WString ScrollBarResizeableHandleHorzNormalTex;
-		static const WString ScrollBarResizeableHandleHorzHoverTex;
-		static const WString ScrollBarResizeableHandleHorzActiveTex;
-
-		static const WString ScrollBarResizeableHandleVertNormalTex;
-		static const WString ScrollBarResizeableHandleVertHoverTex;
-		static const WString ScrollBarResizeableHandleVertActiveTex;
-
-		static const WString ScrollBarHBgTex;
-		static const WString ScrollBarVBgTex;
-
-		static const WString SliderHBackgroundTex;
-		static const WString SliderHFillTex;
-		static const WString SliderVBackgroundTex;
-		static const WString SliderVFillTex;
-		static const WString SliderHandleNormalTex;
-		static const WString SliderHandleHoverTex;
-		static const WString SliderHandleActiveTex;
-
-		static const WString DropDownBtnNormalTex;
-		static const WString DropDownBtnHoverTex;
-		static const WString DropDownBtnActiveTex;
-
-		static const WString DropDownBoxBgTex;
-		static const WString DropDownBoxSideBgTex;
-		static const WString DropDownBoxHandleTex;
-
-		static const WString DropDownBoxEntryNormalTex;
-		static const WString DropDownBoxEntryHoverTex;
-
-		static const WString DropDownBoxBtnUpNormalTex;
-		static const WString DropDownBoxBtnUpHoverTex;
-
-		static const WString DropDownBoxBtnDownNormalTex;
-		static const WString DropDownBoxBtnDownHoverTex;
-
-		static const WString DropDownBoxEntryExpNormalTex;
-		static const WString DropDownBoxEntryExpHoverTex;
-
-		static const WString DropDownBoxEntryToggleNormalTex;
-		static const WString DropDownBoxEntryToggleHoverTex;
-		static const WString DropDownBoxEntryToggleNormalOnTex;
-		static const WString DropDownBoxEntryToggleHoverOnTex;
-
-		static const WString DropDownSeparatorTex;
-
-		static const WString CursorArrowTex;
-		static const WString CursorArrowDragTex;
-		static const WString CursorArrowLeftRightTex;
-		static const WString CursorIBeamTex;
-		static const WString CursorDenyTex;
-		static const WString CursorWaitTex;
-		static const WString CursorSizeNESWTex;
-		static const WString CursorSizeNSTex;
-		static const WString CursorSizeNWSETex;
-		static const WString CursorSizeWETex;
+		static const String CursorArrowTex;
+		static const String CursorArrowDragTex;
+		static const String CursorArrowLeftRightTex;
+		static const String CursorIBeamTex;
+		static const String CursorDenyTex;
+		static const String CursorWaitTex;
+		static const String CursorSizeNESWTex;
+		static const String CursorSizeNSTex;
+		static const String CursorSizeNWSETex;
+		static const String CursorSizeWETex;
 
 		static const Vector2I CursorArrowHotspot;
 		static const Vector2I CursorArrowDragHotspot;
@@ -318,23 +242,28 @@ namespace bs
 		static const Vector2I CursorSizeNWSEHotspot;
 		static const Vector2I CursorSizeWEHotspot;
 
-		static const WString ShaderSpriteTextFile;
-		static const WString ShaderSpriteImageAlphaFile;
-		static const WString ShaderSpriteImageNoAlphaFile;
-		static const WString ShaderSpriteLineFile;
-		static const WString ShaderDiffuseFile;
-		static const WString ShaderTransparentFile;
+		static const String ShaderSpriteTextFile;
+		static const String ShaderSpriteImageAlphaFile;
+		static const String ShaderSpriteImageNoAlphaFile;
+		static const String ShaderSpriteLineFile;
+		static const String ShaderDiffuseFile;
+		static const String ShaderTransparentFile;
+		static const String ShaderParticlesUnlitFile;
 
-		static const WString MeshSphereFile;
-		static const WString MeshBoxFile;
-		static const WString MeshConeFile;
-		static const WString MeshQuadFile;
-		static const WString MeshDiscFile;
+		static const String MeshSphereFile;
+		static const String MeshBoxFile;
+		static const String MeshConeFile;
+		static const String MeshCylinderFile;
+		static const String MeshQuadFile;
+		static const String MeshDiscFile;
 
-		static const WString TextureWhiteFile;
-		static const WString TextureBlackFile;
-		static const WString TextureNormalFile;
+		static const String TextureWhiteFile;
+		static const String TextureBlackFile;
+		static const String TextureNormalFile;
 	};
+
+	/**	Provides easy access to BuiltinResources. */
+	BS_EXPORT BuiltinResources& gBuiltinResources();
 
 	/** @} */
 }

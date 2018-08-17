@@ -23,6 +23,7 @@
 #include "Resources/BsEngineShaderIncludeHandler.h"
 #include "Resources/BsResources.h"
 #include "BsEngineConfig.h"
+#include "GUI/BsProfilerOverlay.h"
 
 namespace bs
 {
@@ -63,7 +64,7 @@ namespace bs
 
 		Cursor::startUp();
 		Cursor::instance().setCursor(CursorType::Arrow);
-		Platform::setIcon(BuiltinResources::instance().getBansheeIcon());
+		Platform::setIcon(BuiltinResources::instance().getFrameworkIcon());
 
 		SceneManager::instance().setMainRenderTarget(getPrimaryWindow());
 		DebugDraw::startUp();
@@ -100,6 +101,9 @@ namespace bs
 		CoreApplication::preUpdate();
 
 		VirtualInput::instance()._update();
+
+		if(mProfilerOverlay)
+			mProfilerOverlay->update();
 	}
 
 	void Application::postUpdate()
@@ -110,10 +114,32 @@ namespace bs
 		DebugDraw::instance()._update();
 	}
 
+	void Application::showProfilerOverlay(ProfilerOverlayType type, const SPtr<Camera>& camera)
+	{
+		const SPtr<Camera>& overlayCamera = camera ? camera : gSceneManager().getMainCamera();
+		if(!overlayCamera)
+			return;
+
+		if(!mProfilerOverlay)
+			mProfilerOverlay = bs_shared_ptr_new<ProfilerOverlay>(overlayCamera);
+		else
+			mProfilerOverlay->setTarget(overlayCamera);
+
+		mProfilerOverlay->show(type);
+	}
+
+	void Application::hideProfilerOverlay()
+	{
+		if(mProfilerOverlay)
+			mProfilerOverlay->hide();
+
+		mProfilerOverlay = nullptr;
+	}
+
 	void Application::loadScriptSystem()
 	{
 #if BS_IS_BANSHEE3D
-		loadPlugin("BansheeMono", &mMonoPlugin);
+		loadPlugin("bsfMono", &mMonoPlugin);
 		loadPlugin("SBansheeEngine", &mSBansheeEnginePlugin); 
 
 		ScriptManager::instance().initialize();
@@ -171,7 +197,7 @@ namespace bs
 	Path Application::getEngineAssemblyPath() const
 	{
 		Path assemblyPath = getBuiltinAssemblyFolder();
-		assemblyPath.append(toWString(String(ENGINE_ASSEMBLY)) + L".dll");
+		assemblyPath.append(String(ENGINE_ASSEMBLY) + ".dll");
 
 		return assemblyPath;
 	}
@@ -179,7 +205,7 @@ namespace bs
 	Path Application::getGameAssemblyPath() const
 	{
 		Path assemblyPath = getScriptAssemblyFolder();
-		assemblyPath.append(toWString(String(SCRIPT_GAME_ASSEMBLY)) + L".dll");
+		assemblyPath.append(String(SCRIPT_GAME_ASSEMBLY) + ".dll");
 
 		return assemblyPath;
 	}

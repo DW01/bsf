@@ -1,5 +1,5 @@
 set(BS_UTILITY_INC_THREADING
-	"bsfUtility/Threading/BsThreadDefines.h"
+	"bsfUtility/Threading/BsThreading.h"
 	"bsfUtility/Threading/BsAsyncOp.h"
 	"bsfUtility/Threading/BsSpinLock.h"
 	"bsfUtility/Threading/BsThreadPool.h"
@@ -24,6 +24,7 @@ set(BS_UTILITY_INC_PREREQUISITES
 set(BS_UTILITY_INC_IMAGE
 	"bsfUtility/Image/BsColor.h"
 	"bsfUtility/Image/BsTextureAtlasLayout.h"
+	"bsfUtility/Image/BsColorGradient.h"
 )
 
 set(BS_UTILITY_INC_STRING
@@ -36,6 +37,7 @@ set(BS_UTILITY_INC_STRING
 set(BS_UTILITY_SRC_IMAGE
 	"bsfUtility/Image/BsColor.cpp"
 	"bsfUtility/Image/BsTextureAtlasLayout.cpp"
+	"bsfUtility/Image/BsColorGradient.cpp"
 )
 
 set(BS_UTILITY_SRC_UTILITY
@@ -76,6 +78,7 @@ set(BS_UTILITY_SRC_THREADING
 
 set(BS_UTILITY_INC_UTILITY
 	"bsfUtility/Utility/BsAny.h"
+	"bsfUtility/Utility/BsBitfield.h"
 	"bsfUtility/Utility/BsBitwise.h"
 	"bsfUtility/Utility/BsDynLib.h"
 	"bsfUtility/Utility/BsDynLibManager.h"
@@ -118,6 +121,7 @@ set(BS_UTILITY_SRC_DEBUG
 set(BS_UTILITY_INC_RTTI
 	"bsfUtility/Private/RTTI/BsSerializedObjectRTTI.h"
 	"bsfUtility/Private/RTTI/BsIReflectableRTTI.h"
+	"bsfUtility/Private/RTTI/BsColorGradientRTTI.h"
 )
 
 set(BS_UTILITY_INC_ALLOCATORS
@@ -217,6 +221,7 @@ set(BS_UTILITY_INC_MATH
 	"bsfUtility/Math/BsMatrixNxM.h"
 	"bsfUtility/Math/BsLine2.h"
 	"bsfUtility/Math/BsSIMD.h"
+	"bsfUtility/Math/BsRandom.h"
 )
 
 set(BS_UTILITY_SRC_ERROR
@@ -251,6 +256,7 @@ set(BS_UTILITY_INC_REFLECTION
 set(BS_UTILITY_INC_WIN32
 	"bsfUtility/Private/Win32/BsWin32PlatformUtility.h"
 	"bsfUtility/Private/Win32/BsWin32Window.h"
+	"bsfUtility/Private/Win32/BsWindows.h"
 )
 
 set(BS_UTILITY_SRC_WIN32
@@ -262,15 +268,14 @@ set(BS_UTILITY_SRC_WIN32
 
 set(BS_UTILITY_SRC_UNIX
 	"bsfUtility/Private/Unix/BsUnixFileSystem.cpp"
+	"bsfUtility/Private/Unix/BsUnixCrashHandler.cpp"
 )
 
 set(BS_UTILITY_SRC_LINUX
-	"bsfUtility/Private/Linux/BsLinuxCrashHandler.cpp"
 	"bsfUtility/Private/Linux/BsLinuxPlatformUtility.cpp"
 )
 
 set(BS_UTILITY_SRC_MACOS
-	"bsfUtility/Private/MacOS/BsMacOSCrashHandler.cpp"
 	"bsfUtility/Private/MacOS/BsMacOSPlatformUtility.cpp"
 )
 

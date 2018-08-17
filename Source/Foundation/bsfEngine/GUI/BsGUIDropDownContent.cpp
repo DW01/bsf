@@ -16,21 +16,16 @@ using namespace std::placeholders;
 
 namespace bs
 {
-	const String GUIDropDownContent::ENTRY_TOGGLE_STYLE_TYPE = "DropDownEntryToggleBtn";
-	const String GUIDropDownContent::ENTRY_STYLE_TYPE = "DropDownEntryBtn";
-	const String GUIDropDownContent::ENTRY_EXP_STYLE_TYPE = "DropDownEntryExpBtn";
-	const String GUIDropDownContent::SEPARATOR_STYLE_TYPE = "DropDownSeparator";
+	constexpr const char* GUIDropDownContent::ENTRY_TOGGLE_STYLE_TYPE;
+	constexpr const char* GUIDropDownContent::ENTRY_STYLE_TYPE;
+	constexpr const char* GUIDropDownContent::ENTRY_EXP_STYLE_TYPE;
+	constexpr const char* GUIDropDownContent::SEPARATOR_STYLE_TYPE;
 
 	GUIDropDownContent::GUIDropDownContent(GUIDropDownMenu::DropDownSubMenu* parent, const GUIDropDownData& dropDownData, 
 		const String& style, const GUIDimensions& dimensions)
 		: GUIElementContainer(dimensions, style), mDropDownData(dropDownData), mStates(dropDownData.states)
 		, mSelectedIdx(UINT_MAX), mRangeStart(0), mRangeEnd(0), mParent(parent), mKeyboardFocus(true)
 		, mIsToggle(parent->getType() == GUIDropDownType::MultiListBox)
-	{
-
-	}
-
-	GUIDropDownContent::~GUIDropDownContent()
 	{
 
 	}
@@ -149,7 +144,7 @@ namespace bs
 				visElem.button->onClick.connect(std::bind(onClick, i, curVisIdx));
 				_registerChildElement(visElem.button);
 
-				const WString& shortcutTag = element.getShortcutTag();
+				const String& shortcutTag = element.getShortcutTag();
 				if (!shortcutTag.empty())
 				{
 					visElem.shortcutLabel = GUILabel::create(HString(shortcutTag), "RightAlignedLabel");
@@ -183,7 +178,7 @@ namespace bs
 
 	HString GUIDropDownContent::getElementLocalizedName(UINT32 idx) const
 	{
-		const WString& label = mDropDownData.entries[idx].getLabel();
+		const String& label = mDropDownData.entries[idx].getLabel();
 
 		auto findLocalizedName = mDropDownData.localizedNames.find(label);
 		if (findLocalizedName != mDropDownData.localizedNames.end())

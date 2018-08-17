@@ -50,7 +50,7 @@ namespace bs
 		mBodies[(int)body] = value;
 
 		if (value != nullptr)
-			mBodies[(int)body]->_setJoint(mThisHandle);
+			mBodies[(int)body]->_setJoint(static_object_cast<CJoint>(mThisHandle));
 
 		// If joint already exists, destroy it if we removed all bodies, otherwise update its transform
 		if(mInternal != nullptr)
@@ -263,10 +263,10 @@ namespace bs
 
 	void CJoint::getLocalTransform(JointBody body, Vector3& position, Quaternion& rotation)
 	{
-		position = mPositions[(int)body];
-		rotation = mRotations[(int)body];
+		position = mPositions[(UINT32)body];
+		rotation = mRotations[(UINT32)body];
 
-		HRigidbody rigidbody = mBodies[(int)body];
+		HRigidbody rigidbody = mBodies[(UINT32)body];
 		if (rigidbody == nullptr) // Get world space transform if no relative to any body
 		{
 			const Transform& tfrm = SO()->getTransform();

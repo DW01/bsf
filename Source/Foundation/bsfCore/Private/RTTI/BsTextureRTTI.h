@@ -47,9 +47,6 @@ namespace bs
 				obj->mProperties.mDesc.usage = val;
 		}
 
-#define BS_ADD_PLAINFIELD(name, id, parentType) \
-	addPlainField(#name, id##, &##parentType##::get##name, &##parentType##::Set##name);
-
 		SPtr<PixelData> getPixelData(Texture* obj, UINT32 idx)
 		{
 			UINT32 face = (size_t)Math::floor(idx / (float)(obj->mProperties.getNumMipmaps() + 1));
@@ -65,9 +62,7 @@ namespace bs
 
 		void setPixelData(Texture* obj, UINT32 idx, SPtr<PixelData> data)
 		{
-			Vector<SPtr<PixelData>>* pixelData = any_cast<Vector<SPtr<PixelData>>*>(obj->mRTTIData);
-
-			(*pixelData)[idx] = data;
+			mPixelData[idx] = data;
 		}
 
 		UINT32 getPixelDataArraySize(Texture* obj)
@@ -77,9 +72,7 @@ namespace bs
 
 		void setPixelDataArraySize(Texture* obj, UINT32 size)
 		{
-			Vector<SPtr<PixelData>>* pixelData = any_cast<Vector<SPtr<PixelData>>*>(obj->mRTTIData);
-
-			pixelData->resize(size);
+			mPixelData.resize(size);
 		}
 
 	public:
@@ -91,20 +84,9 @@ namespace bs
 				&TextureRTTI::setPixelData, &TextureRTTI::setPixelDataArraySize, RTTI_Flag_SkipInReferenceSearch);
 		}
 
-		void onDeserializationStarted(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
-		{
-			Texture* texture = static_cast<Texture*>(obj);
-
-			texture->mRTTIData = bs_new<Vector<SPtr<PixelData>>>();
-		}
-
 		void onDeserializationEnded(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
 		{
 			Texture* texture = static_cast<Texture*>(obj);
-
-			if(texture->mRTTIData.empty())
-				return;
-
 			TextureProperties& texProps = texture->mProperties;
 
 			// Update pixel format if needed as it's possible the original texture was saved using some other render API
@@ -113,18 +95,17 @@ namespace bs
 			PixelFormat validFormat = TextureManager::instance().getNativeFormat(
 				texProps.getTextureType(), texProps.getFormat(), texProps.getUsage(), texProps.isHardwareGammaEnabled());
 
-			Vector<SPtr<PixelData>>* pixelData = any_cast<Vector<SPtr<PixelData>>*>(texture->mRTTIData);
 			if (originalFormat != validFormat)
 			{
 				texProps.mDesc.format = validFormat;
 
-				for (size_t i = 0; i < pixelData->size(); i++)
+				for (size_t i = 0; i < mPixelData.size(); i++)
 				{
-					SPtr<PixelData> origData = pixelData->at(i);
+					SPtr<PixelData> origData = mPixelData[i];
 					SPtr<PixelData> newData = PixelData::create(origData->getWidth(), origData->getHeight(), origData->getDepth(), validFormat);
 
 					PixelUtil::bulkPixelConversion(*origData, *newData);
-					(*pixelData)[i] = newData;
+					mPixelData[i] = newData;
 				}
 			}
 
@@ -132,16 +113,13 @@ namespace bs
 			// in mRTTIData.
 			texture->initialize();
 
-			for(size_t i = 0; i < pixelData->size(); i++)
+			for(size_t i = 0; i < mPixelData.size(); i++)
 			{
 				UINT32 face = (size_t)Math::floor(i / (float)(texProps.getNumMipmaps() + 1));
 				UINT32 mipmap = i % (texProps.getNumMipmaps() + 1);
 
-				texture->writeData(pixelData->at(i), face, mipmap, false);
+				texture->writeData(mPixelData[i], face, mipmap, false);
 			}
-
-			bs_delete(pixelData);
-			texture->mRTTIData = nullptr;	
 		}
 
 		const String& getRTTIName() override
@@ -159,6 +137,9 @@ namespace bs
 		{
 			return TextureManager::instance()._createEmpty();
 		}
+
+	private:
+		Vector<SPtr<PixelData>> mPixelData;
 	};
 
 	/** @} */

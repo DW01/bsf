@@ -77,13 +77,19 @@ namespace ct
 	 */
 	class RenderCompositor
 	{
+	public:
+		struct NodeType;
+
+	private:
 		/** Contains internal information about a single render node. */
 		struct NodeInfo
 		{
 			RenderCompositorNode* node;
+			NodeType* nodeType;
 			UINT32 lastUseIdx;
 			SmallVector<RenderCompositorNode*, 4> inputs;
 		};
+
 	public:
 		~RenderCompositor();
 
@@ -115,7 +121,7 @@ namespace ct
 		/** Contains information about a specific node type. */
 		struct NodeType
 		{
-			virtual ~NodeType() {};
+			virtual ~NodeType() = default;
 
 			/** Creates a new node of this type. */
 			virtual RenderCompositorNode* create() const = 0;
@@ -130,6 +136,11 @@ namespace ct
 		template<class T>
 		struct TNodeType : NodeType
 		{
+			TNodeType()
+			{
+				id = T::getNodeId();
+			}
+
 			/** @copydoc NodeType::create() */
 			RenderCompositorNode* create() const override { return bs_new<T>(); }
 
@@ -149,7 +160,7 @@ namespace ct
 		{
 			auto findIter = mNodeTypes.find(T::getNodeId());
 			if (findIter != mNodeTypes.end())
-				LOGERR("Found two render compositor nodes with the same name \"" + String(T::getNodeId().cstr()) + "\".");
+				LOGERR("Found two render compositor nodes with the same name \"" + String(T::getNodeId().c_str()) + "\".");
 
 			mNodeTypes[T::getNodeId()] = bs_new<TNodeType<T>>();
 		}
@@ -218,21 +229,21 @@ namespace ct
 	public:
 		// Outputs
 		/** 
-		 * Contains scene color. If MSAA is used this texture will be null until the flattened data from the buffer is
-		 * first resolved into this texture.
+		 * Contains scene color. If MSAA is used this texture will be null until the texture array data is first resolved 
+		 * into this texture.
 		 */
 		SPtr<PooledRenderTexture> sceneColorTex;
 
-		/** 
-		 * Flattened, buffer version of sceneColorTex. Only available when MSAA is used, since random writes to multisampled
-		 * textures aren't supported on all render backends.
+		/**
+		 * Texture array version of sceneColorTex. Only available when MSAA is used, since random writes to
+		 * multisampled texture aren't supported on all render backends.
 		 */
-		SPtr<PooledStorageBuffer> flattenedSceneColorBuffer;
+		SPtr<PooledRenderTexture> sceneColorTexArray;
 
 		SPtr<RenderTexture> renderTarget;
 
-		/** Converts a flattened scene color buffer into an unflattened texture. */
-		void unflatten();
+		/** Converts MSAA data from the texture array into the MSAA texture. */
+		void resolveMSAA();
 
 		static StringID getNodeId() { return "SceneColor"; }
 		static SmallVector<StringID, 4> getDependencies(const RendererView& view);
@@ -276,20 +287,20 @@ namespace ct
 		// Outputs
 		/** 
 		 * Contains lighting information accumulated from multiple lights. If MSAA is used this texture will be null until
-		 * the flattened data from the buffer is first resolved into this texture.
+		 * the texture array data is first resolved into this texture.
 		 */
 		SPtr<PooledRenderTexture> lightAccumulationTex;
 
-		/** 
-		 * Flattened, buffer version of lightAccumulationTex. Only available when MSAA is used, since random writes to
-		 * multisampled textures aren't supported on all render backends.
+		/**
+		 * Texture array version of lightAccumulationTex. Only available when MSAA is used, since random writes to
+		 * multisampled texture aren't supported on all render backends.
 		 */
-		SPtr<PooledStorageBuffer> flattenedLightAccumBuffer;
+		SPtr<PooledRenderTexture> lightAccumulationTexArray;
 
 		SPtr<RenderTexture> renderTarget;
 
-		/** Converts a flattened light accumulation buffer into an unflattened texture. */
-		void unflatten();
+		/** Converts MSAA data from the texture array into the MSAA texture. */
+		void resolveMSAA();
 
 		static StringID getNodeId() { return "LightAccumulation"; }
 		static SmallVector<StringID, 4> getDependencies(const RendererView& view);
@@ -382,6 +393,8 @@ namespace ct
 
 		/** @copydoc RenderCompositorNode::clear */
 		void clear() override;
+
+		SPtr<RenderTexture> renderTarget;
 	};
 
 	/**

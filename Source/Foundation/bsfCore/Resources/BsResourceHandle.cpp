@@ -12,18 +12,8 @@ namespace bs
 	Signal ResourceHandleBase::mResourceCreatedCondition;
 	Mutex ResourceHandleBase::mResourceCreatedMutex;
 
-	ResourceHandleBase::ResourceHandleBase()
+	bool ResourceHandleBase::isLoaded(bool checkDependencies) const
 	{
-		mData = nullptr;
-	}
-
-	ResourceHandleBase::~ResourceHandleBase() 
-	{ 
-
-	}
-
-	bool ResourceHandleBase::isLoaded(bool checkDependencies) const 
-	{ 
 		bool isLoaded = (mData != nullptr && mData->mIsCreated && mData->mPtr != nullptr);
 
 		if (checkDependencies && isLoaded)
@@ -73,7 +63,8 @@ namespace bs
 
 	void ResourceHandleBase::destroy()
 	{
-		gResources().destroy(*this);
+		if(mData->mPtr)
+			gResources().destroy(*this);
 	}
 
 	void ResourceHandleBase::setHandleData(const SPtr<Resource>& ptr, const UUID& uuid)
@@ -83,14 +74,14 @@ namespace bs
 		if(mData->mPtr)
 		{
 			mData->mUUID = uuid;
-		
+
 			if(!mData->mIsCreated)
 			{
 				Lock lock(mResourceCreatedMutex);
 				{
-					mData->mIsCreated = true; 
+					mData->mIsCreated = true;
 				}
-				
+
 				mResourceCreatedCondition.notify_all();
 			}
 		}
@@ -100,7 +91,7 @@ namespace bs
 	{
 		mData->mPtr = nullptr;
 
-		Lock(mResourceCreatedMutex);
+		Lock lock(mResourceCreatedMutex);
 		mData->mIsCreated = false;
 	}
 

@@ -19,12 +19,11 @@ namespace bs { namespace ct
 		mParams->getTextureParam(GPT_FRAGMENT_PROGRAM, "gInputTex", mInputTexture);
 	}
 
-	void ReflectionCubeDownsampleMat::execute(
-		const SPtr<Texture>& source,
-		UINT32 face,
-		UINT32 mip,
+	void ReflectionCubeDownsampleMat::execute(const SPtr<Texture>& source, UINT32 face, UINT32 mip, 
 		const SPtr<RenderTarget>& target)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		RenderAPI& rapi = RenderAPI::instance();
 		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
 
@@ -66,6 +65,8 @@ namespace bs { namespace ct
 	void ReflectionCubeImportanceSampleMat::execute(const SPtr<Texture>& source, UINT32 face, UINT32 mip, 
 		const SPtr<RenderTarget>& target)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		mInputTexture.set(source);
 		gReflectionCubeImportanceSampleParamDef.gCubeFace.set(mParamBuffer, face);
 		gReflectionCubeImportanceSampleParamDef.gMipLevel.set(mParamBuffer, mip);
@@ -113,6 +114,8 @@ namespace bs { namespace ct
 
 	void IrradianceComputeSHMat::execute(const SPtr<Texture>& source, UINT32 face, const SPtr<GpuBuffer>& output)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		auto& props = source->getProperties();
 		UINT32 faceSize = props.getWidth();
 		assert(faceSize == props.getHeight());
@@ -150,7 +153,7 @@ namespace bs { namespace ct
 		bufferDesc.type = GBT_STRUCTURED;
 		bufferDesc.elementCount = numCoeffSets;
 		bufferDesc.format = BF_UNKNOWN;
-		bufferDesc.randomGpuWrite = true;
+		bufferDesc.usage = GBU_LOADSTORE;
 
 		if(mVariation.getInt("SH_ORDER") == 3)
 			bufferDesc.elementSize = sizeof(SHCoeffsAndWeight3);
@@ -181,6 +184,8 @@ namespace bs { namespace ct
 	void IrradianceComputeSHFragMat::execute(const SPtr<Texture>& source, UINT32 face, UINT32 coefficientIdx, 
 		const SPtr<RenderTarget>& output)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		// Set parameters
 		mInputTexture.set(source);
 
@@ -218,6 +223,8 @@ namespace bs { namespace ct
 	void IrradianceAccumulateSHMat::execute(const SPtr<Texture>& source, UINT32 face, UINT32 sourceMip, 
 		const SPtr<RenderTarget>& output)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		// Set parameters
 		mInputTexture.set(source);
 
@@ -245,7 +252,7 @@ namespace bs { namespace ct
 		// Assuming it's a cubemap
 		UINT32 size = std::max(1U, (UINT32)(props.getWidth() * 0.5f));
 
-		return POOLED_RENDER_TEXTURE_DESC::createCube(PF_RGBA16F, size, size, TU_RENDERTARGET);
+		return POOLED_RENDER_TEXTURE_DESC::createCube(PF_RGBA32F, size, size, TU_RENDERTARGET);
 	}
 
 	IrradianceAccumulateCubeSHMat::IrradianceAccumulateCubeSHMat()
@@ -259,6 +266,8 @@ namespace bs { namespace ct
 	void IrradianceAccumulateCubeSHMat::execute(const SPtr<Texture>& source, UINT32 sourceMip, const Vector2I& outputOffset,
 		UINT32 coefficientIdx, const SPtr<RenderTarget>& output)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		// Set parameters
 		mInputTexture.set(source);
 
@@ -310,6 +319,8 @@ namespace bs { namespace ct
 	void IrradianceReduceSHMat::execute(const SPtr<GpuBuffer>& source, UINT32 numCoeffSets, 
 		const SPtr<Texture>& output, UINT32 outputIdx)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		UINT32 shOrder = (UINT32)mVariation.getInt("SH_ORDER");
 
 		Vector2I outputCoords = IBLUtility::getSHCoeffXYFromIdx(outputIdx, shOrder);
@@ -359,6 +370,8 @@ namespace bs { namespace ct
 
 	void IrradianceProjectSHMat::execute(const SPtr<Texture>& shCoeffs, UINT32 face, const SPtr<RenderTarget>& target)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		gIrradianceProjectSHParamDef.gCubeFace.set(mParamBuffer, face);
 
 		mInputTexture.set(shCoeffs);

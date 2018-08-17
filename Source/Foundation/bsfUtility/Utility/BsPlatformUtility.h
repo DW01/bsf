@@ -42,10 +42,10 @@ namespace bs
 	public:
 		/**
 		 * Terminates the current process.
-		 * 			
+		 *
 		 * @param[in]	force	True if the process should be forcefully terminated with no cleanup.
 		 */
-		static void terminate(bool force = false);
+		[[noreturn]] static void terminate(bool force = false);
 
 		/** Returns information about the underlying hardware. */
 		static SystemInfo getSystemInfo();
@@ -53,11 +53,20 @@ namespace bs
 		/** Creates a new universally unique identifier (UUID/GUID). */
 		static UUID generateUUID();
 
+		/**
+		 * Converts a UTF8 encoded string into uppercase or lowercase.
+		 *
+		 * @param[in]	input	String to convert.
+		 * @param[in]	toUpper	If true, converts the character to uppercase. Otherwise convert to lowercase.
+		 * @return				Converted string.
+		 */
+		static String convertCaseUTF8(const String& input, bool toUpper);
+
 		/** @name Internal
 		 *  @{
 		 */
 
-		/** 
+		/**
 		 * Assigns information about GPU hardware. This data will be returned by getSystemInfo() when requested. This is
 		 * expeced to be called by the render API backend when initialized.
 		 */

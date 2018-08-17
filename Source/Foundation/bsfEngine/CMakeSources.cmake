@@ -74,6 +74,7 @@ set(BS_ENGINE_SRC_GUI
 	"bsfEngine/GUI/BsShortcutManager.cpp"
 	"bsfEngine/GUI/BsCGUIWidget.cpp"
 	"bsfEngine/GUI/BsGUICanvas.cpp"
+	"bsfEngine/GUI/BsGUINavGroup.cpp"
 )
 
 set(BS_ENGINE_INC_PLATFORM
@@ -81,9 +82,9 @@ set(BS_ENGINE_INC_PLATFORM
 )
 
 set(BS_ENGINE_INC_RENDERER
-	"bsfEngine/Renderer/BsRenderableElement.h"
 	"bsfEngine/Renderer/BsRendererMaterial.h"
 	"bsfEngine/Renderer/BsRendererMaterialManager.h"
+	"bsfEngine/Renderer/BsRenderElement.h"
 	"bsfEngine/Renderer/BsRenderQueue.h"
 	"bsfEngine/Renderer/BsRendererUtility.h"
 )
@@ -95,7 +96,6 @@ set(BS_ENGINE_SRC_RTTI
 set(BS_ENGINE_SRC_2D
 	"bsfEngine/2D/BsImageSprite.cpp"
 	"bsfEngine/2D/BsSprite.cpp"
-	"bsfEngine/2D/BsSpriteTexture.cpp"
 	"bsfEngine/2D/BsTextSprite.cpp"
 	"bsfEngine/2D/BsSpriteMaterial.cpp"
 	"bsfEngine/2D/BsSpriteMaterials.cpp"
@@ -121,7 +121,6 @@ set(BS_ENGINE_SRC_LOCALIZATION
 set(BS_ENGINE_INC_2D
 	"bsfEngine/2D/BsImageSprite.h"
 	"bsfEngine/2D/BsSprite.h"
-	"bsfEngine/2D/BsSpriteTexture.h"
 	"bsfEngine/2D/BsTextSprite.h"
 	"bsfEngine/2D/BsSpriteMaterial.h"
 	"bsfEngine/2D/BsSpriteMaterials.h"
@@ -129,13 +128,11 @@ set(BS_ENGINE_INC_2D
 )
 
 set(BS_ENGINE_INC_RTTI
-	"bsfEngine/Private/RTTI/BsSpriteTextureRTTI.h"
 	"bsfEngine/Private/RTTI/BsPlainTextRTTI.h"
 	"bsfEngine/Private/RTTI/BsScriptCodeRTTI.h"
 	"bsfEngine/Private/RTTI/BsScriptCodeImportOptionsRTTI.h"
 	"bsfEngine/Private/RTTI/BsGUIElementStyleRTTI.h"
 	"bsfEngine/Private/RTTI/BsGUISkinRTTI.h"
-	"bsfEngine/Private/RTTI/BsProfilerOverlayRTTI.h"
 	"bsfEngine/Private/RTTI/BsCGUIWidgetRTTI.h"
 	"bsfEngine/Private/RTTI/BsGameSettingsRTTI.h"
 	"bsfEngine/Private/RTTI/BsResourceMappingRTTI.h"
@@ -249,6 +246,7 @@ set(BS_ENGINE_INC_GUI
 	"bsfEngine/GUI/BsShortcutManager.h"
 	"bsfEngine/GUI/BsShortcutKey.h"
 	"bsfEngine/GUI/BsGUICanvas.h"
+	"bsfEngine/GUI/BsGUINavGroup.h"
 )
 
 set(BS_ENGINE_SRC_NOFILTER

@@ -1,5 +1,6 @@
 GUI setup									{#guiSetup}
 ===============
+[TOC]
 
 All GUI elements in bs::f are handled by a @ref bs::CGUIWidget "GUIWidget" component. Each such component must have an attached **Camera** component, which determines where will the rendered GUI elements be output. 
 
@@ -29,14 +30,14 @@ You can now use the GUI widget to add GUI elements to it
 ~~~~~~~~~~~~~{.cpp}
 // Shows the text "Hello!" on the screen
 GUIPanel* mainPanel = gui->getPanel();
-mainPanel->addElement(GUILabel::create(HString(L"Hello!")));
+mainPanel->addElement(GUILabel::create(HString("Hello!")));
 
 // ... add more elements ...
 ~~~~~~~~~~~~~
 
 Don't worry about what **GUIPanel** or **GUILabel** mean at this time, we'll talk about GUI panels, elements and layouts in later chapters. 
 
-# Transforming GUI
+# Transforming GUI {#guiSetup_a}
 
 Once you have set up a **GUIWidget** component, you can transform it using its scene object as normal. This allows you to apply 3D transformations to GUI elements, which can be useful for various interesting effects, including rendering GUI to in-game surfaces (like on a screen of an in-game 3D monitor).
 
@@ -48,7 +49,7 @@ guiSO->setRotation(rotate);
 
 @ref TODO_IMAGE
 
-# Using a separate GUI camera
+# Using a separate GUI camera {#guiSetup_b}
 In the example above we have asssumed you will use the same camera for GUI as you use for scene rendering. However sometimes it is useful to have a separate camera for GUI, or even multiple separate cameras. In such case camera creation is mostly the same, but with some additional options that need to be enabled. 
 
 Initial creation of the camera is identical, we just choose a render target:

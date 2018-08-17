@@ -8,7 +8,7 @@
 #include "Prerequisites/BsPlatformDefines.h"
 #include "Prerequisites/BsTypes.h"
 #include "Prerequisites/BsStdHeaders.h"
-#include "Threading/BsThreadDefines.h"
+#include "Threading/BsThreading.h"
 
 namespace bs
 {
@@ -82,6 +82,18 @@ namespace bs
 		T* construct(Args &&...args)
 		{
 			return new ((T*)alloc(sizeof(T))) T(std::forward<Args>(args)...);
+		}
+
+		/**
+		 * Destructs and deallocates an object.
+		 *	
+		 * @note	Not thread safe.
+		 */
+		template<class T>
+		void destruct(T* data)
+		{
+			data->~T();
+			free((UINT8*)data);
 		}
 
 		/**

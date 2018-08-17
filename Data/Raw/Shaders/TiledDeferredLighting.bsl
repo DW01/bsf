@@ -1,7 +1,7 @@
 #include "$ENGINE$\GBufferInput.bslinc"
 #include "$ENGINE$\PerCameraData.bslinc"
 #define USE_COMPUTE_INDICES 1
-#include "$ENGINE$\LightingCommon.bslinc"
+#include "$ENGINE$\DirectLighting.bslinc"
 #include "$ENGINE$\ReflectionCubemapCommon.bslinc"
 #include "$ENGINE$\ImageBasedLighting.bslinc"
 
@@ -9,7 +9,7 @@ shader TiledDeferredLighting
 {
 	mixin GBufferInput;
 	mixin PerCameraData;
-	mixin LightingCommon;
+	mixin DirectLighting;
 	mixin LightAccumulatorIndexed;
 	mixin ReflectionCubemapCommon;
 	mixin ImageBasedLighting;
@@ -37,20 +37,8 @@ shader TiledDeferredLighting
 		}
 	
 		#if MSAA_COUNT > 1
-		RWBuffer<float4> gOutput;
+		RWTexture2DArray<float4> gOutput;
 		Texture2D gMSAACoverage;
-		
-		uint getLinearAddress(uint2 coord, uint sampleIndex)
-		{
-			return (coord.y * gFramebufferSize.x + coord.x) * MSAA_COUNT + sampleIndex;
-		}
-		
-		void writeBufferSample(uint2 coord, uint sampleIndex, float4 color)
-		{
-			uint idx = getLinearAddress(coord, sampleIndex);
-			gOutput[idx] = color;
-		}
-
 		#else
 		RWTexture2D<float4>	gOutput;
 		#endif
@@ -211,7 +199,7 @@ shader TiledDeferredLighting
 				for (uint i = threadIndex + lightsStart; i < lightsEnd && i < MAX_LIGHTS; i += TILE_SIZE * TILE_SIZE)
 				{
 					float4 lightPosition = mul(gMatView, float4(gLights[i].position, 1.0f));
-					float lightRadius = gLights[i].attRadius;
+					float lightRadius = gLights[i].boundRadius;
 					
 					// Note: The cull method can have false positives. In case of large light bounds and small tiles, it
 					// can end up being quite a lot. Consider adding an extra heuristic to check a separating plane.
@@ -268,8 +256,8 @@ shader TiledDeferredLighting
 				float coverage = gMSAACoverage.Load(int3(pixelPos, 0)).r;
 				
 				float4 lighting = getLighting(clipSpacePos.xy, surfaceData[0]);
-				writeBufferSample(pixelPos, 0, lighting);
-
+				gOutput[uint3(pixelPos.xy, 0)] = lighting;
+				
 				bool doPerSampleShading = coverage > 0.5f;
 				if(doPerSampleShading)
 				{
@@ -277,7 +265,7 @@ shader TiledDeferredLighting
 					for(uint i = 1; i < MSAA_COUNT; ++i)
 					{
 						lighting = getLighting(clipSpacePos.xy, surfaceData[i]);
-						writeBufferSample(pixelPos, i, lighting);
+						gOutput[uint3(pixelPos.xy, i)] = lighting;
 					}
 				}
 				else // Splat same information to all samples
@@ -287,7 +275,7 @@ shader TiledDeferredLighting
 					// so we need to resolve all samples. Consider getting around this issue somehow.
 					[unroll]
 					for(uint i = 1; i < MSAA_COUNT; ++i)
-						writeBufferSample(pixelPos, i, lighting);
+						gOutput[uint3(pixelPos.xy, i)] = lighting;
 				}
 				
 				#else

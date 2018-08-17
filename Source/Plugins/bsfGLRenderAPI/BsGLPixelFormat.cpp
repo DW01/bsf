@@ -7,75 +7,84 @@
 
 namespace bs { namespace ct
 {
-	PixelFormat GLPixelUtil::getClosestSupportedPF(PixelFormat pf, TextureType texType, int usage)
+	PixelFormat GLPixelUtil::getClosestSupportedPF(PixelFormat format, TextureType texType, int usage)
 	{
 		// Check for any obvious issues first
-		PixelUtil::checkFormat(pf, texType, usage);
+		PixelUtil::checkFormat(format, texType, usage);
 		
 		// We don't check for any platform-specific format issues, assumed all are supported
-
-		return pf;
+		return format;
 	}
 
-	GLenum GLPixelUtil::getGLOriginFormat(PixelFormat mFormat)
+	GLenum GLPixelUtil::getGLOriginFormat(PixelFormat format)
 	{
-		switch (mFormat)
+		switch (format)
 		{
 		case PF_R8:
-		case PF_R8I:
-		case PF_R8U:
 		case PF_R8S:
 			return GL_RED;
+		case PF_R8I:
+		case PF_R8U:
+			return GL_RED_INTEGER;
 		case PF_RG8:
-		case PF_RG8I:
-		case PF_RG8U:
 		case PF_RG8S:
 			return GL_RG;
+		case PF_RG8I:
+		case PF_RG8U:
+			return GL_RG_INTEGER;
 		case PF_RGB8:
 			return GL_RGB;
 		case PF_BGR8:
 			return GL_BGR;
 		case PF_RGBA8:
-		case PF_RGBA8I:
-		case PF_RGBA8U:
 		case PF_RGBA8S:
 			return GL_RGBA;
+		case PF_RGBA8I:
+		case PF_RGBA8U:
+			return GL_RGBA_INTEGER;
 		case PF_BGRA8:
 			return GL_BGRA;
 		case PF_R16F:
-		case PF_R16I:
-		case PF_R16U:
 		case PF_R16S:
 		case PF_R16:
 			return GL_RED;
+		case PF_R16I:
+		case PF_R16U:
+			return GL_RED_INTEGER;
 		case PF_RG16F:
-		case PF_RG16I:
-		case PF_RG16U:
 		case PF_RG16S:
 		case PF_RG16:
 			return GL_RG;
+		case PF_RG16I:
+		case PF_RG16U:
+			return GL_RG_INTEGER;
 		case PF_RGBA16F:
-		case PF_RGBA16I:
-		case PF_RGBA16U:
 		case PF_RGBA16S:
 		case PF_RGBA16:
 			return GL_RGBA;
+		case PF_RGBA16I:
+		case PF_RGBA16U:
+			return GL_RGBA_INTEGER;
 		case PF_R32F:
+			return GL_RED;
 		case PF_R32I:
 		case PF_R32U:
-			return GL_RED;
+			return GL_RED_INTEGER;
 		case PF_RG32F:
+			return GL_RG;
 		case PF_RG32I:
 		case PF_RG32U:
-			return GL_RG;
+			return GL_RG_INTEGER;
 		case PF_RGB32F:
+			return GL_RGB;
 		case PF_RGB32I:
 		case PF_RGB32U:
-			return GL_RGB;
+			return GL_RGB_INTEGER;
 		case PF_RGBA32F:
+			return GL_RGBA;
 		case PF_RGBA32I:
 		case PF_RGBA32U:
-			return GL_RGBA;
+			return GL_RGBA_INTEGER;
 		case PF_RG11B10F:
 			return GL_RGB;
 		case PF_RGB10A2:
@@ -160,9 +169,10 @@ namespace bs { namespace ct
 		}
 	}
 
-	GLenum GLPixelUtil::getGLInternalFormat(PixelFormat mFormat, bool hwGamma)
+	GLenum GLPixelUtil::getGLInternalFormat(PixelFormat format, bool hwGamma)
 	{
-		switch (mFormat) {
+		switch (format) 
+		{
 		case PF_R8:
 			return GL_R8;
 		case PF_R8I:
@@ -299,9 +309,9 @@ namespace bs { namespace ct
 		}
 	}
 
-	GLenum GLPixelUtil::getDepthStencilTypeFromPF(PixelFormat mFormat)
+	GLenum GLPixelUtil::getDepthStencilTypeFromPF(PixelFormat format)
 	{
-		switch(mFormat)
+		switch(format)
 		{
 		case PF_D32_S8X24:
 			return GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
@@ -319,9 +329,9 @@ namespace bs { namespace ct
 		return PF_D32_S8X24;
 	}
 		
-	GLenum GLPixelUtil::getDepthStencilFormatFromPF(PixelFormat mFormat)
+	GLenum GLPixelUtil::getDepthStencilFormatFromPF(PixelFormat format)
 	{
-		switch (mFormat)
+		switch (format)
 		{
 		case PF_D32_S8X24:
 			return GL_DEPTH_STENCIL;

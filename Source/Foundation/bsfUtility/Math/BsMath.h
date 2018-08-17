@@ -17,6 +17,8 @@ namespace bs
 	class BS_UTILITY_EXPORT Math 
 	{
 	public:
+		static constexpr float BIGGEST_FLOAT_SMALLER_THAN_ONE = 0.99999994f;
+
 		/** Inverse cosine. */
 		static Radian acos(float val);
 
@@ -98,14 +100,42 @@ namespace bs
 		/** Returns the nearest integer equal or higher to the provided value. */
 		static float ceil(float val) { return (float)std::ceil(val); }
 
-		/** Returns the nearest integer equal or higher to the provided value. */
-		static int ceilToInt(float val) { return (int)std::ceil(val); }
+		/** 
+		 * Returns the nearest integer equal or higher to the provided value. If you are sure the input is positive use
+		 * ceilToPosInt() for a slightly faster operation.
+		 */
+		static int32_t ceilToInt(float val)
+		{
+			assert(val >= std::numeric_limits<int32_t>::min() && val <= std::numeric_limits<int32_t>::max());
+
+			// Positive values need offset in order to truncate towards positive infinity (cast truncates towards zero) 
+			return val >= 0.0f ? (int32_t)(val + BIGGEST_FLOAT_SMALLER_THAN_ONE) : (int32_t)val;
+		}
+
+		/** 
+		 * Returns the nearest integer equal or higher to the provided value. Value must be non-negative. Slightly faster
+		 * than ceilToInt().
+		 */
+		static uint32_t ceilToPosInt(float val)
+		{
+			assert(val >= 0 && val <= std::numeric_limits<uint32_t>::max());
+
+			return (uint32_t)(val + BIGGEST_FLOAT_SMALLER_THAN_ONE);
+		}
 
 		/** Returns the integer nearest to the provided value. */
 		static float round(float val) { return (float)std::floor(val + 0.5f); }
 
-		/** Returns the integer nearest to the provided value. */
-		static int roundToInt(float val) { return (int)std::floor(val + 0.5f); }
+		/** 
+		 * Returns the integer nearest to the provided value. If you are sure the input is positive use roundToPosInt()
+		 * for a slightly faster operation.
+		 */
+		static int32_t roundToInt(float val) { return floorToInt(val + 0.5f); }
+
+		/** 
+		 * Returns the integer nearest to the provided value. Value must be non-negative. Slightly faster than roundToInt().
+		 */
+		static uint32_t roundToPosInt(float val) { return floorToPosInt(val + 0.5f); }
 
 		/** 
 		 * Divides an integer by another integer and returns the result, rounded up. Only works if both integers are
@@ -117,8 +147,28 @@ namespace bs
 		/** Returns the nearest integer equal or lower of the provided value. */
 		static float floor(float val) { return (float)std::floor(val); }
 
-		/** Returns the nearest integer equal or lower of the provided value. */
-		static int floorToInt(float val) { return (int)std::floor(val); }
+		/** 
+		 * Returns the nearest integer equal or lower of the provided value. If you are sure the input is positive
+		 * use floorToPosInt() for a slightly faster operation.
+		 */
+		static int floorToInt(float val)
+		{
+			assert(val >= std::numeric_limits<int32_t>::min() && val <= std::numeric_limits<int32_t>::max());
+
+			// Negative values need offset in order to truncate towards negative infinity (cast truncates towards zero) 
+			return val >= 0.0f ? (int32_t)val : (int32_t)(val - BIGGEST_FLOAT_SMALLER_THAN_ONE);
+		}
+
+		/** 
+		 * Returns the nearest integer equal or lower of the provided value. Value must be non-negative. Slightly faster
+		 * than floorToInt(). 
+		 */
+		static uint32_t floorToPosInt(float val)
+		{
+			assert(val >= 0 && val <= std::numeric_limits<uint32_t>::max());
+
+			return (uint32_t)val;
+		}
 
 		/** Clamp a value within an inclusive range. */
 		template <typename T>
@@ -133,6 +183,28 @@ namespace bs
 		static T clamp01(T val)
 		{
 			return std::max(std::min(val, (T)1), (T)0);
+		}
+
+		/** Returns the fractional part of a floating point number. */
+		static float frac(float val)
+		{
+			return val - (float)(int32_t)val;
+		}
+
+		/** Returns a floating point remainder for (@p val / @p length). */
+		static float repeat(float val, float length)
+		{
+			return val - floor(val / length) * length;
+		}
+
+		/** 
+		 * Wraps the value in range [0, length) and reverses the direction every @p length increment. This results in
+		 * @p val incrementing until @p length, then decrementing back to 0, and so on.
+		 */
+		static float pingPong(float val, float length)
+		{
+			val = repeat(val, length * 2.0f);
+			return length - fabs(val - length);
 		}
 
 		/** Checks if the value is a valid number. */
@@ -408,11 +480,20 @@ namespace bs
 		static float fastATan1(float val);
 
 		/**
-		 * Interpolates between min and max. Returned value is in [0, 1] range where min = 0, max = 1 and 0.5 is 
-		 * the average of min and max.
+		 * Linearly interpolates between the two values using @p t. t should be in [0, 1] range, where t = 0 corresponds
+		 * to @p min value, while t = 1 corresponds to @p max value.
 		 */
 		template <typename T>
-		static float lerp01(T val, T min, T max)
+		static T lerp(float t, T min, T max)
+		{
+			return (1.0f - t) * min + t * max;
+		}
+		/**
+		 * Determines the position of a value between two other values. Returns 0 if @p value is less or equal than
+		 * @p min, 1 if @p value is equal or greater than @p max, and value in range (0, 1) otherwise.
+		 */
+		template <typename T>
+		static float invLerp(T val, T min, T max)
 		{
 			return clamp01((val - min) / std::max(max - min, 0.0001F));
 		}

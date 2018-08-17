@@ -19,11 +19,22 @@ matrix:
             - libxrandr-dev
             - libxi-dev
             - uuid-dev
+    - os: osx
+      compiler:
+        - clang
+      osx_image: xcode9
   
 install:
   - DEPS_DIR="${TRAVIS_BUILD_DIR}/Deps"
   - mkdir ${DEPS_DIR}
-  
+
+  # Download libUUID
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      brew update
+      brew install ossp-uuid
+    fi
+
   # Download CMake
   - |
     if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
@@ -67,17 +78,33 @@ script:
   - INSTALL_DIR="${TRAVIS_BUILD_DIR}/Install"
   - mkdir ${INSTALL_DIR}
   - mkdir Build && cd Build
-  - CC=gcc CXX=g++ cmake -D CMAKE_C_COMPILER=gcc -D CMAKE_CXX_COMPILER=g++ -DCMAKE_INSTALL_PREFIX:STRING=${INSTALL_DIR} .. 
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+      CC=gcc CXX=g++ cmake -D CMAKE_C_COMPILER=gcc -D CMAKE_CXX_COMPILER=g++ -DCMAKE_INSTALL_PREFIX:STRING=${INSTALL_DIR} .. 
+    else
+      cmake -DCMAKE_INSTALL_PREFIX:STRING=${INSTALL_DIR} ..
+    fi
   - make
   - make install
   
 after_success:
   - cd ..
   - today=`date +%d.%m.%Y`
-  - filename=bsf_${today}_${TRAVIS_OS_NAME}.zip
-  - cd ${INSTALL_DIR}
   - |
-    if [[ "$TRAVIS_EVENT_TYPE" == "cron" ]]; then
-      zip -rq ${filename} ./*
+    if [ -n "$TRAVIS_TAG" ]; then
+      buildName=${TRAVIS_TAG}
+    else
+      buildName=${today}
+    fi
+  - filename=bsf_${buildName}_${TRAVIS_OS_NAME}.tar.gz
+  - symbolsFilename=bsf_${buildName}_${TRAVIS_OS_NAME}_symbols.tar.gz
+  - cd ${INSTALL_DIR}
+  - cd ..
+  - |
+    if [[ "$TRAVIS_EVENT_TYPE" == "cron" ]] || [[ -n "$TRAVIS_TAG" ]]; then
+      find ./Install -not -name "*.dbg" -not -name ".dwarf" -not -type d | cut -sd / -f 3- | tar -C ./Install -czvf ${filename} -T -
+      find ./Install -name "*.dbg" -or -name "*.dwarf" -not -type d | cut -sd / -f 3- | tar -C ./Install -czvf ${symbolsFilename} -T -
+
       curl -v --ftp-create-dirs -T ${filename} -u ${FTP_USER}:${FTP_PASSWORD} ${FTP_DESTINATION}
+      curl -v --ftp-create-dirs -T ${symbolsFilename} -u ${FTP_USER}:${FTP_PASSWORD} ${FTP_DESTINATION}
     fi

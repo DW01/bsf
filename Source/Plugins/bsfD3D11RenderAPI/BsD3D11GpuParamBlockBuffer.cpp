@@ -8,9 +8,8 @@
 
 namespace bs { namespace ct
 {
-	D3D11GpuParamBlockBuffer::D3D11GpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage, 
-		GpuDeviceFlags deviceMask)
-		:GpuParamBlockBuffer(size, usage, deviceMask), mBuffer(nullptr)
+	D3D11GpuParamBlockBuffer::D3D11GpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage, GpuDeviceFlags deviceMask)
+		:GpuParamBlockBuffer(size, usage, deviceMask)
 	{
 		assert((deviceMask == GDF_DEFAULT || deviceMask == GDF_PRIMARY) && "Multiple GPUs not supported natively on DirectX 11.");
 	}
@@ -18,9 +17,7 @@ namespace bs { namespace ct
 	D3D11GpuParamBlockBuffer::~D3D11GpuParamBlockBuffer()
 	{
 		if (mBuffer != nullptr)
-			bs_delete(mBuffer);
-
-		BS_INC_RENDER_STAT_CAT(ResDestroyed, RenderStatObject_GpuParamBuffer);
+			bs_pool_delete(static_cast<D3D11HardwareBuffer*>(mBuffer));
 	}
 
 	void D3D11GpuParamBlockBuffer::initialize()
@@ -28,28 +25,12 @@ namespace bs { namespace ct
 		D3D11RenderAPI* d3d11rs = static_cast<D3D11RenderAPI*>(RenderAPI::instancePtr());
 		D3D11Device& device = d3d11rs->getPrimaryDevice();
 
-		if(mUsage == GPBU_STATIC)
-			mBuffer = bs_new<D3D11HardwareBuffer>(D3D11HardwareBuffer::BT_CONSTANT, GBU_STATIC, 1, mSize, std::ref(device));
-		else if(mUsage == GPBU_DYNAMIC)
-			mBuffer = bs_new<D3D11HardwareBuffer>(D3D11HardwareBuffer::BT_CONSTANT, GBU_DYNAMIC, 1, mSize, std::ref(device));
-		else
-			BS_EXCEPT(InternalErrorException, "Invalid gpu param block usage.");
-
-		BS_INC_RENDER_STAT_CAT(ResCreated, RenderStatObject_GpuParamBuffer);
-
+		mBuffer = bs_pool_new<D3D11HardwareBuffer>(D3D11HardwareBuffer::BT_CONSTANT, mUsage, 1, mSize, device);
 		GpuParamBlockBuffer::initialize();
 	}
 
-
 	ID3D11Buffer* D3D11GpuParamBlockBuffer::getD3D11Buffer() const
 	{
-		return mBuffer->getD3DBuffer();
-	}
-
-	void D3D11GpuParamBlockBuffer::writeToGPU(const UINT8* data, UINT32 queueIdx)
-	{
-		mBuffer->writeData(0, mSize, data, BWT_DISCARD);
-
-		BS_INC_RENDER_STAT_CAT(ResWrite, RenderStatObject_GpuParamBuffer);
+		return static_cast<D3D11HardwareBuffer*>(mBuffer)->getD3DBuffer();
 	}
 }}

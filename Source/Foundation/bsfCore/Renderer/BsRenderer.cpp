@@ -9,6 +9,8 @@
 #include "Renderer/BsRendererManager.h"
 #include "CoreThread/BsCoreObjectManager.h"
 #include "Scene/BsSceneManager.h"
+#include "Material/BsShader.h"
+#include "Profiling/BsProfilerGPU.h"
 
 namespace bs { namespace ct
 {
@@ -26,6 +28,14 @@ namespace bs { namespace ct
 	{
 		return bs_shared_ptr<RendererMeshData>(new (bs_alloc<RendererMeshData>())
 			RendererMeshData(meshData));
+	}
+
+	void Renderer::setGlobalShaderOverride(const SPtr<bs::Shader>& shader)
+	{
+		const Vector<bs::SubShader>& subShaders = shader->getSubShaders();
+		
+		for(auto& entry : subShaders)
+			setGlobalShaderOverride(entry.name, entry.shader);
 	}
 
 	bool Renderer::compareCallback(const RendererExtension* a, const RendererExtension* b)
@@ -86,7 +96,12 @@ namespace bs { namespace ct
 
 				entry->mState.store(1);
 
-				bool complete = entry->mTaskWorker();
+				const bool complete = [&entry]()
+				{
+					ProfileGPUBlock sampleBlock("Renderer task: " + ProfilerString(entry->mName.data(), entry->mName.size()));
+					return entry->mTaskWorker();
+				}();
+
 				if (!complete)
 					mRemainingTasks.push_back(entry);
 				else
@@ -113,7 +128,11 @@ namespace bs { namespace ct
 		{
 			task.mState.store(1);
 
-			complete = task.mTaskWorker();
+			{
+				ProfileGPUBlock sampleBlock("Renderer task: " + ProfilerString(task.mName.data(), task.mName.size()));
+				complete = task.mTaskWorker();
+			}
+
 			if (complete)
 				task.mState.store(2);
 
@@ -127,13 +146,13 @@ namespace bs { namespace ct
 		return std::static_pointer_cast<Renderer>(RendererManager::instance().getActive());
 	}
 
-	RendererTask::RendererTask(const PrivatelyConstruct& dummy, const String& name, std::function<bool()> taskWorker) 
-		:mName(name), mTaskWorker(taskWorker)
+	RendererTask::RendererTask(const PrivatelyConstruct& dummy, String name, std::function<bool()> taskWorker) 
+		:mName(std::move(name)), mTaskWorker(std::move(taskWorker))
 	{ }
 
-	SPtr<RendererTask> RendererTask::create(const String& name, std::function<bool()> taskWorker)
+	SPtr<RendererTask> RendererTask::create(String name, std::function<bool()> taskWorker)
 	{
-		return bs_shared_ptr_new<RendererTask>(PrivatelyConstruct(), name, taskWorker);
+		return bs_shared_ptr_new<RendererTask>(PrivatelyConstruct(), std::move(name), std::move(taskWorker));
 	}
 
 	bool RendererTask::isComplete() const

@@ -6,26 +6,31 @@
 
 namespace bs
 {
-	HString::HString(UINT32 stringTableId)
-		:mParameters(nullptr), mIsDirty(true), mStringPtr(nullptr)
+	HString::HString()
 	{
-		mStringData = StringTableManager::instance().getTable(stringTableId)->getStringData(L"");
+		mStringData = StringTableManager::instance().getTable(0)->getStringData(u8"");
 
 		if (mStringData->numParameters > 0)
-			mParameters = bs_newN<WString>(mStringData->numParameters);
+			mParameters = bs_newN<String>(mStringData->numParameters);
 	}
 
-	HString::HString(const WString& identifierString, UINT32 stringTableId)
-		:mParameters(nullptr), mIsDirty(true), mStringPtr(nullptr)
+	HString::HString(UINT32 stringTableId)
+	{
+		mStringData = StringTableManager::instance().getTable(stringTableId)->getStringData(u8"");
+
+		if (mStringData->numParameters > 0)
+			mParameters = bs_newN<String>(mStringData->numParameters);
+	}
+
+	HString::HString(const String& identifierString, UINT32 stringTableId)
 	{
 		mStringData = StringTableManager::instance().getTable(stringTableId)->getStringData(identifierString);
 
 		if (mStringData->numParameters > 0)
-			mParameters = bs_newN<WString>(mStringData->numParameters);
+			mParameters = bs_newN<String>(mStringData->numParameters);
 	}
 
-	HString::HString(const WString& identifierString, const WString& defaultString, UINT32 stringTableId)
-		:mParameters(nullptr), mIsDirty(true), mStringPtr(nullptr)
+	HString::HString(const String& identifierString, const String& defaultString, UINT32 stringTableId)
 	{
 		HStringTable table = StringTableManager::instance().getTable(stringTableId);
 		table->setString(identifierString, StringTable::DEFAULT_LANGUAGE, defaultString);
@@ -33,7 +38,7 @@ namespace bs
 		mStringData = table->getStringData(identifierString);
 
 		if (mStringData->numParameters > 0)
-			mParameters = bs_newN<WString>(mStringData->numParameters);
+			mParameters = bs_newN<String>(mStringData->numParameters);
 	}
 
 	HString::HString(const HString& copy)
@@ -44,7 +49,7 @@ namespace bs
 
 		if (copy.mStringData->numParameters > 0)
 		{
-			mParameters = bs_newN<WString>(mStringData->numParameters);
+			mParameters = bs_newN<String>(mStringData->numParameters);
 			if (copy.mParameters != nullptr)
 			{
 				for (UINT32 i = 0; i < mStringData->numParameters; i++)
@@ -66,7 +71,7 @@ namespace bs
 			bs_deleteN(mParameters, mStringData->numParameters);
 	}
 
-	HString::operator const WString& () const
+	HString::operator const String& () const
 	{
 		return getValue();
 	}
@@ -85,7 +90,7 @@ namespace bs
 
 		if (rhs.mStringData->numParameters > 0)
 		{
-			mParameters = bs_newN<WString>(mStringData->numParameters);
+			mParameters = bs_newN<String>(mStringData->numParameters);
 			if (rhs.mParameters != nullptr)
 			{
 				for (UINT32 i = 0; i < mStringData->numParameters; i++)
@@ -103,7 +108,7 @@ namespace bs
 		return *this;
 	}
 
-	const WString& HString::getValue() const
+	const String& HString::getValue() const
 	{
 		if (mIsDirty)
 		{
@@ -123,7 +128,7 @@ namespace bs
 		return *mStringPtr;
 	}
 
-	void HString::setParameter(UINT32 idx, const WString& value)
+	void HString::setParameter(UINT32 idx, const String& value)
 	{
 		if (idx >= mStringData->numParameters)
 			return;

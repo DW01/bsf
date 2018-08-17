@@ -29,8 +29,6 @@ namespace bs
 	class BS_CORE_EXPORT ResourceHandleBase : public IReflectable
 	{
 	public:
-		virtual ~ResourceHandleBase();
-
 		/**
 		 * Checks if the resource is loaded. Until resource is loaded this handle is invalid and you may not get the 
 		 * internal resource from it.
@@ -67,8 +65,6 @@ namespace bs
 
 		/** @} */
 	protected:
-		ResourceHandleBase();
-
 		/**	Destroys the resource the handle is pointing to. */
 		void destroy();
 
@@ -125,9 +121,6 @@ namespace bs
 	template<>
 	class BS_CORE_EXPORT TResourceHandleBase<true> : public ResourceHandleBase
 	{
-	public:
-		virtual ~TResourceHandleBase() { }
-
 	protected:
 		void addRef() { };
 		void releaseRef() { };
@@ -145,9 +138,6 @@ namespace bs
 	template<>
 	class BS_CORE_EXPORT TResourceHandleBase<false> : public ResourceHandleBase
 	{
-	public:
-		virtual ~TResourceHandleBase() { }
-
 	protected:
 		void addRef()
 		{
@@ -159,10 +149,13 @@ namespace bs
 		{ 
 			if (mData)
 			{
-				std::uint32_t refCount = mData->mRefCount.fetch_sub(1, std::memory_order_relaxed);
+				std::uint32_t refCount = mData->mRefCount.fetch_sub(1, std::memory_order_release);
 
 				if (refCount == 1)
+				{
+					std::atomic_thread_fence(std::memory_order_acquire);
 					destroy();
+				}
 			}
 		};
 
@@ -181,17 +174,19 @@ namespace bs
 	class TResourceHandle : public TResourceHandleBase<WeakHandle>
 	{
 	public:
-		TResourceHandle()
-		{ }
+		TResourceHandle() = default;
 
 		/**	Copy constructor. */
-		TResourceHandle(const TResourceHandle<T, WeakHandle>& ptr)
+		TResourceHandle(const TResourceHandle& other)
 		{
-			this->mData = ptr.getHandleData();
+			this->mData = other.getHandleData();
 			this->addRef();
 		}
 
-		virtual ~TResourceHandle()
+		/** Move constructor. */
+		TResourceHandle(TResourceHandle&& other) = default;
+
+		~TResourceHandle()
 		{
 			this->releaseRef();
 		}
@@ -228,10 +223,22 @@ namespace bs
 			return *this;
 		}
 
-		/**	Normal assignment operator. */
+		/**	Copy assignment. */
 		TResourceHandle<T, WeakHandle>& operator=(const TResourceHandle<T, WeakHandle>& rhs)
 		{ 	
 			setHandleData(rhs.getHandleData());
+			return *this;
+		}
+
+		/**	Move assignment. */
+		TResourceHandle& operator=(TResourceHandle&& other)
+		{
+			if(this == &other)
+				return *this;
+
+			this->releaseRef();
+			this->mData = std::exchange(other.mData, nullptr);
+
 			return *this;
 		}
 

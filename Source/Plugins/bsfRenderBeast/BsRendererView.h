@@ -3,16 +3,17 @@
 #pragma once
 
 #include "BsRenderBeastPrerequisites.h"
-#include "BsPostProcessing.h"
-#include "BsObjectRendering.h"
 #include "Renderer/BsRenderQueue.h"
-#include "BsRendererObject.h"
+#include "Renderer/BsLight.h"
+#include "Renderer/BsRenderSettings.h"
 #include "Math/BsBounds.h"
 #include "Math/BsConvexVolume.h"
-#include "Renderer/BsLight.h"
-#include "BsLightGrid.h"
-#include "BsShadowRendering.h"
+#include "Shading/BsLightGrid.h"
+#include "Shading/BsShadowRendering.h"
+#include "BsRendererView.h"
+#include "BsRendererRenderable.h"
 #include "BsRenderCompositor.h"
+#include "BsRendererParticles.h"
 
 namespace bs { namespace ct
 {
@@ -39,6 +40,7 @@ namespace bs { namespace ct
 		BS_PARAM_BLOCK_ENTRY(Vector2, gNearFar)
 		BS_PARAM_BLOCK_ENTRY(Vector4I, gViewportRectangle)
 		BS_PARAM_BLOCK_ENTRY(Vector4, gClipToUVScaleOffset)
+		BS_PARAM_BLOCK_ENTRY(Vector4, gUVToClipScaleOffset)
 		BS_PARAM_BLOCK_ENTRY(float, gAmbientFactor)
 	BS_PARAM_BLOCK_END
 
@@ -193,6 +195,7 @@ namespace bs { namespace ct
 		Vector<bool> radialLights;
 		Vector<bool> spotLights;
 		Vector<bool> reflProbes;
+		Vector<bool> particleSystems;
 	};
 
 	/** Information used for culling an object against a view. */
@@ -246,10 +249,12 @@ namespace bs { namespace ct
 		void endFrame();
 
 		/** 
-		 * Returns a render queue containing all opaque objects. Make sure to call determineVisible() beforehand if view 
-		 * or object transforms changed since the last time it was called.
+		 * Returns a render queue containing all opaque objects for the specified pipeline. Make sure to call 
+		 * determineVisible() beforehand if view or object transforms changed since the last time it was called. If @p
+		 * forward is true then opaque objects using the forward pipeline are returned, otherwise deferred pipeline objects
+		 * are returned.
 		 */
-		const SPtr<RenderQueue>& getOpaqueQueue() const { return mOpaqueQueue; }
+		const SPtr<RenderQueue>& getOpaqueQueue(bool forward) const { return forward ? mForwardOpaqueQueue : mDeferredOpaqueQueue; }
 		
 		/** 
 		 * Returns a render queue containing all transparent objects. Make sure to call determineVisible() beforehand if 
@@ -274,7 +279,24 @@ namespace bs { namespace ct
 		 *									As a side-effect, per-view visibility data is also calculated and can be
 		 *									retrieved by calling getVisibilityMask().
 		 */
-		void determineVisible(const Vector<RendererObject*>& renderables, const Vector<CullInfo>& cullInfos,
+		void determineVisible(const Vector<RendererRenderable*>& renderables, const Vector<CullInfo>& cullInfos,
+			Vector<bool>* visibility = nullptr);
+
+		/**
+		 * Populates view render queues by determining visible particle systems. 
+		 *
+		 * @param[in]	particleSystems		A set of particle systems to iterate over and determine visibility for.
+		 * @param[in]	bounds				A set of world bounds for the particle systems. Must be the same size as the
+		 *									@p particleSystems array.
+		 * @param[out]	visibility			Output parameter that will have the true bit set for any visible particle system
+		 *									object. If the bit for an object is already set to true, the method will never
+		 *									change it to false which allows the same bitfield to be provided to multiple
+		 *									renderer views. Must be the same size as the @p particleSystems array.
+		 *									
+		 *									As a side-effect, per-view visibility data is also calculated and can be
+		 *									retrieved by calling getVisibilityMask().
+		 */
+		void determineVisible(const Vector<RendererParticles>& particleSystems, const Vector<AABox>& bounds,
 			Vector<bool>* visibility = nullptr);
 
 		/**
@@ -312,6 +334,13 @@ namespace bs { namespace ct
 		 * which entry is or isn't visible by this view. Both inputs must be arrays of the same size.
 		 */
 		void calculateVisibility(const Vector<AABox>& bounds, Vector<bool>& visibility) const;
+
+		/**
+		 * Inserts all visible renderable elements into render queues. Assumes visibility has been calculated beforehand
+		 * by calling determineVisible(). After the call render elements can be retrieved from the queues using
+		 * getOpqueQueue or getTransparentQueue() calls.
+		 */
+		void queueRenderElements(const SceneInfo& sceneInfo);
 
 		/** Returns the visibility mask calculated with the last call to determineVisible(). */
 		const VisibilityInfo& getVisibilityMasks() const { return mVisibility; }
@@ -384,7 +413,8 @@ namespace bs { namespace ct
 		RENDERER_VIEW_TARGET_DESC mTargetDesc;
 		Camera* mCamera;
 
-		SPtr<RenderQueue> mOpaqueQueue;
+		SPtr<RenderQueue> mDeferredOpaqueQueue;
+		SPtr<RenderQueue> mForwardOpaqueQueue;
 		SPtr<RenderQueue> mTransparentQueue;
 
 		RenderCompositor mCompositor;

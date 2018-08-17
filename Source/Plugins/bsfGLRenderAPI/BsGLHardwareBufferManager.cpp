@@ -30,7 +30,7 @@ namespace bs { namespace ct
 	}
 
 	SPtr<GpuParamBlockBuffer> GLHardwareBufferManager::createGpuParamBlockBufferInternal(UINT32 size, 
-		GpuParamBlockUsage usage, GpuDeviceFlags deviceMask)
+		GpuBufferUsage usage, GpuDeviceFlags deviceMask)
 	{
 		GLGpuParamBlockBuffer* paramBlockBuffer = 
 			new (bs_alloc<GLGpuParamBlockBuffer>()) GLGpuParamBlockBuffer(size, usage, deviceMask);
@@ -52,15 +52,33 @@ namespace bs { namespace ct
 		return bufferPtr;
 	}
 
+	SPtr<GpuBuffer> GLHardwareBufferManager::createGpuBufferInternal(const GPU_BUFFER_DESC& desc,
+		SPtr<HardwareBuffer> underlyingBuffer)
+	{
+		GLGpuBuffer* buffer = new (bs_alloc<GLGpuBuffer>()) GLGpuBuffer(desc, std::move(underlyingBuffer));
+
+		SPtr<GpuBuffer> bufferPtr = bs_shared_ptr<GLGpuBuffer>(buffer);
+		bufferPtr->_setThisPtr(bufferPtr);
+
+		return bufferPtr;
+	}
+
 	GLenum GLHardwareBufferManager::getGLUsage(GpuBufferUsage usage)
 	{
-		if(usage & GBU_STATIC)
-			return GL_STATIC_DRAW;
+		if((usage & GBU_LOADSTORE) == GBU_LOADSTORE)
+		{
+			if ((usage & GBU_STATIC) != 0)
+				return GL_STATIC_READ;
 
-		if(usage & GBU_DYNAMIC)
+			return GL_DYNAMIC_READ;
+		}
+		else
+		{
+			if ((usage & GBU_STATIC) != 0)
+				return GL_STATIC_DRAW;
+
 			return GL_DYNAMIC_DRAW;
-
-		return GL_DYNAMIC_DRAW;
+		}
 	}
 
 	GLenum GLHardwareBufferManager::getGLType(VertexElementType type)

@@ -8,6 +8,7 @@
 #include "Utility/BsBitwise.h"
 #include "BsGLRenderTexture.h"
 #include "Profiling/BsRenderStats.h"
+#include "Math/BsMath.h"
 
 namespace bs { namespace ct
 {
@@ -110,16 +111,10 @@ namespace bs { namespace ct
 		BS_EXCEPT(RenderingAPIException, "Framebuffer bind not possible for this pixel buffer type");
 	}
 
-	GLTextureBuffer::GLTextureBuffer(
-		GLenum target,
-		GLuint id,
-		GLint face,
-		GLint level,
-		GpuBufferUsage usage,
-		PixelFormat format,
-		UINT32 multisampleCount)
+	GLTextureBuffer::GLTextureBuffer(GLenum target, GLuint id, GLint face, GLint level, PixelFormat format, 
+		GpuBufferUsage usage, bool hwGamma, UINT32 multisampleCount)
 		: GLPixelBuffer(0, 0, 0, format, usage), mTarget(target), mFaceTarget(0), mTextureID(id), mFace(face)
-		, mLevel(level), mMultisampleCount(multisampleCount)
+		, mLevel(level), mMultisampleCount(multisampleCount), mHwGamma(hwGamma)
 	{
 		GLint value = 0;
 	
@@ -166,17 +161,8 @@ namespace bs { namespace ct
 		mBuffer = PixelData(mWidth, mHeight, mDepth, mFormat);
 	}
 
-	GLTextureBuffer::~GLTextureBuffer()
-	{ }
-
 	void GLTextureBuffer::upload(const PixelData& data, const PixelVolume& dest)
 	{
-		if ((mUsage & TU_RENDERTARGET) != 0)
-		{
-			LOGERR("Writing to render texture from CPU not supported.");
-			return;
-		}
-
 		if ((mUsage & TU_DEPTHSTENCIL) != 0)
 		{
 			LOGERR("Writing to depth stencil texture from CPU not supported.");
@@ -188,80 +174,49 @@ namespace bs { namespace ct
 
 		if(PixelUtil::isCompressed(data.getFormat()))
 		{
-			if (data.getFormat() != mFormat || !data.isConsecutive())
+			// Block-compressed data cannot be smaller than 4x4, and must be a multiple of 4
+			const UINT32 actualWidth = Math::divideAndRoundUp(std::max(mWidth, 4U), 4U) * 4U;
+			const UINT32 actualHeight = Math::divideAndRoundUp(std::max(mHeight, 4U), 4U) * 4U;
+
+			const UINT32 expectedRowPitch = actualWidth;
+			const UINT32 expectedSlicePitch = actualWidth * actualHeight;
+
+			const bool isConsecutive = data.getRowPitch() == expectedRowPitch && data.getSlicePitch() == expectedSlicePitch;
+			if (data.getFormat() != mFormat || !isConsecutive)
 			{
 				LOGERR("Compressed images must be consecutive, in the source format");
 				return;
 			}
 
-			GLenum format = GLPixelUtil::getGLInternalFormat(mFormat);
-			switch(mTarget) {
+			GLenum format = GLPixelUtil::getGLInternalFormat(mFormat, mHwGamma);
+			switch(mTarget) 
+			{
 				case GL_TEXTURE_1D:
-					if (dest.left == 0)
-					{
-						glCompressedTexImage1D(GL_TEXTURE_1D, mLevel,
-							format,
-							dest.getWidth(),
-							0,
-							data.getConsecutiveSize(),
-							data.getData());
-						BS_CHECK_GL_ERROR();
-					}
-					else
-					{
-						glCompressedTexSubImage1D(GL_TEXTURE_1D, mLevel, 
-							dest.left,
-							dest.getWidth(),
-							format, data.getConsecutiveSize(),
-							data.getData());
-						BS_CHECK_GL_ERROR();
-					}
+					glCompressedTexSubImage1D(GL_TEXTURE_1D, mLevel,
+						dest.left,
+						dest.getWidth(),
+						format, data.getConsecutiveSize(),
+						data.getData());
+					BS_CHECK_GL_ERROR();
 					break;
 				case GL_TEXTURE_2D:
 				case GL_TEXTURE_CUBE_MAP:
-					if (dest.left == 0 && dest.top == 0)
-					{
-						glCompressedTexImage2D(mFaceTarget, mLevel,
-							format,
-							dest.getWidth(),
-							dest.getHeight(),
-							0,
-							data.getConsecutiveSize(),
-							data.getData());
-						BS_CHECK_GL_ERROR();
-					}
-					else
-					{
-						glCompressedTexSubImage2D(mFaceTarget, mLevel, 
-							dest.left, dest.top, 
-							dest.getWidth(), dest.getHeight(),
-							format, data.getConsecutiveSize(),
-							data.getData());
-						BS_CHECK_GL_ERROR();
-					}
+					glCompressedTexSubImage2D(mFaceTarget, mLevel,
+						dest.left, dest.top,
+						dest.getWidth(), dest.getHeight(),
+						format, data.getConsecutiveSize(),
+						data.getData());
+					BS_CHECK_GL_ERROR();
 					break;
 				case GL_TEXTURE_3D:
-					if (dest.left == 0 && dest.top == 0 && dest.front == 0)
-					{
-						glCompressedTexImage3D(GL_TEXTURE_3D, mLevel,
-							format,
-							dest.getWidth(),
-							dest.getHeight(),
-							dest.getDepth(),
-							0,
-							data.getConsecutiveSize(),
-							data.getData());
-						BS_CHECK_GL_ERROR();
-					}
-					else
-					{			
-						glCompressedTexSubImage3D(GL_TEXTURE_3D, mLevel, 
-							dest.left, dest.top, dest.front,
-							dest.getWidth(), dest.getHeight(), dest.getDepth(),
-							format, data.getConsecutiveSize(),
-							data.getData());
-						BS_CHECK_GL_ERROR();
-					}
+					glCompressedTexSubImage3D(GL_TEXTURE_3D, mLevel,
+						dest.left, dest.top, dest.front,
+						dest.getWidth(), dest.getHeight(), dest.getDepth(),
+						format, data.getConsecutiveSize(),
+						data.getData());
+					BS_CHECK_GL_ERROR();
+					break;
+				default:
 					break;
 			}
 		
@@ -354,7 +309,15 @@ namespace bs { namespace ct
 
 		if(PixelUtil::isCompressed(data.getFormat()))
 		{
-			if (data.getFormat() != mFormat || !data.isConsecutive())
+			// Block-compressed data cannot be smaller than 4x4, and must be a multiple of 4
+			const UINT32 actualWidth = Math::divideAndRoundUp(std::max(mWidth, 4U), 4U) * 4U;
+			const UINT32 actualHeight = Math::divideAndRoundUp(std::max(mHeight, 4U), 4U) * 4U;
+
+			const UINT32 expectedRowPitch = actualWidth;
+			const UINT32 expectedSlicePitch = actualWidth * actualHeight;
+
+			const bool isConsecutive = data.getRowPitch() == expectedRowPitch && data.getSlicePitch() == expectedSlicePitch;
+			if (data.getFormat() != mFormat || !isConsecutive)
 			{
 				LOGERR("Compressed images must be consecutive, in the source format");
 				return;
@@ -417,6 +380,9 @@ namespace bs { namespace ct
 
 	void GLTextureBuffer::bindToFramebuffer(GLenum attachment, UINT32 zoffset, bool allLayers)
 	{
+		if(mTarget == GL_TEXTURE_1D || mTarget == GL_TEXTURE_2D)
+			allLayers = true;
+
 		if(allLayers)
 		{
 			switch (mTarget)
@@ -497,7 +463,7 @@ namespace bs { namespace ct
 #endif
 		{
 #if BS_OPENGL_4_3 || BS_OPENGLES_3_2
-			if (mTarget != GL_TEXTURE_2D || mTarget != GL_TEXTURE_2D_MULTISAMPLE)
+			if ( !(mTarget == GL_TEXTURE_2D || mTarget == GL_TEXTURE_2D_MULTISAMPLE) )
 				BS_EXCEPT(InvalidParametersException, "Non-2D multisampled texture not supported.");
 #endif
 

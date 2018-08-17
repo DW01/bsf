@@ -568,7 +568,9 @@ namespace bs { namespace ct
 			RenderAPIFeatureFlag::MSAAImageStores |
 			RenderAPIFeatureFlag::TextureViews |
 			RenderAPIFeatureFlag::Compute |
-			RenderAPIFeatureFlag::LoadStore;
+			RenderAPIFeatureFlag::LoadStore |
+			RenderAPIFeatureFlag::ByteCodeCaching |
+			RenderAPIFeatureFlag::RenderTargetLayers;
 
 		static RenderAPIInfo info(0.0f, 0.0f, 0.0f, 1.0f, VET_COLOR_ABGR, featureFlags);
 		return info;

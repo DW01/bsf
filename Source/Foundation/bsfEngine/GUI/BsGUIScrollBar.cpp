@@ -1,7 +1,7 @@
 //************************************ bs::framework - Copyright 2018 Marko Pintera **************************************//
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "GUI/BsGUIScrollBar.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "GUI/BsGUIElementStyle.h"
 #include "GUI/BsGUIDimensions.h"
 #include "GUI/BsGUILayoutX.h"
@@ -42,8 +42,8 @@ namespace bs
 			mLayout = GUILayoutX::create();
 			_registerChildElement(mLayout);
 
-			mUpBtn = GUIButton::create(HString(L""), "ScrollLeftBtn");
-			mDownBtn = GUIButton::create(HString(L""), "ScrollRightBtn");
+			mUpBtn = GUIButton::create(HString(""), "ScrollLeftBtn");
+			mDownBtn = GUIButton::create(HString(""), "ScrollRightBtn");
 
 			mHandleBtn = GUISliderHandle::create(flags | GUISliderHandleFlag::Horizontal, getSubStyleName(getHScrollHandleType()));
 		}
@@ -52,11 +52,21 @@ namespace bs
 			mLayout = GUILayoutY::create();
 			_registerChildElement(mLayout);
 
-			mUpBtn = GUIButton::create(HString(L""), "ScrollUpBtn");
-			mDownBtn = GUIButton::create(HString(L""), "ScrollDownBtn");
+			mUpBtn = GUIButton::create(HString(""), "ScrollUpBtn");
+			mDownBtn = GUIButton::create(HString(""), "ScrollDownBtn");
 
 			mHandleBtn = GUISliderHandle::create(flags | GUISliderHandleFlag::Vertical, getSubStyleName(getVScrollHandleType()));
 		}
+
+		GUIElementOptions scrollUpBtnOptions = mUpBtn->getOptionFlags();
+		scrollUpBtnOptions.unset(GUIElementOption::AcceptsKeyFocus);
+
+		mUpBtn->setOptionFlags(scrollUpBtnOptions);
+
+		GUIElementOptions scrollDownBtnOptions = mDownBtn->getOptionFlags();
+		scrollDownBtnOptions.unset(GUIElementOption::AcceptsKeyFocus);
+
+		mDownBtn->setOptionFlags(scrollDownBtnOptions);
 
 		mLayout->addNewElement<GUIFixedSpace>(2);
 		mLayout->addElement(mUpBtn);

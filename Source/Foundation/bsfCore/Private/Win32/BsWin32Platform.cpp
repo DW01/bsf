@@ -11,6 +11,7 @@
 #include "Private/Win32/BsWin32PlatformUtility.h"
 #include "TimeAPI.h"
 #include <shellapi.h>
+#include "String/BsUnicode.h"
 
 namespace bs
 {
@@ -41,6 +42,12 @@ namespace bs
 		bool mRequiresStartUp = false;
 		bool mRequiresShutDown = false;
 
+		bool mCursorClipping = false;
+		HWND mClipWindow = 0;
+		RECT mClipRect;
+
+		bool mIsActive = false;
+
 		Mutex mSync;
 	};
 
@@ -55,6 +62,33 @@ namespace bs
 	Event<void()> Platform::onMouseCaptureChanged;
 
 	Platform::Pimpl* Platform::mData = bs_new<Platform::Pimpl>();
+
+	/** Checks if any of the windows of the current application are active. */
+	bool isAppActive(Platform::Pimpl* data)
+	{
+		Lock lock(data->mSync);
+
+		return data->mIsActive;
+	}
+
+	/** Enables or disables cursor clipping depending on the stored data. */
+	void applyClipping(Platform::Pimpl* data)
+	{
+		if(data->mCursorClipping)
+		{
+			if(data->mClipWindow)
+			{
+				// Clip cursor to the window
+				RECT clipWindowRect;
+				if (GetWindowRect(data->mClipWindow, &clipWindowRect))
+					ClipCursor(&clipWindowRect);
+			}
+			else
+				ClipCursor(&data->mClipRect);
+		}
+		else
+			ClipCursor(nullptr);
+	}
 
 	Platform::~Platform()
 	{
@@ -157,28 +191,34 @@ namespace bs
 		UINT64 hwnd;
 		window.getCustomAttribute("WINDOW", &hwnd);
 
-		// Clip cursor to the window
-		RECT clipWindowRect;
-		if(GetWindowRect((HWND)hwnd, &clipWindowRect))
-		{
-			ClipCursor(&clipWindowRect);
-		}
+		mData->mCursorClipping = true;
+		mData->mClipWindow = (HWND)hwnd;
+
+		if(isAppActive(mData))
+			applyClipping(mData);
 	}
 
 	void Platform::clipCursorToRect(const Rect2I& screenRect)
 	{
-		RECT clipWindowRect;
-		clipWindowRect.left = screenRect.x;
-		clipWindowRect.top = screenRect.y;
-		clipWindowRect.right = screenRect.x + screenRect.width;
-		clipWindowRect.bottom = screenRect.y + screenRect.height;
+		mData->mCursorClipping = true;
+		mData->mClipWindow = 0;
 
-		ClipCursor(&clipWindowRect);
+		mData->mClipRect.left = screenRect.x;
+		mData->mClipRect.top = screenRect.y;
+		mData->mClipRect.right = screenRect.x + screenRect.width;
+		mData->mClipRect.bottom = screenRect.y + screenRect.height;
+
+		if(isAppActive(mData))
+			applyClipping(mData);
 	}
 
 	void Platform::clipCursorDisable()
 	{
-		ClipCursor(NULL);
+		mData->mCursorClipping = false;
+		mData->mClipWindow = 0;
+
+		if(isAppActive(mData))
+			applyClipping(mData);
 	}
 
 	// TODO - Add support for animated custom cursor
@@ -221,9 +261,6 @@ namespace bs
 
 	void Platform::setIcon(const PixelData& pixelData)
 	{
-		SPtr<PixelData> resizedData = PixelData::create(32, 32, 1, PF_RGBA8);
-		PixelUtil::scale(pixelData, *resizedData);
-
 		Vector<Color> pixels = pixelData.getColors();
 		UINT32 width = pixelData.getWidth();
 		UINT32 height = pixelData.getHeight();
@@ -329,13 +366,15 @@ namespace bs
 		}
 	}
 
-	void Platform::copyToClipboard(const WString& string)
+	void Platform::copyToClipboard(const String& string)
 	{
-		HANDLE hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, (string.size() + 1) * sizeof(WString::value_type));
+		WString wideString = UTF8::toWide(string);
+
+		HANDLE hData = GlobalAlloc(GMEM_MOVEABLE | GMEM_DDESHARE, (wideString.size() + 1) * sizeof(WString::value_type));
 		WString::value_type* buffer = (WString::value_type*)GlobalLock(hData);
 
-		string.copy(buffer, string.size());
-		buffer[string.size()] = '\0';
+		wideString.copy(buffer, wideString.size());
+		buffer[wideString.size()] = '\0';
 
 		GlobalUnlock(hData);
 
@@ -351,7 +390,7 @@ namespace bs
 		}
 	}
 
-	WString Platform::copyFromClipboard()
+	String Platform::copyFromClipboard()
 	{
 		if (OpenClipboard(NULL))
 		{
@@ -360,23 +399,23 @@ namespace bs
 			if (hData != NULL)
 			{
 				WString::value_type* buffer = (WString::value_type*)GlobalLock(hData);
-				WString string(buffer);
+				WString wideString(buffer);
 				GlobalUnlock(hData);
 
 				CloseClipboard();
-				return string;
+				return UTF8::fromWide(wideString);
 			}
 			else
 			{
 				CloseClipboard();
-				return L"";
+				return u8"";
 			}
 		}
 
-		return L"";
+		return u8"";
 	}
 
-	WString Platform::keyCodeToUnicode(UINT32 keyCode)
+	String Platform::keyCodeToUnicode(UINT32 keyCode)
 	{
 		static HKL keyboardLayout = GetKeyboardLayout(0);
 		static UINT8 keyboarState[256];
@@ -389,14 +428,16 @@ namespace bs
 		wchar_t output[2];
 		int count = ToUnicodeEx(virtualKey, keyCode, keyboarState, output, 2, 0, keyboardLayout);
 		if (count > 0)
-			return WString(output, count);
+			return UTF8::fromWide(WString(output, count));
 
-		return StringUtil::WBLANK;
+		return StringUtil::BLANK;
 	}
 
 	void Platform::openFolder(const Path& path)
 	{
-		ShellExecuteW(nullptr, L"open", path.toWString().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+		WString pathString = UTF8::toWide(path.toString());
+
+		ShellExecuteW(nullptr, L"open", pathString.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 	}
 
 	void Platform::_messagePump()
@@ -576,6 +617,9 @@ namespace bs
 		case VK_DELETE:
 			command = InputCommandType::Delete;
 			return true;
+		case VK_TAB:
+			command = InputCommandType::Tab;
+			return true;
 		}
 
 		return false;
@@ -592,10 +636,10 @@ namespace bs
 			{
 				const RenderWindowProperties& props = newWindow->getProperties();
 				if (!props.isHidden)
-					ShowWindow(hWnd, SW_SHOWNOACTIVATE);
+					ShowWindow(hWnd, SW_SHOWNORMAL);
 			}
 			else
-				ShowWindow(hWnd, SW_SHOWNOACTIVATE);
+				ShowWindow(hWnd, SW_SHOWNORMAL);
 
 			return 0;
 		}
@@ -606,6 +650,33 @@ namespace bs
 
 		switch( uMsg )
 		{
+		case WM_ACTIVATE:
+			{
+			switch(wParam)
+			{
+			case WA_ACTIVE:
+			case WA_CLICKACTIVE:
+				{
+					Lock lock(mData->mSync);
+
+					mData->mIsActive = true;
+				}
+
+				applyClipping(mData);
+				break;
+			case WA_INACTIVE:
+				{
+					Lock lock(mData->mSync);
+
+					mData->mIsActive = false;
+				}
+
+				ClipCursor(nullptr);
+				break;
+			}
+
+				return 0;
+			}
 		case WM_SETFOCUS:
 			{
 				if (!win->getProperties().hasFocus)

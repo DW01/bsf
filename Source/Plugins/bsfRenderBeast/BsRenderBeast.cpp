@@ -1,36 +1,38 @@
 //************************************ bs::framework - Copyright 2018 Marko Pintera **************************************//
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "BsRenderBeast.h"
-#include "Components/BsCCamera.h"
-#include "Components/BsCRenderable.h"
-#include "Material/BsMaterial.h"
-#include "Material/BsPass.h"
 #include "BsCoreApplication.h"
+#include "CoreThread/BsCoreThread.h"
+#include "CoreThread/BsCoreObjectManager.h"
+#include "Material/BsMaterial.h"
+#include "Material/BsShader.h"
+#include "Material/BsPass.h"
 #include "RenderAPI/BsViewport.h"
 #include "RenderAPI/BsRenderTarget.h"
-#include "CoreThread/BsCoreThread.h"
+#include "RenderAPI/BsGpuParamBlockBuffer.h"
 #include "Profiling/BsProfilerCPU.h"
 #include "Profiling/BsProfilerGPU.h"
-#include "Material/BsShader.h"
-#include "RenderAPI/BsGpuParamBlockBuffer.h"
 #include "Utility/BsTime.h"
-#include "CoreThread/BsCoreObjectManager.h"
-#include "BsRenderBeastOptions.h"
-#include "Renderer/BsLight.h"
-#include "BsGpuResourcePool.h"
-#include "Renderer/BsRendererUtility.h"
 #include "Animation/BsAnimationManager.h"
 #include "Animation/BsSkeleton.h"
+#include "Renderer/BsLight.h"
 #include "Renderer/BsRendererExtension.h"
 #include "Renderer/BsReflectionProbe.h"
+#include "Renderer/BsRenderSettings.h"
 #include "Renderer/BsIBLUtility.h"
 #include "Renderer/BsSkybox.h"
-#include "BsStandardDeferredLighting.h"
-#include "BsShadowRendering.h"
-#include "BsRenderCompositor.h"
-#include "BsRendererTextures.h"
-#include "BsRenderBeastIBLUtility.h"
+#include "Renderer/BsCamera.h"
+#include "Renderer/BsRendererUtility.h"
+#include "Utility/BsRendererTextures.h"
+#include "Renderer/BsGpuResourcePool.h"
 #include "Renderer/BsRendererManager.h"
+#include "Shading/BsShadowRendering.h"
+#include "Shading/BsStandardDeferred.h"
+#include "Shading/BsTiledDeferred.h"
+#include "BsRenderBeastOptions.h"
+#include "BsRenderBeastIBLUtility.h"
+#include "BsRenderCompositor.h"
+#include "Shading/BsGpuParticleSimulation.h"
 
 using namespace std::placeholders;
 
@@ -75,6 +77,9 @@ namespace bs { namespace ct
 			mFeatureSet = RenderBeastFeatureSet::DesktopMacOS;
 		}
 
+		// Ensure profiler methods can be called from start-up methods
+		gProfilerGPU().beginFrame();
+
 		RendererUtility::startUp();
 		GpuResourcePool::startUp();
 		IBLUtility::startUp<RenderBeastIBLUtility>();
@@ -82,11 +87,14 @@ namespace bs { namespace ct
 
 		mCoreOptions = bs_shared_ptr_new<RenderBeastOptions>(); 
 		mScene = bs_shared_ptr_new<RendererScene>(mCoreOptions);
-		mObjectRenderer = bs_new<ObjectRenderer>();
 
 		mMainViewGroup = bs_new<RendererViewGroup>();
 
 		StandardDeferred::startUp();
+		ParticleRenderer::startUp();
+		GpuParticleSimulation::startUp();
+
+		gProfilerGPU().endFrame();
 
 		RenderCompositor::registerNodeType<RCNodeSceneDepth>();
 		RenderCompositor::registerNodeType<RCNodeGBuffer>();
@@ -114,13 +122,12 @@ namespace bs { namespace ct
 		// Make sure all tasks finish first
 		processTasks(true);
 
-		if (mObjectRenderer != nullptr)
-			bs_delete(mObjectRenderer);
-
 		mScene = nullptr;
 
 		RenderCompositor::cleanUp();
 
+		GpuParticleSimulation::shutDown();
+		ParticleRenderer::shutDown();
 		StandardDeferred::shutDown();
 
 		bs_delete(mMainViewGroup);
@@ -134,12 +141,6 @@ namespace bs { namespace ct
 	void RenderBeast::notifyRenderableAdded(Renderable* renderable)
 	{
 		mScene->registerRenderable(renderable);
-
-		const SceneInfo& sceneInfo = mScene->getSceneInfo();
-		RendererObject* rendererObject = sceneInfo.renderables[renderable->getRendererId()];
-
-		for(auto& entry : rendererObject->elements)
-			mObjectRenderer->initElement(*rendererObject, entry);
 	}
 
 	void RenderBeast::notifyRenderableRemoved(Renderable* renderable)
@@ -222,6 +223,21 @@ namespace bs { namespace ct
 		mScene->unregisterSkybox(skybox);
 	}
 
+	void RenderBeast::notifyParticleSystemAdded(ParticleSystem* particleSystem)
+	{
+		mScene->registerParticleSystem(particleSystem);
+	}
+
+	void RenderBeast::notifyParticleSystemUpdated(ParticleSystem* particleSystem, bool tfrmOnly)
+	{
+		mScene->updateParticleSystem(particleSystem, tfrmOnly);
+	}
+
+	void RenderBeast::notifyParticleSystemRemoved(ParticleSystem* particleSystem)
+	{
+		mScene->unregisterParticleSystem(particleSystem);
+	}
+
 	void RenderBeast::setOptions(const SPtr<RendererOptions>& options)
 	{
 		mOptions = std::static_pointer_cast<RenderBeastOptions>(options);
@@ -250,7 +266,56 @@ namespace bs { namespace ct
 		shadowRenderer.setShadowMapSize(mCoreOptions->shadowMapSize);
 	}
 
-	void RenderBeast::renderAll(const EvaluatedAnimationData* animData) 
+	ShaderExtensionPointInfo RenderBeast::getShaderExtensionPointInfo(const String& name)
+	{
+		if(name == "DeferredDirectLighting")
+		{
+			ShaderExtensionPointInfo info;
+			
+			ExtensionShaderInfo tiledDeferredInfo;
+			tiledDeferredInfo.name = "TiledDeferredDirectLighting";
+			tiledDeferredInfo.path = TiledDeferredLightingMat::getShaderPath();
+			tiledDeferredInfo.defines = TiledDeferredLightingMat::getShaderDefines();
+			info.shaders.push_back(tiledDeferredInfo);
+
+			ExtensionShaderInfo standardDeferredPointInfo;
+			standardDeferredPointInfo.name = "StandardDeferredPointDirectLighting";
+			standardDeferredPointInfo.path = DeferredPointLightMat::getShaderPath();
+			standardDeferredPointInfo.defines = DeferredPointLightMat::getShaderDefines();
+			info.shaders.push_back(standardDeferredPointInfo);
+
+			ExtensionShaderInfo standardDeferredDirInfo;
+			standardDeferredDirInfo.name = "StandardDeferredDirDirectLighting";
+			standardDeferredDirInfo.path = DeferredDirectionalLightMat::getShaderPath();
+			standardDeferredDirInfo.defines = DeferredDirectionalLightMat::getShaderDefines();
+			info.shaders.push_back(standardDeferredPointInfo);
+
+			return info;
+		}
+
+		return ShaderExtensionPointInfo();
+	}
+
+	void RenderBeast::setGlobalShaderOverride(const String& name, const SPtr<bs::Shader>& shader)
+	{
+		SPtr<ct::Shader> shaderCore;
+		if(shader)
+			shaderCore = shader->getCore();
+
+		auto setShaderOverride = [name, shaderCore]()
+		{
+			if (name == "TiledDeferredDirectLighting")
+				TiledDeferredLightingMat::setOverride(shaderCore);
+			else if(name == "StandardDeferredPointDirectLighting")
+				DeferredPointLightMat::setOverride(shaderCore);
+			else if(name == "StandardDeferredDirDirectLighting")
+				DeferredDirectionalLightMat::setOverride(shaderCore);
+		};
+	
+		gCoreThread().queueCommand(setShaderOverride);
+	}
+
+	void RenderBeast::renderAll(PerFrameData perFrameData) 
 	{
 		// Sync all dirty sim thread CoreObject data to core thread
 		CoreObjectManager::instance().syncToCore();
@@ -266,10 +331,10 @@ namespace bs { namespace ct
 		timings.timeDelta = gTime().getFrameDelta();
 		timings.frameIdx = gTime().getFrameIdx();
 		
-		gCoreThread().queueCommand(std::bind(&RenderBeast::renderAllCore, this, timings, animData));
+		gCoreThread().queueCommand(std::bind(&RenderBeast::renderAllCore, this, timings, perFrameData));
 	}
 
-	void RenderBeast::renderAllCore(FrameTimings timings, const EvaluatedAnimationData* animData)
+	void RenderBeast::renderAllCore(FrameTimings timings, PerFrameData perFrameData)
 	{
 		THROW_IF_NOT_CORE_THREAD;
 
@@ -284,19 +349,33 @@ namespace bs { namespace ct
 		mScene->refreshSamplerOverrides();
 
 		// Update global per-frame hardware buffers
-		mObjectRenderer->setParamFrameParams(timings.time);
+		mScene->setParamFrameParams(timings.time);
 
-		// Retrieve animation data
+		// Simulate particles
+		GpuParticleSimulation::instance().simulate(perFrameData.particles, timings.timeDelta);
+
+		// Update bounds for all particle systems
+		if(perFrameData.particles)
+			mScene->updateParticleSystemBounds(perFrameData.particles);
+
 		sceneInfo.renderableReady.resize(sceneInfo.renderables.size(), false);
 		sceneInfo.renderableReady.assign(sceneInfo.renderables.size(), false);
 		
-		FrameInfo frameInfo(timings, animData);
+		FrameInfo frameInfo(timings, perFrameData);
 
 		// Make sure any renderer tasks finish first, as rendering might depend on them
 		processTasks(false);
 
-		// Update reflection probe array if required
+		// If any reflection probes were updated or added, we need to copy them over in the global reflection probe array
 		updateReflProbeArray();
+
+		// Update material animation times for all renderables
+		for (UINT32 i = 0; i < sceneInfo.renderables.size(); i++)
+		{
+			RendererRenderable* renderable = sceneInfo.renderables[i];
+			for (auto& element : renderable->elements)
+				element.materialAnimationTime += timings.timeDelta;
+		}
 
 		// Gather all views
 		for (auto& rtInfo : sceneInfo.renderTargets)
@@ -682,7 +761,7 @@ namespace bs { namespace ct
 		RendererViewGroup viewGroup(viewPtrs, 6, mCoreOptions->shadowMapSize);
 		viewGroup.determineVisibility(sceneInfo);
 
-		FrameInfo frameInfo({ 0.0f, 1.0f / 60.0f, 0 });
+		FrameInfo frameInfo({ 0.0f, 1.0f / 60.0f, 0 }, PerFrameData());
 		renderViews(viewGroup, frameInfo);
 
 		// Make sure the render texture is available for reads

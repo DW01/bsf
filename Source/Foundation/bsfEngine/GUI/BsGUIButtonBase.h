@@ -62,7 +62,8 @@ namespace bs
 
 		/** @} */
 	protected:
-		GUIButtonBase(const String& styleName, const GUIContent& content, const GUIDimensions& dimensions);
+		GUIButtonBase(const String& styleName, const GUIContent& content, const GUIDimensions& dimensions,
+			GUIElementOptions options = GUIElementOption::AcceptsKeyFocus);
 		virtual ~GUIButtonBase();
 
 		/** @copydoc GUIElement::_getNumRenderElements */
@@ -84,11 +85,14 @@ namespace bs
 		/** @copydoc GUIElement::_mouseEvent */
 		bool _mouseEvent(const GUIMouseEvent& ev) override;
 
+		/** @copydoc GUIElement::_commandEvent */
+		bool _commandEvent(const GUICommandEvent& ev) override;
+
 		/** @copydoc GUIElement::_getRenderElementDepth */
 		UINT32 _getRenderElementDepth(UINT32 renderElementIdx) const override;
 
 		/** @copydoc GUIElement::_getTooltip */
-		WString _getTooltip() const override;
+		String _getTooltip() const override;
 
 		/** Creates or destroys the content image sprite depending if there is a content image for the active state. */
 		void refreshContentSprite();
@@ -106,12 +110,13 @@ namespace bs
 		Color getActiveTextColor() const;
 	private:
 		ImageSprite* mImageSprite;
-		ImageSprite* mContentImageSprite;
+		ImageSprite* mContentImageSprite = nullptr;
 		TextSprite* mTextSprite;
-		GUIElementState mActiveState;
+		GUIElementState mActiveState = GUIElementState::Normal;
 
 		IMAGE_SPRITE_DESC mImageDesc;
 		GUIContent mContent;
+		bool mHasFocus = false;
 	};
 
 	/** @} */

@@ -6,39 +6,25 @@
 
 namespace bs { namespace ct
 {
-	VulkanGpuParamBlockBuffer::VulkanGpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage,
-		GpuDeviceFlags deviceMask)
-		:GpuParamBlockBuffer(size, usage, deviceMask), mBuffer(nullptr), mDeviceMask(deviceMask)
+	VulkanGpuParamBlockBuffer::VulkanGpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage, GpuDeviceFlags deviceMask)
+		:GpuParamBlockBuffer(size, usage, deviceMask), mDeviceMask(deviceMask)
 	{ }
 
 	VulkanGpuParamBlockBuffer::~VulkanGpuParamBlockBuffer()
 	{
 		if(mBuffer != nullptr)
-			bs_delete(mBuffer);
-
-		BS_INC_RENDER_STAT_CAT(ResDestroyed, RenderStatObject_GpuParamBuffer);
+			bs_pool_delete(static_cast<VulkanHardwareBuffer*>(mBuffer));
 	}
 
 	void VulkanGpuParamBlockBuffer::initialize()
 	{
-		BS_INC_RENDER_STAT_CAT(ResCreated, RenderStatObject_GpuParamBuffer);
-
-		GpuBufferUsage usage = mUsage == GPBU_STATIC ? GBU_STATIC : GBU_DYNAMIC;
-
-		mBuffer = bs_new<VulkanHardwareBuffer>(VulkanHardwareBuffer::BT_UNIFORM, BF_UNKNOWN, usage, mSize, mDeviceMask);
+		mBuffer = bs_pool_new<VulkanHardwareBuffer>(VulkanHardwareBuffer::BT_UNIFORM, BF_UNKNOWN, mUsage, mSize, mDeviceMask);
 
 		GpuParamBlockBuffer::initialize();
 	}
 
-	void VulkanGpuParamBlockBuffer::writeToGPU(const UINT8* data, UINT32 queueIdx)
-	{
-		mBuffer->writeData(0, mSize, data, BWT_DISCARD, queueIdx);
-
-		BS_INC_RENDER_STAT_CAT(ResWrite, RenderStatObject_GpuParamBuffer);
-	}
-
 	VulkanBuffer* VulkanGpuParamBlockBuffer::getResource(UINT32 deviceIdx) const
 	{
-		return mBuffer->getResource(deviceIdx);
+		return static_cast<VulkanHardwareBuffer*>(mBuffer)->getResource(deviceIdx);
 	}
 }}

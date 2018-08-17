@@ -12,113 +12,71 @@
 namespace bs { namespace ct
 {
 	D3D11GpuBuffer::D3D11GpuBuffer(const GPU_BUFFER_DESC& desc, GpuDeviceFlags deviceMask)
-		: GpuBuffer(desc, deviceMask), mBuffer(nullptr)
+		: GpuBuffer(desc, deviceMask)
 	{
-		if (desc.type != GBT_STANDARD)
-			assert(desc.format == BF_UNKNOWN && "Format must be set to BF_UNKNOWN when using non-standard buffers");
-		else
-			assert(desc.elementSize == 0 && "No element size can be provided for standard buffer. Size is determined from format.");
-
 		assert((deviceMask == GDF_DEFAULT || deviceMask == GDF_PRIMARY) && "Multiple GPUs not supported natively on DirectX 11.");
 	}
 
+	D3D11GpuBuffer::D3D11GpuBuffer(const GPU_BUFFER_DESC& desc, SPtr<HardwareBuffer> underlyingBuffer)
+		: GpuBuffer(desc, std::move(underlyingBuffer))
+	{ }
+
 	D3D11GpuBuffer::~D3D11GpuBuffer()
 	{ 
-		bs_delete(mBuffer);
+		if(mBuffer && !mExternalBuffer)
+			bs_pool_delete(static_cast<D3D11HardwareBuffer*>(mBuffer));
+
 		clearBufferViews();
-		BS_INC_RENDER_STAT_CAT(ResDestroyed, RenderStatObject_GpuBuffer);
 	}
 
 	void D3D11GpuBuffer::initialize()
 	{
-		D3D11HardwareBuffer::BufferType bufferType;
-		D3D11RenderAPI* d3d11rs = static_cast<D3D11RenderAPI*>(D3D11RenderAPI::instancePtr());
-
 		const GpuBufferProperties& props = getProperties();
 
-		switch (props.getType())
+		// Create a new buffer if not wrapping an external one
+		if(!mBuffer)
 		{
-		case GBT_STANDARD:
-			bufferType = D3D11HardwareBuffer::BT_STANDARD;
-			break;
-		case GBT_STRUCTURED:
-			bufferType = D3D11HardwareBuffer::BT_STRUCTURED;
-			break;
-		case GBT_INDIRECTARGUMENT:
-			bufferType = D3D11HardwareBuffer::BT_INDIRECTARGUMENT;
-			break;
-		default:
-			BS_EXCEPT(InvalidParametersException, "Unsupported buffer type " + toString(props.getType()));
+			D3D11HardwareBuffer::BufferType bufferType;
+			D3D11RenderAPI* rapi = static_cast<D3D11RenderAPI*>(D3D11RenderAPI::instancePtr());
+
+			switch (props.getType())
+			{
+			case GBT_STANDARD:
+				bufferType = D3D11HardwareBuffer::BT_STANDARD;
+				break;
+			case GBT_STRUCTURED:
+				bufferType = D3D11HardwareBuffer::BT_STRUCTURED;
+				break;
+			case GBT_INDIRECTARGUMENT:
+				bufferType = D3D11HardwareBuffer::BT_INDIRECTARGUMENT;
+				break;
+			default:
+				BS_EXCEPT(InvalidParametersException, "Unsupported buffer type " + toString(props.getType()));
+			}
+
+			mBuffer = bs_pool_new<D3D11HardwareBuffer>(bufferType, props.getUsage(), props.getElementCount(),
+				props.getElementSize(), rapi->getPrimaryDevice(), false, false);
 		}
 
-		mBuffer = bs_new<D3D11HardwareBuffer>(bufferType, props.getUsage(), props.getElementCount(), props.getElementSize(),
-			d3d11rs->getPrimaryDevice(), false, false, props.getRandomGpuWrite(), props.getUseCounter());
-
-		SPtr<D3D11GpuBuffer> thisPtr = std::static_pointer_cast<D3D11GpuBuffer>(getThisPtr());
 		UINT32 usage = GVU_DEFAULT;
-		if (props.getRandomGpuWrite())
+		if ((props.getUsage() & GBU_LOADSTORE) == GBU_LOADSTORE)
 			usage |= GVU_RANDOMWRITE;
 
 		// Keep a single view of the entire buffer, we don't support views of sub-sets (yet)
-		mBufferView = requestView(thisPtr, 0, props.getElementCount(), (GpuViewUsage)usage);
+		mBufferView = requestView(this, 0, props.getElementCount(), (GpuViewUsage)usage);
 
 		BS_INC_RENDER_STAT_CAT(ResCreated, RenderStatObject_GpuBuffer);
 
 		GpuBuffer::initialize();
 	}
 
-	void* D3D11GpuBuffer::lock(UINT32 offset, UINT32 length, GpuLockOptions options, UINT32 deviceIdx, UINT32 queueIdx)
-	{
-#if BS_PROFILING_ENABLED
-		if (options == GBL_READ_ONLY || options == GBL_READ_WRITE)
-		{
-			BS_INC_RENDER_STAT_CAT(ResRead, RenderStatObject_GpuBuffer);
-		}
-
-		if (options == GBL_READ_WRITE || options == GBL_WRITE_ONLY || options == GBL_WRITE_ONLY_DISCARD || options == GBL_WRITE_ONLY_NO_OVERWRITE)
-		{
-			BS_INC_RENDER_STAT_CAT(ResWrite, RenderStatObject_GpuBuffer);
-		}
-#endif
-
-		return mBuffer->lock(offset, length, options);
-	}
-
-	void D3D11GpuBuffer::unlock()
-	{
-		mBuffer->unlock();
-	}
-
-	void D3D11GpuBuffer::readData(UINT32 offset, UINT32 length, void* dest, UINT32 deviceIdx, UINT32 queueIdx)
-	{
-		BS_INC_RENDER_STAT_CAT(ResRead, RenderStatObject_GpuBuffer);
-
-		mBuffer->readData(offset, length, dest);
-	}
-
-	void D3D11GpuBuffer::writeData(UINT32 offset, UINT32 length, const void* source, BufferWriteType writeFlags, 
-		UINT32 queueIdx)
-	{
-		BS_INC_RENDER_STAT_CAT(ResWrite, RenderStatObject_GpuBuffer);
-
-		mBuffer->writeData(offset, length, source, writeFlags);
-	}
-
-	void D3D11GpuBuffer::copyData(HardwareBuffer& srcBuffer, UINT32 srcOffset, UINT32 dstOffset, UINT32 length, 
-		bool discardWholeBuffer, const SPtr<CommandBuffer>& commandBuffer)
-	{
-		D3D11GpuBuffer* d3d11SrcBuffer = static_cast<D3D11GpuBuffer*>(&srcBuffer);
-
-		mBuffer->copyData(*d3d11SrcBuffer->mBuffer, srcOffset, dstOffset, length, discardWholeBuffer, commandBuffer);
-	}
-
 	ID3D11Buffer* D3D11GpuBuffer::getDX11Buffer() const
 	{ 
-		return mBuffer->getD3DBuffer(); 
+		return static_cast<D3D11HardwareBuffer*>(mBuffer)->getD3DBuffer(); 
 	}
 
-	GpuBufferView* D3D11GpuBuffer::requestView(const SPtr<D3D11GpuBuffer>& buffer, UINT32 firstElement,
-		UINT32 numElements, GpuViewUsage usage)
+	GpuBufferView* D3D11GpuBuffer::requestView(D3D11GpuBuffer* buffer, UINT32 firstElement, UINT32 numElements, 
+		GpuViewUsage usage)
 	{
 		const auto& props = buffer->getProperties();
 
@@ -128,7 +86,7 @@ namespace bs { namespace ct
 		key.numElements = numElements;
 		key.usage = usage;
 		key.format = props.getFormat();
-		key.useCounter = props.getUseCounter();
+		key.useCounter = false;
 
 		auto iterFind = buffer->mBufferViews.find(key);
 		if (iterFind == buffer->mBufferViews.end())
@@ -146,7 +104,7 @@ namespace bs { namespace ct
 
 	void D3D11GpuBuffer::releaseView(GpuBufferView* view)
 	{
-		SPtr<D3D11GpuBuffer> buffer = view->getBuffer();
+		D3D11GpuBuffer* buffer = view->getBuffer();
 
 		auto iterFind = buffer->mBufferViews.find(view->getDesc());
 		if (iterFind == buffer->mBufferViews.end())

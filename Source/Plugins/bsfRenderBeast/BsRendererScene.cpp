@@ -3,20 +3,27 @@
 #include "BsRendererScene.h"
 #include "Renderer/BsCamera.h"
 #include "Renderer/BsLight.h"
+#include "Renderer/BsSkybox.h"
 #include "Renderer/BsReflectionProbe.h"
-#include "Mesh/BsMesh.h"
 #include "Renderer/BsRenderer.h"
+#include "Particles/BsParticleManager.h"
+#include "Mesh/BsMesh.h"
 #include "Material/BsPass.h"
 #include "Material/BsGpuParamsSet.h"
+#include "Utility/BsSamplerOverrides.h"
 #include "BsRenderBeastOptions.h"
 #include "BsRenderBeast.h"
-#include "Renderer/BsSkybox.h"
+#include "Image/BsSpriteTexture.h"
+#include "Shading/BsGpuParticleSimulation.h"
 
 namespace bs {	namespace ct
 {
+	PerFrameParamDef gPerFrameParamDef;
+
 	RendererScene::RendererScene(const SPtr<RenderBeastOptions>& options)
 		:mOptions(options)
 	{
+		mPerFrameParamBuffer = gPerFrameParamDef.createBuffer();
 	}
 
 	RendererScene::~RendererScene()
@@ -219,12 +226,12 @@ namespace bs {	namespace ct
 
 		renderable->setRendererId(renderableId);
 
-		mInfo.renderables.push_back(bs_new<RendererObject>());
+		mInfo.renderables.push_back(bs_new<RendererRenderable>());
 		mInfo.renderableCullInfos.push_back(CullInfo(renderable->getBounds(), renderable->getLayer()));
 
-		RendererObject* rendererObject = mInfo.renderables.back();
-		rendererObject->renderable = renderable;
-		rendererObject->updatePerObjectBuffer();
+		RendererRenderable* rendererRenderable = mInfo.renderables.back();
+		rendererRenderable->renderable = renderable;
+		rendererRenderable->updatePerObjectBuffer();
 
 		SPtr<Mesh> mesh = renderable->getMesh();
 		if (mesh != nullptr)
@@ -234,12 +241,12 @@ namespace bs {	namespace ct
 
 			for (UINT32 i = 0; i < meshProps.getNumSubMeshes(); i++)
 			{
-				rendererObject->elements.push_back(BeastRenderableElement());
-				BeastRenderableElement& renElement = rendererObject->elements.back();
+				rendererRenderable->elements.push_back(RenderableElement());
+				RenderableElement& renElement = rendererRenderable->elements.back();
 
+				renElement.type = (UINT32)RenderElementType::Renderable;
 				renElement.mesh = mesh;
 				renElement.subMesh = meshProps.getSubMesh(i);
-				renElement.renderableId = renderableId;
 				renElement.animType = renderable->getAnimType();
 				renElement.animationId = renderable->getAnimationId();
 				renElement.morphShapeVersion = 0;
@@ -261,13 +268,13 @@ namespace bs {	namespace ct
 				// Determine which technique to use
 				static_assert((UINT32)RenderableAnimType::Count == 4, "RenderableAnimType is expected to have four sequential entries.");
 
-				bool isTransparent = (renElement.material->getShader()->getFlags() & (UINT32)ShaderFlags::Transparent) != 0;
-				bool usesForwardRendering = isTransparent;
+				ShaderFlags shaderFlags = renElement.material->getShader()->getFlags();
+				bool useForwardRendering = shaderFlags.isSet(ShaderFlag::Forward) || shaderFlags.isSet(ShaderFlag::Transparent);
 				
 				RenderableAnimType animType = renderable->getAnimType();
 
 				static const ShaderVariation* VAR_LOOKUP[4];
-				if(usesForwardRendering)
+				if(useForwardRendering)
 				{
 					bool supportsClusteredForward = gRenderBeast()->getFeatureSet() == RenderBeastFeatureSet::Desktop;
 
@@ -306,6 +313,7 @@ namespace bs {	namespace ct
 
 				renElement.techniqueIdx = techniqueIdx;
 
+#if BS_DEBUG_MODE
 				// Validate mesh <-> shader vertex bindings
 				if (renElement.material != nullptr)
 				{
@@ -347,10 +355,11 @@ namespace bs {	namespace ct
 						}
 					}
 				}
+#endif
 
 				// Generate or assigned renderer specific data for the material
 				renElement.params = renElement.material->createParamsSet(techniqueIdx);
-				renElement.material->updateParamsSet(renElement.params, true);
+				renElement.material->updateParamsSet(renElement.params, 0.0f, true);
 
 				// Generate or assign sampler state overrides
 				SamplerOverrideKey samplerKey(renElement.material, techniqueIdx);
@@ -373,6 +382,83 @@ namespace bs {	namespace ct
 				}
 			}
 		}
+
+		// Prepare all parameter bindings
+		for(auto& element : rendererRenderable->elements)
+		{
+			SPtr<Shader> shader = element.material->getShader();
+			if (shader == nullptr)
+			{
+				LOGWRN("Missing shader on material.");
+				continue;
+			}
+
+			SPtr<GpuParams> gpuParams = element.params->getGpuParams();
+
+			// Note: Perhaps perform buffer validation to ensure expected buffer has the same size and layout as the 
+			// provided buffer, and show a warning otherwise. But this is perhaps better handled on a higher level.
+			gpuParams->setParamBlockBuffer("PerFrame", mPerFrameParamBuffer);
+			gpuParams->setParamBlockBuffer("PerObject", rendererRenderable->perObjectParamBuffer);
+			gpuParams->setParamBlockBuffer("PerCall", rendererRenderable->perCallParamBuffer);
+
+			gpuParams->getParamInfo()->getBindings(
+				GpuPipelineParamInfoBase::ParamType::ParamBlock,
+				"PerCamera",
+				element.perCameraBindings
+			);
+
+			if (gpuParams->hasBuffer(GPT_VERTEX_PROGRAM, "boneMatrices"))
+				gpuParams->setBuffer(GPT_VERTEX_PROGRAM, "boneMatrices", element.boneMatrixBuffer);
+
+			ShaderFlags shaderFlags = shader->getFlags();
+			bool useForwardRendering = shaderFlags.isSet(ShaderFlag::Forward) || shaderFlags.isSet(ShaderFlag::Transparent);
+
+			if (useForwardRendering)
+			{
+				const bool supportsClusteredForward = gRenderBeast()->getFeatureSet() == RenderBeastFeatureSet::Desktop;
+				if (supportsClusteredForward)
+				{
+					gpuParams->getParamInfo()->getBindings(
+						GpuPipelineParamInfoBase::ParamType::ParamBlock,
+						"GridParams",
+						element.gridParamsBindings
+					);
+
+					if (gpuParams->hasBuffer(GPT_FRAGMENT_PROGRAM, "gLights"))
+						gpuParams->getBufferParam(GPT_FRAGMENT_PROGRAM, "gLights", element.lightsBufferParam);
+
+					if (gpuParams->hasBuffer(GPT_FRAGMENT_PROGRAM, "gGridLightOffsetsAndSize"))
+						gpuParams->getBufferParam(GPT_FRAGMENT_PROGRAM, "gGridLightOffsetsAndSize",
+							element.gridLightOffsetsAndSizeParam);
+
+					if (gpuParams->hasBuffer(GPT_FRAGMENT_PROGRAM, "gLightIndices"))
+						gpuParams->getBufferParam(GPT_FRAGMENT_PROGRAM, "gLightIndices", element.gridLightIndicesParam);
+
+					if (gpuParams->hasBuffer(GPT_FRAGMENT_PROGRAM, "gGridProbeOffsetsAndSize"))
+						gpuParams->getBufferParam(GPT_FRAGMENT_PROGRAM, "gGridProbeOffsetsAndSize",
+							element.gridProbeOffsetsAndSizeParam);
+				}
+				else
+				{
+					gpuParams->getParamInfo()->getBinding(
+						GPT_FRAGMENT_PROGRAM,
+						GpuPipelineParamInfoBase::ParamType::ParamBlock,
+						"Lights",
+						element.lightsParamBlockBinding
+					);
+
+					gpuParams->getParamInfo()->getBinding(
+						GPT_FRAGMENT_PROGRAM,
+						GpuPipelineParamInfoBase::ParamType::ParamBlock,
+						"LightAndReflProbeParams",
+						element.lightAndReflProbeParamsParamBlockBinding
+					);
+				}
+
+				element.imageBasedParams.populate(gpuParams, GPT_FRAGMENT_PROGRAM, true, supportsClusteredForward,
+					supportsClusteredForward);
+			}
+		}
 	}
 
 	void RendererScene::updateRenderable(Renderable* renderable)
@@ -389,8 +475,8 @@ namespace bs {	namespace ct
 		Renderable* lastRenerable = mInfo.renderables.back()->renderable;
 		UINT32 lastRenderableId = lastRenerable->getRendererId();
 
-		RendererObject* rendererObject = mInfo.renderables[renderableId];
-		Vector<BeastRenderableElement>& elements = rendererObject->elements;
+		RendererRenderable* rendererRenderable = mInfo.renderables[renderableId];
+		Vector<RenderableElement>& elements = rendererRenderable->elements;
 		for (auto& element : elements)
 		{
 			SamplerOverrideKey samplerKey(element.material, element.techniqueIdx);
@@ -416,16 +502,13 @@ namespace bs {	namespace ct
 			std::swap(mInfo.renderableCullInfos[renderableId], mInfo.renderableCullInfos[lastRenderableId]);
 
 			lastRenerable->setRendererId(renderableId);
-
-			for (auto& element : elements)
-				element.renderableId = renderableId;
 		}
 
 		// Last element is the one we want to erase
 		mInfo.renderables.erase(mInfo.renderables.end() - 1);
 		mInfo.renderableCullInfos.erase(mInfo.renderableCullInfos.end() - 1);
 
-		bs_delete(rendererObject);
+		bs_delete(rendererRenderable);
 	}
 
 	void RendererScene::registerReflectionProbe(ReflectionProbe* probe)
@@ -540,6 +623,170 @@ namespace bs {	namespace ct
 	{
 		if (mInfo.skybox == skybox)
 			mInfo.skybox = nullptr;
+	}
+
+	void RendererScene::registerParticleSystem(ParticleSystem* particleSystem)
+	{
+		const auto rendererId = (UINT32)mInfo.particleSystems.size();
+		particleSystem->setRendererId(rendererId);
+
+		mInfo.particleSystems.push_back(RendererParticles());
+		mInfo.particleSystemBounds.push_back(AABox());
+
+		RendererParticles& rendererParticles = mInfo.particleSystems.back();
+		rendererParticles.particleSystem = particleSystem;
+
+		updateParticleSystem(particleSystem, false);
+	}
+
+	void RendererScene::updateParticleSystem(ParticleSystem* particleSystem, bool tfrmOnly)
+	{
+		const UINT32 rendererId = particleSystem->getRendererId();
+		RendererParticles& rendererParticles = mInfo.particleSystems[rendererId];
+
+		if(tfrmOnly)
+		{
+			SPtr<GpuParamBlockBuffer>& paramBuffer = rendererParticles.particlesParamBuffer;
+			gParticlesParamDef.gWorldTfrm.set(paramBuffer, particleSystem->getTransform().getMatrix());
+		}
+		else
+		{
+			const ParticleSystemSettings& settings = particleSystem->getSettings();
+			Matrix4 transform;
+			if (settings.simulationSpace == ParticleSimulationSpace::Local)
+				transform = particleSystem->getTransform().getMatrix();
+			else
+				transform = Matrix4::IDENTITY;
+
+			SPtr<GpuParamBlockBuffer> paramBuffer = gParticlesParamDef.createBuffer();
+			gParticlesParamDef.gWorldTfrm.set(paramBuffer, transform);
+
+			Vector3 axisForward = settings.orientationPlane.normal;
+
+			Vector3 axisUp = Vector3::UNIT_Y;
+			if (axisForward.dot(axisUp) > 0.9998f)
+				axisUp = Vector3::UNIT_Z;
+
+			Vector3 axisRight = axisUp.cross(axisForward);
+			Vector3::orthonormalize(axisRight, axisUp, axisForward);
+
+			gParticlesParamDef.gAxisUp.set(paramBuffer, axisUp);
+			gParticlesParamDef.gAxisRight.set(paramBuffer, axisRight);
+
+			rendererParticles.particlesParamBuffer = paramBuffer;
+
+			// Initialize the variant of the particle system for GPU simulation, if needed
+			if(settings.gpuSimulation)
+			{
+				if(!rendererParticles.gpuParticleSystem)
+					rendererParticles.gpuParticleSystem = bs_pool_new<GpuParticleSystem>(particleSystem->getId());
+			}
+			else
+			{
+				if(rendererParticles.gpuParticleSystem)
+				{
+					bs_pool_delete(rendererParticles.gpuParticleSystem);
+					rendererParticles.gpuParticleSystem = nullptr;
+				}
+			}
+
+			ParticlesRenderElement& renElement = rendererParticles.renderElement;
+			renElement.type = (UINT32)RenderElementType::Particle;
+
+			renElement.material = settings.material;
+
+			if (renElement.material != nullptr && renElement.material->getShader() == nullptr)
+				renElement.material = nullptr;
+
+			// If no material use the default material
+			if (renElement.material == nullptr)
+				renElement.material = Material::create(DefaultParticlesMat::get()->getShader());
+
+			SpriteTexture* spriteTexture = nullptr;
+			if (renElement.material->getShader()->hasTextureParam("gTexture"))
+				spriteTexture = renElement.material->getSpriteTexture("gTexture").get();
+
+			if (spriteTexture)
+			{
+				gParticlesParamDef.gUVOffset.set(paramBuffer, spriteTexture->getOffset());
+				gParticlesParamDef.gUVScale.set(paramBuffer, spriteTexture->getScale());
+
+				const SpriteSheetGridAnimation& anim = spriteTexture->getAnimation();
+				gParticlesParamDef.gSubImageSize.set(paramBuffer,
+					Vector4((float)anim.numColumns, (float)anim.numRows, 1.0f / anim.numColumns, 1.0f / anim.numRows));
+			}
+			else
+			{
+				gParticlesParamDef.gUVOffset.set(paramBuffer, Vector2::ZERO);
+				gParticlesParamDef.gUVScale.set(paramBuffer, Vector2::ONE);
+				gParticlesParamDef.gSubImageSize.set(paramBuffer, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+			}
+
+			const ParticleOrientation orientation = settings.orientation;
+			const bool lockY = settings.orientationLockY;
+			const ShaderVariation* variation = &getParticleShaderVariation(orientation, lockY);
+
+			FIND_TECHNIQUE_DESC findDesc;
+			findDesc.variation = variation;
+
+			UINT32 techniqueIdx = renElement.material->findTechnique(findDesc);
+
+			if (techniqueIdx == (UINT32)-1)
+				techniqueIdx = renElement.material->getDefaultTechnique();
+
+			renElement.techniqueIdx = techniqueIdx;
+
+			// Generate or assigned renderer specific data for the material
+			renElement.params = renElement.material->createParamsSet(techniqueIdx);
+			renElement.material->updateParamsSet(renElement.params, 0.0f, true);
+
+			SPtr<GpuParams> gpuParams = renElement.params->getGpuParams();
+
+			// Note: Perhaps perform buffer validation to ensure expected buffer has the same size and layout as the 
+			// provided buffer, and show a warning otherwise. But this is perhaps better handled on a higher level.
+			gpuParams->setParamBlockBuffer("ParticleParams", rendererParticles.particlesParamBuffer);
+
+			gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gPositionAndRotTex", renElement.positionAndRotTexture);
+			gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gColorTex", renElement.colorTexture);
+			gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gSizeAndFrameIdxTex", renElement.sizeAndFrameIdxTexture);
+			gpuParams->getBufferParam(GPT_VERTEX_PROGRAM, "gIndices", renElement.indicesBuffer);
+
+			gpuParams->getParamInfo()->getBindings(
+				GpuPipelineParamInfoBase::ParamType::ParamBlock,
+				"PerCamera",
+				renElement.perCameraBindings
+			);
+
+			// TODO - Set up buffers/bindings required for advanced lighting
+		}
+	}
+
+	void RendererScene::unregisterParticleSystem(ParticleSystem* particleSystem)
+	{
+		const UINT32 rendererId = particleSystem->getRendererId();
+
+		RendererParticles& rendererParticles = mInfo.particleSystems[rendererId];
+		if (rendererParticles.gpuParticleSystem)
+		{
+			bs_pool_delete(rendererParticles.gpuParticleSystem);
+			rendererParticles.gpuParticleSystem = nullptr;
+		}
+
+		const RendererParticles& lastSystem = mInfo.particleSystems.back();
+		const UINT32 lastRendererId = lastSystem.particleSystem->getRendererId();
+
+		if (rendererId != lastRendererId)
+		{
+			// Swap current last element with the one we want to erase
+			std::swap(mInfo.particleSystems[rendererId], mInfo.particleSystems[lastRendererId]);
+			std::swap(mInfo.particleSystemBounds[rendererId], mInfo.particleSystemBounds[lastRendererId]);
+
+			particleSystem->setRendererId(rendererId);
+		}
+
+		// Last element is the one we want to erase
+		mInfo.particleSystems.erase(mInfo.particleSystems.end() - 1);
+		mInfo.particleSystemBounds.erase(mInfo.particleSystemBounds.end() - 1);
 	}
 
 	void RendererScene::setOptions(const SPtr<RenderBeastOptions>& options)
@@ -770,21 +1017,54 @@ namespace bs {	namespace ct
 			entry.second->isDirty = false;
 	}
 
+	void RendererScene::setParamFrameParams(float time)
+	{
+		gPerFrameParamDef.gTime.set(mPerFrameParamBuffer, time);
+	}
+
 	void RendererScene::prepareRenderable(UINT32 idx, const FrameInfo& frameInfo)
 	{
 		if (mInfo.renderableReady[idx])
 			return;
 		
 		// Note: Before uploading bone matrices perhaps check if they has actually been changed since last frame
-		if(frameInfo.animData != nullptr)
-			mInfo.renderables[idx]->renderable->updateAnimationBuffers(*frameInfo.animData);
+		if(frameInfo.perFrameData.animation != nullptr)
+			mInfo.renderables[idx]->renderable->updateAnimationBuffers(*frameInfo.perFrameData.animation);
 		
 		// Note: Could this step be moved in notifyRenderableUpdated, so it only triggers when material actually gets
 		// changed? Although it shouldn't matter much because if the internal versions keeping track of dirty params.
 		for (auto& element : mInfo.renderables[idx]->elements)
-			element.material->updateParamsSet(element.params);
+			element.material->updateParamsSet(element.params, element.materialAnimationTime);
 		
 		mInfo.renderables[idx]->perObjectParamBuffer->flushToGPU();
 		mInfo.renderableReady[idx] = true;
+	}
+
+	void RendererScene::updateParticleSystemBounds(const ParticleSimulationData* particleRenderData)
+	{
+		// Note: Avoid updating bounds for deterministic particle systems every frame. Also see if this can be copied
+		// over in a faster way (or ideally just assigned)
+
+		for(auto& entry : mInfo.particleSystems)
+		{
+			const UINT32 rendererId = entry.particleSystem->getRendererId();
+
+			const auto iterFind = particleRenderData->cpuData.find(entry.particleSystem->getId());
+			if(iterFind != particleRenderData->cpuData.end())
+			{
+				AABox worldBounds = iterFind->second->bounds;
+
+				const ParticleSystemSettings& settings = entry.particleSystem->getSettings();
+				if (settings.simulationSpace == ParticleSimulationSpace::Local)
+					worldBounds.transformAffine(entry.particleSystem->getTransform().getMatrix());
+
+				mInfo.particleSystemBounds[rendererId] = worldBounds;
+			}
+			else if(entry.gpuParticleSystem)
+			{
+				// TODO - For now we don't cull GPU simulated particle systems
+				mInfo.particleSystemBounds[rendererId] = AABox::INF_BOX;
+			}
+		}
 	}
 }}

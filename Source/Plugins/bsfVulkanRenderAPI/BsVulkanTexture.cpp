@@ -171,12 +171,14 @@ namespace bs { namespace ct
 	{
 		VkImageViewType oldViewType = mImageViewCI.viewType;
 
+		const UINT32 numFaces = surface.numFaces == 0 ? mNumFaces : surface.numFaces;
+
 		switch (oldViewType)
 		{
 		case VK_IMAGE_VIEW_TYPE_CUBE:
-			if(surface.numFaces == 1)
+			if(numFaces == 1)
 				mImageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
-			else if(surface.numFaces % 6 == 0)
+			else if(numFaces % 6 == 0)
 			{
 				if(mNumFaces > 6)
 					mImageViewCI.viewType = VK_IMAGE_VIEW_TYPE_CUBE_ARRAY;
@@ -185,12 +187,12 @@ namespace bs { namespace ct
 				mImageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 			break;
 		case VK_IMAGE_VIEW_TYPE_1D:
-			if(surface.numFaces > 1)
+			if(numFaces > 1)
 				mImageViewCI.viewType = VK_IMAGE_VIEW_TYPE_1D_ARRAY;
 			break;
 		case VK_IMAGE_VIEW_TYPE_2D:
 		case VK_IMAGE_VIEW_TYPE_3D:
-			if (surface.numFaces > 1)
+			if (numFaces > 1)
 				mImageViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 			break;
 		default:
@@ -292,9 +294,12 @@ namespace bs { namespace ct
 		VkSubresourceLayout layout;
 		vkGetImageSubresourceLayout(device.getLogical(), mImage, &range, &layout);
 
-		assert(layout.size == output.getSize());
-		output.setRowPitch((UINT32)layout.rowPitch);
-		output.setSlicePitch((UINT32)layout.depthPitch);
+		const UINT32 pixelSize = PixelUtil::getNumElemBytes(output.getFormat());
+		assert((UINT32)layout.rowPitch % pixelSize == 0);
+		assert((UINT32)layout.depthPitch % pixelSize == 0);
+
+		output.setRowPitch((UINT32)layout.rowPitch / pixelSize);
+		output.setSlicePitch((UINT32)layout.depthPitch / pixelSize);
 
 		VkDeviceMemory memory;
 		VkDeviceSize memoryOffset;
@@ -749,9 +754,7 @@ namespace bs { namespace ct
 		VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		VmaAllocation allocation = device.allocateMemory(buffer, flags);
 
-		VkBufferView view = VK_NULL_HANDLE;
-
-		return device.getResourceManager().create<VulkanBuffer>(buffer, view, allocation,
+		return device.getResourceManager().create<VulkanBuffer>(buffer, allocation,
 			pixelData.getRowPitch(), pixelData.getSlicePitch());
 	}
 
@@ -1248,7 +1251,7 @@ namespace bs { namespace ct
 
 			bool isWrite = mMappedLockOptions != GBL_READ_ONLY;
 
-			// We the caller wrote anything to the staging buffer, we need to upload it back to the main buffer
+			// If the caller wrote anything to the staging buffer, we need to upload it back to the main buffer
 			if (isWrite)
 			{
 				VulkanRenderAPI& rapi = static_cast<VulkanRenderAPI&>(RenderAPI::instance());

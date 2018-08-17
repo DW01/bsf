@@ -46,7 +46,7 @@ namespace bs
 
 	}
 
-	SPtr<GpuParamBlockBuffer> HardwareBufferManager::createGpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage)
+	SPtr<GpuParamBlockBuffer> HardwareBufferManager::createGpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage)
 	{
 		SPtr<GpuParamBlockBuffer> paramBlockPtr = bs_core_ptr<GpuParamBlockBuffer>(new (bs_alloc<GpuParamBlockBuffer>()) GpuParamBlockBuffer(size, usage));
 		paramBlockPtr->_setThisPtr(paramBlockPtr);
@@ -162,7 +162,7 @@ namespace bs
 	}
 
 	SPtr<GpuParamBlockBuffer> HardwareBufferManager::createGpuParamBlockBuffer(UINT32 size, 
-		GpuParamBlockUsage usage, GpuDeviceFlags deviceMask)
+		GpuBufferUsage usage, GpuDeviceFlags deviceMask)
 	{
 		SPtr<GpuParamBlockBuffer> paramBlockPtr = createGpuParamBlockBufferInternal(size, usage, deviceMask);
 		paramBlockPtr->initialize();
@@ -174,6 +174,15 @@ namespace bs
 		GpuDeviceFlags deviceMask)
 	{
 		SPtr<GpuBuffer> gbuf = createGpuBufferInternal(desc, deviceMask);
+		gbuf->initialize();
+
+		return gbuf;
+	}
+
+	SPtr<GpuBuffer> HardwareBufferManager::createGpuBuffer(const GPU_BUFFER_DESC& desc, 
+		SPtr<HardwareBuffer> underlyingBuffer)
+	{
+		SPtr<GpuBuffer> gbuf = createGpuBufferInternal(desc, std::move(underlyingBuffer));
 		gbuf->initialize();
 
 		return gbuf;

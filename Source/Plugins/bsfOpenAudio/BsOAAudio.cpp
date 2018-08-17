@@ -12,27 +12,26 @@
 namespace bs
 {
 	OAAudio::OAAudio()
-		:mVolume(1.0f), mIsPaused(false)
 	{
 		bool enumeratedDevices;
-		if(_isExtensionSupported("ALC_ENUMERATE_ALL_EXT"))
+		if(alcIsExtensionPresent(nullptr, "ALC_ENUMERATE_ALL_EXT") != ALC_FALSE)
 		{
 			const ALCchar* defaultDevice = alcGetString(nullptr, ALC_DEFAULT_ALL_DEVICES_SPECIFIER);
-			mDefaultDevice.name = toWString(defaultDevice);
+			mDefaultDevice.name = String(defaultDevice);
 
 			const ALCchar* devices = alcGetString(nullptr, ALC_ALL_DEVICES_SPECIFIER);
 
-			Vector<wchar_t> deviceName;
+			Vector<char> deviceName;
 			while(true)
 			{
 				if(*devices == 0)
 				{
-					if (deviceName.size() == 0)
+					if (deviceName.empty())
 						break;
 
 					// Clean up the name to get the actual hardware name
-					WString fixedName(deviceName.data(), deviceName.size());
-					fixedName = StringUtil::replaceAll(fixedName, L"OpenAL Soft on ", L"");
+					String fixedName(deviceName.data(), deviceName.size());
+					fixedName = StringUtil::replaceAll(fixedName, u8"OpenAL Soft on ", u8"");
 
 					mAllDevices.push_back({ fixedName });
 					deviceName.clear();
@@ -49,13 +48,13 @@ namespace bs
 		}
 		else
 		{
-			mAllDevices.push_back({ L"" });
+			mAllDevices.push_back({ u8"" });
 			enumeratedDevices = false;
 		}
 
 		mActiveDevice = mDefaultDevice;
 
-		String defaultDeviceName = toString(mDefaultDevice.name);
+		String defaultDeviceName = mDefaultDevice.name;
 		if(enumeratedDevices)
 			mDevice = alcOpenDevice(defaultDeviceName.c_str());
 		else
@@ -69,7 +68,9 @@ namespace bs
 
 	OAAudio::~OAAudio()
 	{
-		assert(mListeners.size() == 0 && mSources.size() == 0); // Everything should be destroyed at this point
+		stopManualSources();
+
+		assert(mListeners.empty() && mSources.empty()); // Everything should be destroyed at this point
 		clearContexts();
 
 		if(mDevice != nullptr)
@@ -126,7 +127,7 @@ namespace bs
 		
 		mActiveDevice = device;
 
-		String narrowName = toString(device.name);
+		String narrowName = device.name;
 		mDevice = alcOpenDevice(narrowName.c_str());
 		if (mDevice == nullptr)
 			LOGERR("Failed to open OpenAL device: " + narrowName);

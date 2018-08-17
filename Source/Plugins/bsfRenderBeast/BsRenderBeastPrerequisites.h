@@ -29,7 +29,15 @@ namespace bs { namespace ct
 		DesktopMacOS
 	};
 
-	class ObjectRenderer;
+	/** Available implementation of the RenderElement class. */
+	enum class RenderElementType
+	{
+		/** See RenderableElement. */
+		Renderable,
+		/** See ParticlesRenderElement. */
+		Particle
+	};
+
 	struct RenderBeastOptions;
 	struct PooledRenderTexture;
 	class RenderTargets;

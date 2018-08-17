@@ -80,8 +80,8 @@ namespace bs
 	 */
 	struct LocalSkeletonPose
 	{
-		LocalSkeletonPose();
-		LocalSkeletonPose(UINT32 numBones);
+		LocalSkeletonPose() = default;
+		LocalSkeletonPose(UINT32 numBones, bool individualOverride = false);
 		LocalSkeletonPose(UINT32 numPos, UINT32 numRot, UINT32 numScale);
 		LocalSkeletonPose(const LocalSkeletonPose& other) = delete;
 		LocalSkeletonPose(LocalSkeletonPose&& other);
@@ -90,11 +90,11 @@ namespace bs
 		LocalSkeletonPose& operator=(const LocalSkeletonPose& other) = delete;
 		LocalSkeletonPose& operator=(LocalSkeletonPose&& other);
 
-		Vector3* positions; /**< Local bone positions at specific animation time. */
-		Quaternion* rotations; /**< Local bone rotations at specific animation time. */
-		Vector3* scales; /**< Local bone scales at specific animation time. */
-		bool* hasOverride; /**< True if the bone transform was overriden externally (local pose was ignored). */
-		UINT32 numBones; /**< Number of bones in the pose. */
+		Vector3* positions = nullptr; /**< Local bone positions at specific animation time. */
+		Quaternion* rotations = nullptr; /**< Local bone rotations at specific animation time. */
+		Vector3* scales = nullptr; /**< Local bone scales at specific animation time. */
+		bool* hasOverride = nullptr; /**< True if the bone transform was overriden externally (local pose was ignored). */
+		UINT32 numBones = 0; /**< Number of bones in the pose. */
 	};
 
 	/** Contains internal information about a single bone in a Skeleton. */
@@ -165,6 +165,9 @@ namespace bs
 		/** Returns the inverse bind pose for the bone at the provided index. */
 		const Matrix4& getInvBindPose(UINT32 idx) const { return mInvBindPoses[idx]; }
 
+		/** Calculates the bind-pose transform of the bone at the specified index. */
+		Transform calcBoneTransform(UINT32 idx) const;
+
 		/** 
 		 * Creates a new Skeleton. 
 		 *
@@ -174,7 +177,7 @@ namespace bs
 		static SPtr<Skeleton> create(BONE_DESC* bones, UINT32 numBones);
 
 	private:
-		Skeleton();
+		Skeleton() = default;
 		Skeleton(BONE_DESC* bones, UINT32 numBones);
 
 		UINT32 mNumBones = 0;

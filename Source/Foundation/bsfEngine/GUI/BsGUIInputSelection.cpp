@@ -1,7 +1,7 @@
 //************************************ bs::framework - Copyright 2018 Marko Pintera **************************************//
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "GUI/BsGUIInputSelection.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "2D/BsImageSprite.h"
 #include "GUI/BsGUIElement.h"
 #include "GUI/BsGUIManager.h"
@@ -183,7 +183,7 @@ namespace bs
 		mSelectionAnchor = charIdx;
 	}
 
-	void GUIInputSelection::clearSelection()
+	void GUIInputSelection::clearSelectionVisuals()
 	{
 		for(auto& sprite : mSprites)
 			bs_delete(sprite);
@@ -193,7 +193,7 @@ namespace bs
 
 	void GUIInputSelection::selectionDragStart(UINT32 caretPos)
 	{
-		clearSelection();
+		clearSelectionVisuals();
 
 		showSelection(caretPos); 
 		mSelectionDragAnchor = caretPos;
@@ -227,7 +227,7 @@ namespace bs
 	void GUIInputSelection::selectionDragEnd()
 	{
 		if(isSelectionEmpty())
-			clearSelection();
+			clearSelectionVisuals();
 	}
 
 	void GUIInputSelection::moveSelectionToCaret(UINT32 caretPos)
@@ -246,13 +246,13 @@ namespace bs
 		}
 
 		if(mSelectionStart == mSelectionEnd)
-			clearSelection();
+			clearSelectionVisuals();
 	}
 
 	void GUIInputSelection::selectAll()
 	{
 		mSelectionStart = 0;
-		mSelectionEnd = (UINT32)mTextDesc.text.size();
+		mSelectionEnd = mNumChars;
 	}
 
 	bool GUIInputSelection::isSelectionEmpty() const

@@ -13,6 +13,14 @@ namespace bs
 	class LightProbeVolume;
 	struct RenderSettings;
 	struct EvaluatedAnimationData;
+	struct ParticleSimulationData;
+
+	/** Contains various data evaluated by external systems on a per-frame basis that is to be used by the renderer. */
+	struct PerFrameData
+	{
+		const EvaluatedAnimationData* animation = nullptr;
+		const ParticleSimulationData* particles = nullptr;
+	};
 
 	namespace ct
 	{
@@ -138,7 +146,7 @@ namespace bs
 		virtual const StringID& getName() const = 0;
 
 		/** Called in order to render all currently active cameras. */
-		virtual void renderAll(const EvaluatedAnimationData* animData) = 0;
+		virtual void renderAll(PerFrameData perFrameData) = 0;
 
 		/**
 		 * Called whenever a new camera is created.
@@ -262,6 +270,27 @@ namespace bs
 		 */
 		virtual void notifySkyboxRemoved(Skybox* skybox) { }
 
+		/**
+		 * Called whenever a new particle system is created.
+		 *
+		 * @note	Core thread.
+		 */
+		virtual void notifyParticleSystemAdded(ParticleSystem* particleSystem) { }
+
+		/**
+		 * Called whenever a particle system is updated.
+		 *
+		 * @note	Core thread.
+		 */
+		virtual void notifyParticleSystemUpdated(ParticleSystem* particleSystem, bool tfrmOnly) { }
+
+		/**
+		 * Called whenever a particle system is destroyed.
+		 *
+		 * @note	Core thread.
+		 */
+		virtual void notifyParticleSystemRemoved(ParticleSystem* particleSystem) { }
+
 		/** 
 		 * Captures the scene at the specified location into a cubemap. 
 		 * 
@@ -347,17 +376,15 @@ namespace bs
 		 * Allows the caller to override some built-in renderer functionality with a custom shader. The exact set of
 		 * overridable shaders can be retrieved through getShaderExtensionPointInfo().
 		 */
-		virtual void setGlobalShaderOverride(const String& name, const HShader& shader) { }
+		virtual void setGlobalShaderOverride(const String& name, const SPtr<bs::Shader>& shader) { }
 
+		/**
+		 * Provides the same functionality as setGlobalShaderOverride(const String&, const SPtr<bs::Shader>&), but it automatically
+		 * evaluates all sub-shaders of the provided shader and registers them as overrides.
+		 */
+		void setGlobalShaderOverride(const SPtr<bs::Shader>& shader);
 	protected:
 		friend class RendererTask;
-
-		/**	Contains information about a render callback. */
-		struct RenderCallbackData
-		{
-			bool overlay;
-			std::function<void()> callback;
-		};
 
 		/**
 		 * Executes all renderer tasks queued for this frame.
@@ -405,7 +432,7 @@ namespace bs
 		struct PrivatelyConstruct {};
 
 	public:
-		RendererTask(const PrivatelyConstruct& dummy, const String& name, std::function<bool()> taskWorker);
+		RendererTask(const PrivatelyConstruct& dummy, String name, std::function<bool()> taskWorker);
 
 		/**
 		 * Creates a new task. Task should be provided to Renderer in order for it to start.
@@ -415,7 +442,7 @@ namespace bs
 		 *							multiple frames, in which case this method should return false (if there's more
 		 *							work to be done), or true (if the task has completed).
 		 */
-		static SPtr<RendererTask> create(const String& name, std::function<bool()> taskWorker);
+		static SPtr<RendererTask> create(String name, std::function<bool()> taskWorker);
 
 		/** Returns true if the task has completed. */
 		bool isComplete() const;
@@ -441,7 +468,7 @@ namespace bs
 
 		String mName;
 		std::function<bool()> mTaskWorker;
-		std::atomic<UINT32> mState; /**< 0 - Inactive, 1 - In progress, 2 - Completed, 3 - Canceled */
+		std::atomic<UINT32> mState{0}; /**< 0 - Inactive, 1 - In progress, 2 - Completed, 3 - Canceled */
 	};
 
 	/** @} */

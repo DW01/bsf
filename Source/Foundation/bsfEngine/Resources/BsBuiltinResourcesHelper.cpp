@@ -9,7 +9,7 @@
 #include "Renderer/BsRendererMaterialManager.h"
 #include "Renderer/BsRendererMaterial.h"
 #include "Text/BsFontImportOptions.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "Image/BsTexture.h"
 #include "Reflection/BsRTTIType.h"
 #include "FileSystem/BsDataStream.h"
@@ -69,7 +69,7 @@ namespace bs
 
 			Path relativePath = fileName;
 			Path relativeAssetPath = fileName;
-			relativeAssetPath.setFilename(relativeAssetPath.getWFilename() + L".asset");
+			relativeAssetPath.setFilename(relativeAssetPath.getFilename() + u8".asset");
 
 			SPtr<ImportOptions> importOptions = gImporter().createImportOptions(filePath);
 			if (importOptions != nullptr)
@@ -292,7 +292,7 @@ namespace bs
 		}
 	}
 
-	void BuiltinResourcesHelper::importFont(const Path& inputFile, const WString& outputName, const Path& outputFolder,
+	void BuiltinResourcesHelper::importFont(const Path& inputFile, const String& outputName, const Path& outputFolder,
 		const Vector<UINT32>& fontSizes, bool antialiasing, const UUID& UUID, const SPtr<ResourceManifest>& manifest)
 	{
 		SPtr<ImportOptions> fontImportOptions = Importer::instance().createImportOptions(inputFile);
@@ -308,9 +308,9 @@ namespace bs
 
 		HFont font = Importer::instance().import<Font>(inputFile, fontImportOptions, UUID);
 
-		WString fontName = outputName;
+		String fontName = outputName;
 		Path outputPath = outputFolder + fontName;
-		outputPath.setFilename(outputPath.getWFilename() + L".asset");
+		outputPath.setFilename(outputPath.getFilename() + u8".asset");
 
 		Resources::instance().save(font, outputPath, true);
 		manifest->registerResource(font.getUUID(), outputPath);
@@ -325,11 +325,13 @@ namespace bs
 			UINT32 pageIdx = 0;
 			for (auto tex : fontData->texturePages)
 			{
-				texPageOutputPath.setFilename(fontName + L"_" + toWString(size) + L"_texpage_" +
-					toWString(pageIdx) + L".asset");
+				texPageOutputPath.setFilename(fontName + u8"_" + toString(size) + u8"_texpage_" +
+					toString(pageIdx) + u8".asset");
 
 				Resources::instance().save(tex, texPageOutputPath, true);
 				manifest->registerResource(tex.getUUID(), texPageOutputPath);
+
+				pageIdx++;
 			}
 		}
 	}
@@ -478,7 +480,7 @@ namespace bs
 			}
 
 			Path path = folder + name.c_str();
-			path.setFilename(path.getWFilename() + L".asset");
+			path.setFilename(path.getFilename() + u8".asset");
 
 			manifest->registerResource(UUID(uuid.c_str()), path);
 			
@@ -511,13 +513,13 @@ namespace bs
 
 				Path texPath = folder + name.c_str();
 
-				texPath.setFilename(texPath.getWFilename() + L"48.asset");
+				texPath.setFilename(texPath.getFilename() + u8"48.asset");
 				manifest->registerResource(UUID(texUUIDs[0].c_str()), texPath);
 
-				texPath.setFilename(texPath.getWFilename() + L"32.asset");
+				texPath.setFilename(texPath.getFilename() + u8"32.asset");
 				manifest->registerResource(UUID(texUUIDs[1].c_str()), texPath);
 
-				texPath.setFilename(texPath.getWFilename() + L"16.asset");
+				texPath.setFilename(texPath.getFilename() + u8"16.asset");
 				manifest->registerResource(UUID(texUUIDs[2].c_str()), texPath);
 
 				if(type == AssetType::Sprite)
@@ -630,7 +632,7 @@ namespace bs
 					program->blockUntilCoreInitialized();
 					if(!program->isCompiled())
 					{
-						String errMsg = "Error occured while compiling a shader \"" + toString(shader->getName()) 
+						String errMsg = "Error occured while compiling a shader \"" + shader->getName() 
 							+ "\". Error message: " + program->getCompileErrorMessage();
 
 #if BS_DEBUG_MODE
@@ -649,7 +651,7 @@ namespace bs
 
 	void BuiltinResourcesHelper::updateShaderBytecode(const Path& path)
 	{
-		HShader shader = gResources().load<Shader>(path);
+		HShader shader = gResources().load<Shader>(path, ResourceLoadFlag::KeepSourceData);
 		if (!shader)
 			return;
 
@@ -690,5 +692,174 @@ namespace bs
 			technique->compile();
 
 		gResources().save(shader, path, true, true);
+	}
+
+	GUIElementStyle BuiltinResourcesHelper::loadGUIStyleFromJSON(const nlohmann::json& entry, 
+		const GUIElementStyleLoader& loader)
+	{
+		GUIElementStyle style;
+
+		if(entry.count("font") > 0)
+		{
+			std::string font = entry["font"];
+			style.font = loader.loadFont(font.c_str());
+		}
+
+		if(entry.count("fontSize") > 0)
+			style.fontSize = entry["fontSize"];
+
+		if(entry.count("textHorzAlign") > 0)
+			style.textHorzAlign = entry["textHorzAlign"];
+
+		if(entry.count("textVertAlign") > 0)
+			style.textVertAlign = entry["textVertAlign"];
+
+		if(entry.count("imagePosition") > 0)
+			style.imagePosition = entry["imagePosition"];
+
+		if(entry.count("wordWrap") > 0)
+			style.wordWrap = entry["wordWrap"];
+
+		const auto loadState = [&loader, &entry](const char* name, GUIElementStyle::GUIElementStateStyle& state)
+		{
+			if (entry.count(name) == 0)
+				return false;
+
+			nlohmann::json subEntry = entry[name];
+
+			if(subEntry.count("texture") > 0)
+			{
+				std::string texture = subEntry["texture"];
+				state.texture = loader.loadTexture(texture.c_str());
+			}
+
+			if(subEntry.count("textColor") > 0)
+			{
+				nlohmann::json colorEntry = subEntry["textColor"];
+
+				state.textColor.r = colorEntry["r"];
+				state.textColor.g = colorEntry["g"];
+				state.textColor.b = colorEntry["b"];
+				state.textColor.a = colorEntry["a"];
+			}
+
+			return true;
+		};
+
+		loadState("normal", style.normal);
+
+		const bool hasHover = loadState("hover", style.hover);
+		if(!hasHover)
+			style.hover = style.normal;
+
+		if(!loadState("active", style.active))
+			style.active = style.normal;
+
+		if(!loadState("focused", style.focused))
+			style.focused = style.normal;
+
+		if(!loadState("focusedHover", style.focusedHover))
+		{
+			if(hasHover)
+				style.focusedHover = style.hover;
+			else
+				style.focusedHover = style.normal;
+		}
+
+		loadState("normalOn", style.normalOn);
+
+		const bool hasHoverOn = loadState("hoverOn", style.hoverOn);
+		if(!hasHoverOn)
+			style.hoverOn = style.normalOn;
+
+		if(!loadState("activeOn", style.activeOn))
+			style.activeOn = style.normalOn;
+
+		if(!loadState("focusedOn", style.focusedOn))
+			style.focusedOn = style.normalOn;
+
+		if(!loadState("focusedHoverOn", style.focusedHoverOn))
+		{
+			if(hasHoverOn)
+				style.focusedHoverOn = style.hoverOn;
+			else
+				style.focusedHoverOn = style.normalOn;
+		}
+
+		const auto loadRectOffset = [entry](const char* name, RectOffset& state)
+		{
+			if (entry.count(name) == 0)
+				return;
+
+			nlohmann::json subEntry = entry[name];
+			state.left = subEntry["left"];
+			state.right = subEntry["right"];
+			state.top = subEntry["top"];
+			state.bottom = subEntry["bottom"];
+		};
+
+		loadRectOffset("border", style.border);
+		loadRectOffset("margins", style.margins);
+		loadRectOffset("contentOffset", style.contentOffset);
+		loadRectOffset("padding", style.padding);
+
+		if(entry.count("width") > 0)
+			style.width = entry["width"];
+
+		if(entry.count("height") > 0)
+			style.height = entry["height"];
+
+		if(entry.count("minWidth") > 0)
+			style.minWidth = entry["minWidth"];
+
+		if(entry.count("maxWidth") > 0)
+			style.maxWidth = entry["maxWidth"];
+
+		if(entry.count("minHeight") > 0)
+			style.minHeight = entry["minHeight"];
+		
+		if(entry.count("maxHeight") > 0)
+			style.maxHeight = entry["maxHeight"];
+
+		if(entry.count("fixedWidth") > 0)
+			style.fixedWidth = entry["fixedWidth"];
+
+		if(entry.count("fixedHeight") > 0)
+			style.fixedHeight = entry["fixedHeight"];
+
+		if(entry.count("subStyles") > 0)
+		{
+			nlohmann::json subStyles = entry["subStyles"];
+			for (auto& subStyle : subStyles)
+			{
+				std::string name = subStyle["name"];
+				std::string styleName = subStyle["style"];
+
+				style.subStyles.insert(std::make_pair(name.c_str(), styleName.c_str()));
+			}
+		}
+
+		return style;
+	}
+
+	BuiltinResourceGUIElementStyleLoader::BuiltinResourceGUIElementStyleLoader(const Path& fontPath, const Path& texturePath)
+		:mFontPath(fontPath), mTexturePath(texturePath)
+	{ }
+
+
+	HSpriteTexture BuiltinResourceGUIElementStyleLoader::loadTexture(const String& name) const
+	{
+		Path texturePath = mTexturePath;
+		texturePath.append(u8"sprite_" + name + u8".asset");
+
+		return gResources().load<SpriteTexture>(texturePath);
+	}
+
+	HFont BuiltinResourceGUIElementStyleLoader::loadFont(const String& name) const
+	{
+		Path fontPath = mFontPath;
+		fontPath.append(name + u8".asset");
+
+		return gResources().load<Font>(fontPath);
 	}
 }

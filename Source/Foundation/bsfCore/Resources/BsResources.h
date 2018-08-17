@@ -171,15 +171,18 @@ namespace bs
 		 * @param[in]	resource 	Handle to the resource.
 		 * @param[in]	filePath 	Full pathname of the file to save as.
 		 * @param[in]	overwrite	If true, any existing resource at the specified location will be overwritten.
-		 * @param[in]	compress	Should the resource be compressed before saving. Some resource have data that is already
-		 *							compressed and this option will be ignored for such resources.
+		 * @param[in]	compress	Should the resource be compressed before saving. Some resources have data that is
+		 *							already	compressed and this option will be ignored for such resources.
 		 * 			
 		 * @note
-		 * If the resource is a GpuResource and you are in some way modifying it from the core thread, make sure all those
-		 * commands are submitted before you call this method. Otherwise an obsolete version of the resource might get saved.
+		 * If the resource is used on the GPU and you are in some way modifying it from the core thread, make sure all 
+		 * core thread commands are submitted and executed before you call this method. Otherwise an obsolete version of
+		 * the resource might get saved.
 		 * @note
 		 * If saving a core thread resource this is a potentially very slow operation as we must wait on the core thread 
 		 * and the GPU in order to read the resource.
+		 * @note
+		 * Thread safe if you guarantee the resource isn't being written to from another thread.
 		 */
 		void save(const HResource& resource, const Path& filePath, bool overwrite, bool compress = false);
 
@@ -187,15 +190,18 @@ namespace bs
 		 * Saves an existing resource to its previous location.
 		 *
 		 * @param[in]	resource 	Handle to the resource.
-		 * @param[in]	compress	Should the resource be compressed before saving. Some resource have data that is already
-		 *							compressed and this option will be ignored for such resources.
+		 * @param[in]	compress	Should the resource be compressed before saving. Some resources have data that is
+		 *							already compressed and this option will be ignored for such resources.
 		 *
-		 * @note	
-		 * If the resource is a GpuResource and you are in some way modifying it from the Core thread, make sure all those
-		 * commands are submitted before you call this method. Otherwise an obsolete version of the resource might get saved.
+		 * @note
+		 * If the resource is used on the GPU and you are in some way modifying it from the core thread, make sure all 
+		 * core thread commands are submitted and executed before you call this method. Otherwise an obsolete version of
+		 * the resource might get saved.
 		 * @note
 		 * If saving a core thread resource this is a potentially very slow operation as we must wait on the core thread 
 		 * and the GPU in order to read the resource.
+		 * @note
+		 * Thread safe if you guarantee the resource isn't being written to from another thread.
 		 */
 		void save(const HResource& resource, bool compress = false);
 
@@ -300,6 +306,12 @@ namespace bs
 		/** Returns an existing handle for the specified UUID if one exists, or creates a new one. */
 		HResource _getResourceHandle(const UUID& uuid);
 
+		/** 
+		 * Same as save() except it saves the resource without registering it in the default manifest, requiring a handle, 
+		 * or checking for overwrite.
+		 */
+		void _save(const SPtr<Resource>& resource, const Path& filePath, bool compress);
+
 		/** @} */
 	private:
 		friend class ResourceHandleBase;
@@ -329,6 +341,7 @@ namespace bs
 
 		Mutex mInProgressResourcesMutex;
 		Mutex mLoadedResourceMutex;
+		Mutex mDefaultManifestMutex;
 		RecursiveMutex mDestroyMutex;
 
 		UnorderedMap<UUID, WeakResourceHandle<Resource>> mHandles;

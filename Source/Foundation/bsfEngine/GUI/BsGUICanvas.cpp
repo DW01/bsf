@@ -2,7 +2,7 @@
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "GUI/BsGUICanvas.h"
 #include "GUI/BsGUISkin.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "GUI/BsGUIDimensions.h"
 #include "GUI/BsGUITexture.h"
 #include "Utility/BsShapeMeshes2D.h"
@@ -179,7 +179,7 @@ namespace bs
 		_markContentAsDirty();
 	}
 
-	void GUICanvas::drawText(const WString& text, const Vector2I& position, const HFont& font, UINT32 size, 
+	void GUICanvas::drawText(const String& text, const Vector2I& position, const HFont& font, UINT32 size, 
 		const Color& color, UINT8 depth)
 	{
 		mElements.push_back(CanvasElement());

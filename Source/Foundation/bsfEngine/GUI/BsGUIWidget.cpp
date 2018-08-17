@@ -5,6 +5,7 @@
 #include "GUI/BsGUISkin.h"
 #include "GUI/BsGUILabel.h"
 #include "GUI/BsGUIPanel.h"
+#include "GUI/BsGUINavGroup.h"
 #include "Math/BsVector2I.h"
 #include "Components/BsCCamera.h"
 #include "RenderAPI/BsViewport.h"
@@ -14,14 +15,14 @@
 namespace bs
 {
 	GUIWidget::GUIWidget(const SPtr<Camera>& camera)
-		: mCamera(camera), mPanel(nullptr), mDepth(0), mIsActive(true), mPosition(BsZero), mRotation(BsIdentity)
+		: mCamera(camera), mPanel(nullptr), mDepth(128), mIsActive(true), mPosition(BsZero), mRotation(BsIdentity)
 		, mScale(Vector3::ONE), mTransform(BsIdentity), mCachedRTId(0), mWidgetIsDirty(false)
 	{
 		construct(camera);
 	}
 
 	GUIWidget::GUIWidget(const HCamera& camera)
-		: mCamera(camera->_getCamera()), mPanel(nullptr), mDepth(0), mIsActive(true), mPosition(BsZero)
+		: mCamera(camera->_getCamera()), mPanel(nullptr), mDepth(128), mIsActive(true), mPosition(BsZero)
 		, mRotation(BsIdentity), mScale(Vector3::ONE), mTransform(BsIdentity), mCachedRTId(0), mWidgetIsDirty(false)
 	{
 		construct(mCamera);
@@ -39,6 +40,8 @@ namespace bs
 				mCachedRTId = target->getInternalID();
 			}
 		}
+
+		mDefaultNavGroup = GUINavGroup::create();
 
 		GUIManager::instance().registerWidget(this);
 
@@ -299,7 +302,7 @@ namespace bs
 		if(mSkin.isLoaded())
 			return *mSkin;
 		else
-			return *BuiltinResources::instance().getEmptyGUISkin();
+			return *BuiltinResources::instance().getGUISkin();
 	}
 
 	void GUIWidget::setCamera(const SPtr<Camera>& camera)

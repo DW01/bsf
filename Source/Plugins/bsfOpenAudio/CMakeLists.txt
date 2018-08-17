@@ -25,6 +25,13 @@ target_link_libraries(bsfOpenAudio PRIVATE ${ogg_LIBRARIES})
 target_link_libraries(bsfOpenAudio PRIVATE ${vorbis_LIBRARIES})
 target_link_libraries(bsfOpenAudio PRIVATE ${OpenAL_LIBRARIES})
 
+## OS libs
+if(APPLE) # MacOS
+	target_link_framework(bsfOpenAudio CoreAudio)
+	target_link_framework(bsfOpenAudio AudioUnit)
+	target_link_framework(bsfOpenAudio AudioToolbox)
+endif()
+
 ## Local libs
 target_link_libraries(bsfOpenAudio PRIVATE bsf)
 
@@ -33,18 +40,7 @@ set_property(TARGET bsfOpenAudio PROPERTY FOLDER Plugins)
 
 # Install
 if(AUDIO_MODULE MATCHES "OpenAudio")
-	install(
-		TARGETS bsfOpenAudio
-		RUNTIME DESTINATION bin
-		LIBRARY DESTINATION lib
-		ARCHIVE DESTINATION lib
-	)
-	
-	if(WIN32)
-		install(
-			FILES $<TARGET_PDB_FILE:bsfOpenAudio> 
-			DESTINATION bin 
-			OPTIONAL
-		)
-	endif()
+	install_bsf_target(bsfOpenAudio)
 endif()
+
+conditional_cotire(bsfOpenAudio)

@@ -61,7 +61,7 @@ namespace bs
 		void stop() override;
 
 		/** @copydoc AudioSource::getState */
-		AudioSourceState getState() const override { return mState; }
+		AudioSourceState getState() const override;
 
 	private:
 		friend class OAAudio;
@@ -74,6 +74,9 @@ namespace bs
 
 		/** Streams new data into the source audio buffer, if needed. */
 		void stream();
+
+		/** Same as stream(), but without a mutex lock (up to the caller to lock it). */
+		void streamUnlocked();
 
 		/** Starts data streaming from the currently attached audio clip. */
 		void startStreaming();
@@ -108,7 +111,6 @@ namespace bs
 		Vector<UINT32> mSourceIDs;
 		float mSavedTime;
 		AudioSourceState mSavedState;
-		AudioSourceState mState;
 		bool mGloballyPaused;
 
 		static const UINT32 StreamBufferCount = 3; // Maximum 32

@@ -23,18 +23,18 @@ namespace bs
 
 	public:
 		Quaternion() = default;
-		Quaternion(const Quaternion&) = default;
-		Quaternion& operator=(const Quaternion&) = default;
+		constexpr Quaternion(const Quaternion&) = default;
+		constexpr Quaternion& operator=(const Quaternion&) = default;
 
-		Quaternion(BS_ZERO zero)
+		constexpr Quaternion(BS_ZERO zero)
 			: x(0.0f), y(0.0f), z(0.0f), w(0.0f)
 		{ }
 
-		Quaternion(BS_IDENTITY)
+		constexpr Quaternion(BS_IDENTITY)
 			: x(0.0f), y(0.0f), z(0.0f), w(1.0f)
 		{ }
 
-		Quaternion(float w, float x, float y, float z)
+		constexpr Quaternion(float w, float x, float y, float z)
 			:x(x), y(y), z(z), w(w)
 		{ }
 
@@ -213,6 +213,14 @@ namespace bs
 			return Quaternion(rhs * w, rhs * x, rhs * y, rhs * z);
 		}
 
+		Quaternion operator/ (float rhs) const
+		{
+			assert(rhs != 0.0);
+
+			const float inv = 1.0f / rhs;
+			return Quaternion(w * inv, x * inv, y * inv, z * inv);
+		}
+
 		Quaternion operator- () const
 		{
 			return Quaternion(-w, -x, -y, -z);
@@ -267,7 +275,7 @@ namespace bs
 		{
 			return Quaternion(lhs * rhs.w, lhs * rhs.x, lhs * rhs.y, lhs * rhs.z);
 		}
-
+		
 		/** Calculates the dot product of this quaternion and another. */
 		float dot(const Quaternion& other) const
 		{
@@ -352,6 +360,18 @@ namespace bs
 		/** Gets the shortest arc quaternion to rotate this vector to the destination vector. */
 		static Quaternion getRotationFromTo(const Vector3& from, const Vector3& dest, const Vector3& fallbackAxis = Vector3::ZERO);
 
+		/** Returns the minimum of all the quaternion components as a new quaternion. */
+		static Quaternion min(const Quaternion& a, const Quaternion& b)
+		{
+			return Quaternion(std::min(a.x, b.x), std::min(a.y, b.y), std::min(a.z, b.z), std::min(a.w, b.w));
+		}
+
+		/** Returns the maximum of all the quaternion components as a new quaternion. */
+		static Quaternion max(const Quaternion& a, const Quaternion& b)
+		{
+			return Quaternion(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z), std::max(a.w, b.w));
+		}
+
 		static constexpr const float EPSILON = 1e-03f;
 
 		static const Quaternion ZERO;
@@ -366,3 +386,21 @@ namespace bs
 	BS_ALLOW_MEMCPY_SERIALIZATION(Quaternion);
 	/** @endcond */
 }
+
+/** @cond SPECIALIZATIONS */
+namespace std 
+{
+	template<> class numeric_limits<bs::Quaternion> 
+	{
+	public:
+		constexpr static bs::Quaternion infinity() 
+		{
+			return bs::Quaternion(
+				std::numeric_limits<float>::infinity(), 
+				std::numeric_limits<float>::infinity(), 
+				std::numeric_limits<float>::infinity(), 
+				std::numeric_limits<float>::infinity());
+		}
+	};
+} 
+/** @endcond */

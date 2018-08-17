@@ -17,7 +17,12 @@ else()
 endif()
 
 find_imported_includes(FLAC FLAC/all.h)
-find_imported_library_shared(FLAC ${FLAC_LIBNAME})
+
+if(UNIX)
+	find_imported_library(FLAC ${FLAC_LIBNAME})
+else()
+	find_imported_library_shared(FLAC ${FLAC_LIBNAME})
+endif()
 
 if(WIN32)
 	# .dll has a different name than .lib, so we must register it separately
@@ -37,7 +42,7 @@ if(WIN32)
 	install(
 		FILES ${SRC_RELEASE}
 		DESTINATION ${DESTINATION_DIR}
-		CONFIGURATIONS Release OptimizedDebug
+		CONFIGURATIONS Release RelWithDebInfo MinSizeRel
 		RENAME ${RELEASE_FILENAME}
 	)
 		

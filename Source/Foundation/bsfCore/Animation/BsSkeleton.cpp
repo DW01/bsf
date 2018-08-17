@@ -7,14 +7,12 @@
 
 namespace bs
 {
-	LocalSkeletonPose::LocalSkeletonPose()
-		: positions(nullptr), rotations(nullptr), scales(nullptr), hasOverride(nullptr), numBones(0)
-	{ }
-
-	LocalSkeletonPose::LocalSkeletonPose(UINT32 numBones)
+	LocalSkeletonPose::LocalSkeletonPose(UINT32 numBones, bool individualOverride)
 		: numBones(numBones)
 	{
-		UINT32 elementSize = sizeof(Vector3) * 2 + sizeof(Quaternion) + sizeof(bool);
+		const UINT32 overridesPerBone = individualOverride ? 3 : 1;
+
+		UINT32 elementSize = sizeof(Vector3) * 2 + sizeof(Quaternion) + sizeof(bool) * overridesPerBone;
 		UINT8* buffer = (UINT8*)bs_alloc(elementSize * numBones);
 
 		positions = (Vector3*)buffer;
@@ -30,7 +28,6 @@ namespace bs
 	}
 
 	LocalSkeletonPose::LocalSkeletonPose(UINT32 numPos, UINT32 numRot, UINT32 numScale)
-		: hasOverride(nullptr), numBones(0)
 	{
 		UINT32 bufferSize = sizeof(Vector3) * numPos + sizeof(Quaternion) * numRot + sizeof(Vector3) * numScale;
 		UINT8* buffer = (UINT8*)bs_alloc(bufferSize);
@@ -45,15 +42,12 @@ namespace bs
 	}
 
 	LocalSkeletonPose::LocalSkeletonPose(LocalSkeletonPose&& other)
-		: positions(other.positions), rotations(other.rotations), scales(other.scales), hasOverride(other.hasOverride)
-		, numBones(other.numBones)
-	{
-		other.positions = nullptr;
-		other.rotations = nullptr;
-		other.scales = nullptr;
-		other.hasOverride = nullptr;
-		other.numBones = 0;
-	}
+		: positions{std::exchange(other.positions, nullptr)}
+		, rotations{std::exchange(other.rotations, nullptr)}
+		, scales{std::exchange(other.scales, nullptr)}
+		, hasOverride{std::exchange(other.hasOverride, nullptr)}
+		, numBones(std::exchange(other.numBones, 0))
+	{ }
 
 	LocalSkeletonPose::~LocalSkeletonPose()
 	{
@@ -68,24 +62,15 @@ namespace bs
 			if (positions != nullptr)
 				bs_free(positions);
 
-			positions = other.positions;
-			rotations = other.rotations;
-			scales = other.scales;
-			hasOverride = other.hasOverride;
-			numBones = other.numBones;
-
-			other.positions = nullptr;
-			other.rotations = nullptr;
-			other.scales = nullptr;
-			other.hasOverride = nullptr;
-			other.numBones = 0;
+			positions = std::exchange(other.positions, nullptr);
+			rotations = std::exchange(other.rotations, nullptr);
+			scales = std::exchange(other.scales, nullptr);
+			hasOverride = std::exchange(other.hasOverride, nullptr);
+			numBones = std::exchange(other.numBones, 0);
 		}
 
 		return *this;
 	}
-
-	Skeleton::Skeleton()
-	{ }
 
 	Skeleton::Skeleton(BONE_DESC* bones, UINT32 numBones)
 		: mNumBones(numBones), mBoneTransforms(bs_newN<Transform>(numBones)), mInvBindPoses(bs_newN<Matrix4>(numBones))
@@ -332,6 +317,24 @@ namespace bs
 
 		bs_stack_free(isGlobal);
 		bs_stack_free(hasAnimCurve);
+	}
+
+	Transform Skeleton::calcBoneTransform(UINT32 idx) const
+	{
+		if(idx >= mNumBones)
+			return Transform::IDENTITY;
+
+		Transform output = mBoneTransforms[idx];
+
+		UINT32 parentIdx = mBoneInfo[idx].parent;
+		while(parentIdx != (UINT32)-1)
+		{
+			output.makeWorld(mBoneTransforms[parentIdx]);
+
+			parentIdx = mBoneInfo[parentIdx].parent;
+		}
+
+		return output;
 	}
 
 	UINT32 Skeleton::getRootBoneIndex() const

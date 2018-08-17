@@ -5,8 +5,57 @@
 #include <uuid/uuid.h>
 #include <sys/utsname.h>
 
+#include <unicode/ustring.h>
+#include <unicode/utypes.h>
+#include <unicode/udata.h>
+#include <unicode/uversion.h>
+
 namespace bs
 {
+	/** Define a stub 'entry-point' required by ICU. **/
+	typedef struct
+	{
+		uint16_t headerSize;
+		uint8_t magic1, magic2;
+		UDataInfo info;
+		char padding[8];
+		uint32_t count, reserved;
+		int fakeNameAndData[4];
+	} ICU_Data_Header;
+
+	extern "C" U_EXPORT const ICU_Data_Header U_ICUDATA_ENTRY_POINT = {
+			32,          /* headerSize */
+			0xda,        /* magic1,  (see struct MappedData in udata.c)  */
+			0x27,        /* magic2     */
+			{            /*UDataInfo   */
+				sizeof(UDataInfo),      /* size        */
+				0,                      /* reserved    */
+
+	#if U_IS_BIG_ENDIAN
+				1,
+	#else
+				0,
+	#endif
+
+				U_CHARSET_FAMILY,
+				sizeof(UChar),
+				0,               /* reserved      */
+				{                /* data format identifier */
+					0x54, 0x6f, 0x43, 0x50}, /* "ToCP" */
+					{1, 0, 0, 0},   /* format version major, minor, milli, micro */
+					{0, 0, 0, 0}    /* dataVersion   */
+			},
+			{0, 0, 0, 0, 0, 0, 0, 0},  /* Padding[8]   */
+			0,                  /* count        */
+			0,                  /* Reserved     */
+			{                   /*  TOC structure */
+/*        {    */
+					0, 0, 0, 0  /* name and data entries.  Count says there are none,  */
+					/*  but put one in just in case.                       */
+/*        }  */
+			}
+	};
+
 	GPUInfo PlatformUtility::sGPUInfo;
 
 	void PlatformUtility::terminate(bool force)
@@ -119,6 +168,52 @@ namespace bs
 
 		// Get GPU info
 		output.gpuInfo = sGPUInfo;
+
+		return output;
+	}
+
+	String PlatformUtility::convertCaseUTF8(const String& input, bool toUpper)
+	{
+		UErrorCode errorCode = U_ZERO_ERROR;
+
+		auto inputLen = (int32_t)input.size();
+		int32_t bufferLen = 0;
+		u_strFromUTF8(nullptr, 0, &bufferLen, input.data(), inputLen, &errorCode);
+
+		auto uStr = bs_stack_alloc<UChar>((UINT32)bufferLen);
+		int32_t uStrLen = 0;
+		errorCode = U_ZERO_ERROR;
+		u_strFromUTF8(uStr, bufferLen * sizeof(UChar), &uStrLen, input.data(), inputLen, &errorCode);
+
+		errorCode = U_ZERO_ERROR;
+		if(toUpper)
+			bufferLen = u_strToUpper(nullptr, 0, uStr, uStrLen, nullptr, &errorCode);
+		else
+			bufferLen = u_strToLower(nullptr, 0, uStr, uStrLen, nullptr, &errorCode);
+
+		auto convertedUStr = bs_stack_alloc<UChar>((UINT32) bufferLen);
+		int32_t convertedUStrLen = 0;
+
+		errorCode = U_ZERO_ERROR;
+		if(toUpper)
+			convertedUStrLen = u_strToUpper(convertedUStr, bufferLen * sizeof(UChar), uStr, uStrLen, nullptr, &errorCode);
+		else
+			convertedUStrLen = u_strToLower(convertedUStr, bufferLen * sizeof(UChar), uStr, uStrLen, nullptr, &errorCode);
+
+		errorCode = U_ZERO_ERROR;
+		u_strToUTF8(nullptr, 0, &bufferLen, convertedUStr, convertedUStrLen, &errorCode);
+
+		int32_t outputStrLen = 0;
+		auto outputStr = bs_stack_alloc<char>(bufferLen);
+
+		errorCode = U_ZERO_ERROR;
+		u_strToUTF8(outputStr, bufferLen, &outputStrLen, convertedUStr, convertedUStrLen, &errorCode);
+
+		String output(outputStr, outputStrLen);
+
+		bs_stack_free(outputStr);
+		bs_stack_free(convertedUStr);
+		bs_stack_free(uStr);
 
 		return output;
 	}

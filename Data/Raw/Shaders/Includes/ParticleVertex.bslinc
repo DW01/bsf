@@ -1,0 +1,112 @@
+#include "$ENGINE$\PerCameraData.bslinc"
+
+mixin ParticleVertex
+{
+	mixin PerCameraData;
+
+	variations
+	{
+		ORIENT = { 0, 1, 2 }; // 0 - Camera plane, 1 - Camera position, 2 - Axis
+		LOCK_Y = { false, true };
+	};
+
+	code
+	{
+		struct VertexInput
+		{
+			float2 position : POSITION;
+			float2 uv0 : TEXCOORD0;
+			uint instanceId	: SV_InstanceID;		
+		};
+	
+		struct VStoFS
+		{
+			float4 position : SV_Position;
+			float2 uv0 : TEXCOORD0;
+			float4 color : COLOR0;
+		};
+		
+		Texture2D gPositionAndRotTex; // position in .xyz, rotation in radians in .w
+		Texture2D gColorTex;
+		Texture2D gSizeAndFrameIdxTex; // size in .xy, uv flip encoded in sign of .xy, frame index in .z, .w unused
+		Buffer<uint2> gIndices;
+
+		[internal]
+		cbuffer ParticleParams
+		{
+			float4x4 gWorldTfrm;
+			float4 gSubImageSize; // .xy column/row count, .zw inverse column/row count
+			float2 gUVOffset;
+			float2 gUVSize;
+			float3 gAxisUp;
+			uint gTexSize;
+			float3 gAxisRight;
+		}		
+
+		VStoFS vsmain(VertexInput input)
+		{
+			uint3 pixelPos;
+			pixelPos.xy = gIndices[input.instanceId];
+			pixelPos.z = 0;
+		
+			float4 posAndRot = gPositionAndRotTex.Load(pixelPos);
+			float4 worldPosition = mul(gWorldTfrm, float4(posAndRot.xyz, 1.0f));
+			
+			float3 sizeAndFrame = gSizeAndFrameIdxTex.Load(pixelPos).xyz;
+			float2 uvflip = sign(sizeAndFrame.xy);
+			float2 size = abs(sizeAndFrame.xy);
+			
+			float frame = sizeAndFrame.z;
+			
+			float3 axisRight, axisUp;
+			#if ORIENT == 2 // Axis
+				axisRight = gAxisRight;
+				axisUp = gAxisUp;
+			#elif ORIENT == 1 // Towards camera origin
+				float3 diff = gViewOrigin - worldPosition.xyz;
+				
+				float3 cameraUp = float3(gMatView[1][0], gMatView[1][1], gMatView[1][2]);
+				axisRight = normalize(cross(diff, cameraUp));
+				
+				#if LOCK_Y
+					axisUp = float3(0, 1, 0);
+				#else
+					axisUp = normalize(cross(axisRight, diff));
+				#endif
+			#else // Towards camera plane
+				axisRight = float3(gMatView[0][0], gMatView[0][1], gMatView[0][2]);
+				
+				#if LOCK_Y
+					axisUp = float3(0, 1, 0);				
+				#else
+					axisUp = float3(gMatView[1][0], gMatView[1][1], gMatView[1][2]);
+				#endif
+			#endif
+
+			float rotSin, rotCos;
+			sincos(posAndRot.w, rotSin, rotCos);
+			
+			float3 rotAxisRight = rotSin * axisUp + rotCos * axisRight;
+			float3 rotAxisUp = rotCos * axisUp - rotSin * axisRight;
+			
+			worldPosition.xyz += rotAxisRight * input.position.x * size.x + rotAxisUp * input.position.y  * size.y;	
+			
+			float2 uv;
+			uv.x = uvflip.x >= 0.0f ? input.uv0.x : 1.0f - input.uv0.x;
+			uv.y = uvflip.y >= 0.0f ? input.uv0.y : 1.0f - input.uv0.y;
+			
+			frame -= frac(frame);
+			float row = fmod(frame, gSubImageSize.x);
+			float column = floor(frame * gSubImageSize.z);
+			
+			float2 subUV = (float2(row, column) + uv) * gSubImageSize.zw;
+			
+			VStoFS output;
+			output.color = gColorTex.Load(pixelPos);
+			output.uv0 = gUVOffset + subUV * gUVSize;
+			output.position = mul(gMatViewProj, worldPosition);
+		
+			return output;
+		}
+	};
+};

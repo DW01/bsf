@@ -6,11 +6,8 @@
 #include "Managers/BsRenderAPIManager.h"
 
 #include "Platform/BsPlatform.h"
-#include "Managers/BsHardwareBufferManager.h"
 #include "RenderAPI/BsRenderWindow.h"
-#include "RenderAPI/BsViewport.h"
 #include "Math/BsVector2.h"
-#include "RenderAPI/BsGpuProgram.h"
 #include "CoreThread/BsCoreObjectManager.h"
 #include "Scene/BsGameObjectManager.h"
 #include "Utility/BsDynLib.h"
@@ -18,7 +15,6 @@
 #include "Scene/BsSceneManager.h"
 #include "Importer/BsImporter.h"
 #include "Resources/BsResources.h"
-#include "Mesh/BsMesh.h"
 #include "Scene/BsSceneObject.h"
 #include "Utility/BsTime.h"
 #include "Input/BsInput.h"
@@ -48,12 +44,13 @@
 #include "Audio/BsAudio.h"
 #include "Animation/BsAnimationManager.h"
 #include "Renderer/BsParamBlocks.h"
+#include "Particles/BsParticleManager.h"
 
 namespace bs
 {
 	CoreApplication::CoreApplication(START_UP_DESC desc)
-		: mPrimaryWindow(nullptr), mStartUpDesc(desc), mFrameStep(16666), mLastFrameTime(0), mRendererPlugin(nullptr)
-		, mIsFrameRenderingFinished(true), mSimThreadId(BS_THREAD_CURRENT_ID), mRunMainLoop(false)
+		: mPrimaryWindow(nullptr), mStartUpDesc(desc), mRendererPlugin(nullptr), mIsFrameRenderingFinished(true)
+		, mSimThreadId(BS_THREAD_CURRENT_ID), mRunMainLoop(false)
 	{
 		// Ensure all errors are reported properly
 		CrashHandler::startUp();
@@ -77,14 +74,18 @@ namespace bs
 		StringTableManager::shutDown();
 		Resources::shutDown();
 		GameObjectManager::shutDown();
+
+		// Audio manager must be released before the ResourceListenerManager, as any one-shot audio sources need to be
+		// destroyed since they implement the IResourceListener interface
+		AudioManager::shutDown();
 		ResourceListenerManager::shutDown();
 		RenderStateManager::shutDown();
+		ParticleManager::shutDown();
+		AnimationManager::shutDown();
 
 		// This must be done after all resources are released since it will unload the physics plugin, and some resources
 		// might be instances of types from that plugin.
-		AnimationManager::shutDown();
 		PhysicsManager::shutDown();
-		AudioManager::shutDown();
 
 		RendererManager::shutDown();
 
@@ -168,6 +169,7 @@ namespace bs
 		AudioManager::startUp(mStartUpDesc.audio);
 		PhysicsManager::startUp(mStartUpDesc.physics, isEditor());
 		AnimationManager::startUp();
+		ParticleManager::startUp();
 
 		for (auto& importerName : mStartUpDesc.importers)
 			loadPlugin(importerName);
@@ -223,7 +225,22 @@ namespace bs
 
 			preUpdate();
 
-			PROFILE_CALL(gSceneManager()._update(), "SceneManager");
+			// Trigger fixed updates if required
+			{
+				UINT64 step;
+				const UINT32 numIterations = gTime()._getFixedUpdateStep(step);
+
+				const float stepSeconds = step / 1000000.0f;
+				for (UINT32 i = 0; i < numIterations; i++)
+				{
+					PROFILE_CALL(gSceneManager()._fixedUpdate(), "Scene fixed update");
+					gPhysics().fixedUpdate(stepSeconds);
+
+					gTime()._advanceFixedUpdate(step);
+				}
+			}
+
+			PROFILE_CALL(gSceneManager()._update(), "Scene update");
 			gAudio()._update();
 			gPhysics().update();
 
@@ -233,9 +250,12 @@ namespace bs
 
 			postUpdate();
 
+			PerFrameData perFrameData;
+
 			// Evaluate animation after scene and plugin updates because the renderer will just now be displaying the
 			// animation we sent on the previous frame, and we want the scene information to match to what is displayed.
-			const EvaluatedAnimationData* animData = AnimationManager::instance().update();
+			perFrameData.animation = AnimationManager::instance().update();
+			perFrameData.particles = ParticleManager::instance().update(*perFrameData.animation);
 
 			// Send out resource events in case any were loaded/destroyed/modified
 			ResourceListenerManager::instance().update();
@@ -245,7 +265,7 @@ namespace bs
 			RendererManager::instance().getActive()->update();
 
 			gSceneManager()._updateCoreObjectTransforms();
-			PROFILE_CALL(RendererManager::instance().getActive()->renderAll(animData), "Render");
+			PROFILE_CALL(RendererManager::instance().getActive()->renderAll(perFrameData), "Render");
 
 			// Core and sim thread run in lockstep. This will result in a larger input latency than if I was 
 			// running just a single thread. Latency becomes worse if the core thread takes longer than sim 
@@ -305,7 +325,7 @@ namespace bs
 
 	void CoreApplication::stopMainLoop()
 	{
-		mRunMainLoop = false; // No sync primitives needed, in that rare case of 
+		mRunMainLoop = false; // No sync primitives needed, in that rare case of
 		// a race condition we might run the loop one extra iteration which is acceptable
 	}
 
@@ -316,7 +336,10 @@ namespace bs
 
 	void CoreApplication::setFPSLimit(UINT32 limit)
 	{
-		mFrameStep = (UINT64)1000000 / limit;
+		if(limit > 0)
+			mFrameStep = (UINT64)1000000 / limit;
+		else
+			mFrameStep = 0;
 	}
 
 	void CoreApplication::frameRenderingFinishedCallback()

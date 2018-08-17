@@ -13,7 +13,7 @@
 
 namespace bs
 {
-	/** @addtogroup Animation-Internal
+	/** @addtogroup Animation 
 	 *  @{
 	 */
 
@@ -23,20 +23,6 @@ namespace bs
 		Loop, /**< Loop around to the beginning/end when the last/first frame is reached. */
 		Clamp /**< Clamp to end/beginning, keeping the last/first frame active. */
 	};
-
-	/** Flags that determine which portion of Animation was changed and needs to be updated. */
-	enum class AnimDirtyStateFlag
-	{
-		Clean = 0,
-		Value = 1 << 0,
-		Layout = 1 << 1,
-		All = 1 << 2,
-		Culling = 1 << 3,
-		MorphWeights = 1 << 4
-	};
-
-	typedef Flags<AnimDirtyStateFlag> AnimDirtyState;
-	BS_FLAGS_OPERATORS(AnimDirtyStateFlag)
 
 	/** Contains information about a currently playing animation clip. */
 	struct BS_SCRIPT_EXPORT(pl:true,m:Animation) AnimationClipState
@@ -57,6 +43,26 @@ namespace bs
 		bool stopped = false;
 	};
 
+	/** @} */
+
+	/** @addtogroup Animation-Internal
+	 *  @{
+	 */
+
+	/** Flags that determine which portion of Animation was changed and needs to be updated. */
+	enum class AnimDirtyStateFlag
+	{
+		Clean = 0,
+		Value = 1 << 0,
+		Layout = 1 << 1,
+		All = 1 << 2,
+		Culling = 1 << 3,
+		MorphWeights = 1 << 4
+	};
+
+	typedef Flags<AnimDirtyStateFlag> AnimDirtyState;
+	BS_FLAGS_OPERATORS(AnimDirtyStateFlag)
+
 	/** Type of playback for animation clips. */
 	enum class AnimPlaybackType
 	{
@@ -66,6 +72,19 @@ namespace bs
 		Sampled,
 		/** Do not play the animation. */
 		None
+	};
+
+	/** Steps used for progressing through the animation when it is being sampled a single frame. */
+	enum class AnimSampleStep
+	{
+		/** No sample. Either no playback at all or normal playback. */
+		None,
+
+		/** Sample is being done this frame. */
+		Frame,
+
+		/** Sample has been performed some previous frame. */
+		Done
 	};
 
 	/** Internal information about a single playing animation clip within Animation. */
@@ -249,6 +268,9 @@ namespace bs
 		AABox mBounds;
 		bool mCullEnabled;
 
+		// Single frame sample
+		AnimSampleStep sampleStep = AnimSampleStep::None;
+
 		// Evaluation results
 		LocalSkeletonPose skeletonPose;
 		LocalSkeletonPose sceneObjectPose;
@@ -303,14 +325,20 @@ namespace bs
 		/** Determines the speed for all animations. The default value is 1.0f. Use negative values to play-back in reverse. */
 		void setSpeed(float speed);
 
-		/** Sets bounds that will be used for animation culling, if enabled. Bounds must be in world space. */
+		/** Determines bounds that will be used for animation culling, if enabled. Bounds must be in world space. */
 		void setBounds(const AABox& bounds);
+
+		/** @copydoc setBounds */
+		const AABox& getBounds() const { return mBounds; }
 
 		/** 
 		 * When enabled, animation that is not in a view of any camera will not be evaluated. View determination is done by
 		 * checking the bounds provided in setBounds().
 		 */
 		void setCulling(bool cull);
+
+		/** @copydoc setCulling */
+		bool getCulling() const { return mCull; }
 
 		/** 
 		 * Plays the specified animation clip. 
@@ -519,6 +547,7 @@ namespace bs
 		UnorderedMap<UINT64, AnimatedSceneObject> mSceneObjects;
 		Vector<float> mGenericCurveOutputs;
 		bool mGenericCurveValuesValid;
+		AnimSampleStep mSampleStep = AnimSampleStep::None;
 
 		// Animation thread only
 		SPtr<AnimationProxy> mAnimProxy;

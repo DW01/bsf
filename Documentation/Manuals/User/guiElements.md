@@ -1,14 +1,15 @@
 GUI elements									{#guiElements}
 ===============
+[TOC]
 
 A GUI element is a basic primitive that GUI is constructed out of. They can be text, buttons, input boxes, images, scroll areas and more. We'll explain what the individual GUI element types are later, but initially we'll focus on functionality common to all GUI elements.
 
-# Displaying a GUI element
+# Displaying a GUI element {#guiElements_a}
 In order to display a GUI element we must first create it. All GUI elements are created using a static *create* method.
 
 ~~~~~~~~~~~~~{.cpp}
 // GUILabel is a type of GUI element that displays the provided text on screen
-GUILabel* label = GUILabel::create(HString(L"Hello!"));
+GUILabel* label = GUILabel::create(HString("Hello!"));
 ~~~~~~~~~~~~~
 
 But just creating the element is not enough. We must also register it with our **GUIWidget**. To do that we must first retrieve the primary @ref bs::GUIPanel "GUIPanel" from the widget. **GUIPanel** serves as an element container, and by default every widget has one. Use @ref bs::CGUIWidget::getPanel() "CGUIWidget::getPanel()" to retrieve the panel.
@@ -29,7 +30,7 @@ At this point our GUI element will be displayed.
 
 ![Simple GUI](guiBasic.png) 
 
-# Destroying GUI elements
+# Destroying GUI elements {#guiElements_b}
 You do not need to manually destroy a GUI element that is registered with a layout (e.g. a **GUIPanel**). Such elements will be destroyed automatically when their parent layout is destroyed. If their parent layout is connected to **GUIWidget** root panel, then all layouts and elements will be destroyed with the widget.
 
 In case you need to manually destroy a GUI element you can call @ref bs::GUIElement::destroy "GUIElement::destroy()". 
@@ -40,10 +41,10 @@ GUIElement::destroy(label);
 
 Such element will also automatically be removed from the parent layout (if any).
 
-# Customizing GUI elements
+# Customizing GUI elements {#guiElements_c}
 All GUI elements share a common set of methods you can use to customize their position, size, color and other properties.
 
-## Changing position
+## Changing position {#guiElements_c_a}
 You can change the position of a GUI element by calling @ref bs::GUIElement::setPosition "GUIElement::setPosition()". The position is in pixels, relative to the top left corner of the render target.
 
 ~~~~~~~~~~~~~{.cpp}
@@ -51,7 +52,7 @@ You can change the position of a GUI element by calling @ref bs::GUIElement::set
 label->setPosition(50, 50);
 ~~~~~~~~~~~~~
 
-## Changing size
+## Changing size {#guiElements_c_b}
 Element size can be changed by calling @ref bs::GUIElement::setSize "GUIElement::setSize()".
 
 ~~~~~~~~~~~~~{.cpp}
@@ -66,7 +67,7 @@ You can also set both position and size at the same time by calling @ref bs::GUI
 label->setBounds(Rect2I(50, 50, 100, 30));
 ~~~~~~~~~~~~~
 
-## Changing color
+## Changing color {#guiElements_c_c}
 You can change the tint of the GUI element with @ref bs::GUIElement::setTint "GUIElement::setTint()". By default an all-white tint is used for all elements. 
 
 ~~~~~~~~~~~~~{.cpp}
@@ -74,7 +75,7 @@ You can change the tint of the GUI element with @ref bs::GUIElement::setTint "GU
 label->setTint(Color::Green);
 ~~~~~~~~~~~~~
 
-## Hiding
+## Hiding {#guiElements_c_d}
 You can temporarily hide an element with @ref bs::GUIElement::setVisible "GUIElement::setVisible()". As the name implies hidden element will not be displayed, and cannot be interacted with.
 
 ~~~~~~~~~~~~~{.cpp}
@@ -85,28 +86,28 @@ label->setVisible(false);
 label->setVisible(true);
 ~~~~~~~~~~~~~
 
-# GUI element types
+# GUI element types {#guiElements_d}
 bs::f provides a large library of existing GUI element types. We'll focus on explaining the most important ones, but you can find an exhaustive list in @ref GUI.
 
-## Label
+## Label {#guiElements_d_a}
 A label is the most basic of GUI elements, that allows no user interaction and just displays a textual string. It is created with @ref bs::GUILabel::create "GUILabel::create()", which accepts a string as input.
 
 ~~~~~~~~~~~~~{.cpp}
-GUILabel* label = GUILabel::create(HString(L"Hello!"));
+GUILabel* label = GUILabel::create(HString("Hello!"));
 mainPanel->addElement(label);
 ~~~~~~~~~~~~~
 
 Once created you can optionally change the displayed text with @ref bs::GUILabel::setContent "GUILabel::setContent()".
 
 ~~~~~~~~~~~~~{.cpp}
-label->setContent(HString(L"New text!"));
+label->setContent(HString("New text!"));
 ~~~~~~~~~~~~~
 
 > You can use *setContent* function on most GUI elements, so we won't mention it further for each individual element.
 
 ![Label](guiLabel.png) 
 
-## Texture
+## Texture {#guiElements_d_b}
 A texture is another basic GUI element that allows no interaction. All it does is display a **SpriteTexture** on the screen.
 
 To create a GUI texture element, call @ref bs::GUITexture::create "GUITexture::create()" which accepts three parameters: 
@@ -131,14 +132,14 @@ mainPanel->addElement(guiTexture);
  
 ![Texture](guiTexture.png) 
  
-## Button
+## Button {#guiElements_d_c}
 A button GUI element displays a textual string or an image and reports events about user interaction with the button.
 
 GUI elements that can have either text or image contents (or both) accept a @ref bs::GUIContent "GUIContent" structure in their *create* and *setContent* functions. It is just a container and constructed simply:
 
 ~~~~~~~~~~~~~{.cpp}
 // Contents containing only text
-GUIContent textContents(HString(L"Click me!"));
+GUIContent textContents(HString("Click me!"));
 
 // Contents containing only an image
 HTexture tex = gImporter().import<Texture>("BansheLogoRoundSmall.png");
@@ -174,7 +175,7 @@ imageButton->onClick.connect(buttonClicked);
 
 ![GUI buttons](guiButton.png) 
 
-## Toggle
+## Toggle {#guiElements_d_d}
 Toggle buttons are very similar to normal buttons, with the main difference being that they remain in a toggled state after they have been pressed. Multiple toggle buttons can also be grouped so that only one of them can be toggled at a time. Other than that they share the same interface as **GUIButton**, so we'll focus only on the additional functionality.
 
 To create an individual toggle button call @ref bs::GUIToggle::create "GUIToggle::create()".
@@ -218,7 +219,7 @@ toggle->onClick.connect(elementToggled);
 
 ![GUI toggle](guiToggle.png) 
 
-## Input box
+## Input box {#guiElements_d_e}
 Input boxes allow user to type into them using the keyboard. They can be single-line (default) or multi-line. To create them call @ref bs::GUIInputBox::create "GUIInputBox::create()" where the first parameter specifies whether the input box is single- or multi-line.
 
 ~~~~~~~~~~~~~{.cpp}
@@ -232,21 +233,21 @@ mainPanel->addElement(multiLineInput);
 Once created you can retrieve the text currently in the input box by calling @ref bs::GUIInputBox::getText "GUIInputBox::getText()".
 
 ~~~~~~~~~~~~~{.cpp}
-WString userInput = singleLineInput->getText();
+String userInput = singleLineInput->getText();
 ~~~~~~~~~~~~~
 
 You can also programatically set text in the box with @ref bs::GUIInputBox::setText "GUIInputBox::setText()".
 
 ~~~~~~~~~~~~~{.cpp}
-multiLineInput->setText(L"Type in me!");
+multiLineInput->setText("Type in me!");
 ~~~~~~~~~~~~~
 
 If you wish to get notified as the user is inputting text you can use the @ref bs::GUIInputBox::onValueChanged "GUIInputBox::onValueChanged" event. It will be called whenever the user types a new character (or deletes an existing one).
 
 ~~~~~~~~~~~~~{.cpp}
-auto respondToInput = [](const WString& text)
+auto respondToInput = [](const String& text)
 {
-	gDebug().logDebug("New input box value: " + toString(text));
+	gDebug().logDebug("New input box value: " + text);
 };
 
 multiLineInput->onValueChanged.connect(respondToInput);
@@ -255,10 +256,10 @@ multiLineInput->onValueChanged.connect(respondToInput);
 Sometimes you might want to limit what is user allowed to input (for example, just numbers). In that case you can use @ref bs::GUIInputBox::setFilter "GUIInputBox::setFilter()" to set a custom filter callback. The callback accepts a potential input, and returns true if it will be accepted.
 
 ~~~~~~~~~~~~~{.cpp}
-auto intFilter = [](const WString& str)
+auto intFilter = [](const String& str)
 {
 	// Use regex to match only integers
-	return std::regex_match(str, std::wregex(L"-?(\\d+)?"));
+	return std::regex_match(str, std::regex("-?(\\d+)?"));
 };
 
 // This input box now accepts only integers
@@ -267,16 +268,16 @@ singleLineInput->setFilter(intFilter);
 
 ![Input boxes](guiInputBox.png) 
 
-## List box
+## List box {#guiElements_d_f}
 List boxes allow you to provide multiple elements the user can pick between. They can allow selection of just a single element (default), or allow multi-selection. List boxes are created by calling @ref bs::GUIListBox::create "GUIListBox::create()" where the first argument represents a list of entries to display on the list, while the second argument specifies whether the list should allow multi-selection or not.
 
 ~~~~~~~~~~~~~{.cpp}
 Vector<HString> listElements =
 {
-	HString(L"Orange"),
-	HString(L"Apple"),
-	HString(L"Banana"),
-	HString(L"Strawberry")
+	HString("Orange"),
+	HString("Apple"),
+	HString("Banana"),
+	HString("Strawberry")
 };
 
 // Create a single-select list with four elements
@@ -298,8 +299,8 @@ for(auto& isSelected : selection)
 {
 	if (isSelected)
 	{
-		WString selectedValue = listElements[idx].getValue();
-		gDebug().logDebug("Element " + toString(selectedValue) + " is selected");
+		String selectedValue = listElements[idx].getValue();
+		gDebug().logDebug("Element " + selectedValue + " is selected");
 	}
 
 	idx++;
@@ -311,12 +312,12 @@ You can also get notified immediately as the selection is changing by subscribin
 ~~~~~~~~~~~~~{.cpp}
 auto selectionToggled = [=](UINT32 idx, bool enabled)
 {
-	WString selectedValue = listElements[idx].getValue();
+	String selectedValue = listElements[idx].getValue();
 
 	if (enabled)
-		gDebug().logDebug("User selected " + toString(selectedValue));
+		gDebug().logDebug("User selected " + selectedValue);
 	else
-		gDebug().logDebug("User deselected " + toString(selectedValue));
+		gDebug().logDebug("User deselected " + selectedValue);
 };
 
 listBox->onSelectionToggled.connect(selectionToggled);
@@ -324,7 +325,7 @@ listBox->onSelectionToggled.connect(selectionToggled);
 
 ![List boxes](guiListBox.png) 
 
-## Slider
+## Slider {#guiElements_d_g}
 Sliders allow the user to select a numeric value by dragging a slider. Sliders can be vertical or horizontal, represented by @ref bs::GUISliderVert "GUISliderVert" and @ref bs::GUISliderHorz "GUISliderHorz" classes, respectively. They both share the same interface.
 
 To create a slider call either @ref bs::GUISliderVert::create "GUISliderVert::create()" or @ref bs::GUISliderHorz::create() "GUISliderHorz::create()".
@@ -381,7 +382,7 @@ Note the step is specified in [0, 1] range.
 
 ![Vertical and a horizontal slider](guiSlider.png)
 
-## Scroll area
+## Scroll area {#guiElements_d_h}
 Scroll areas serve as containers for other GUI elements. They can contain more elements that would normally be able to fit in the visible area by providing scrollbars when necessary. Create a scroll area by calling @ref bs::GUIScrollArea::create "GUIScrollArea::create()". 
 
 ~~~~~~~~~~~~~{.cpp}
@@ -407,7 +408,7 @@ Once scroll area is created it will provide you with a layout, similar to how **
 GUILayout& layout = scrollArea->getLayout();
 for(UINT32 i = 0; i < 20; i++)
 {
-	GUIButton* button = GUIButton::create(HString(L"Entry #" + toWString(i)));
+	GUIButton* button = GUIButton::create(HString("Entry #" + toString(i)));
 	layout.addElement(button);
 }
 ~~~~~~~~~~~~~

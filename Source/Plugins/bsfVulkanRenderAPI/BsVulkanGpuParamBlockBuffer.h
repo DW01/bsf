@@ -15,11 +15,8 @@ namespace bs { namespace ct
 	class VulkanGpuParamBlockBuffer : public GpuParamBlockBuffer
 	{
 	public:
-		VulkanGpuParamBlockBuffer(UINT32 size, GpuParamBlockUsage usage, GpuDeviceFlags deviceMask);
+		VulkanGpuParamBlockBuffer(UINT32 size, GpuBufferUsage usage, GpuDeviceFlags deviceMask);
 		~VulkanGpuParamBlockBuffer();
-
-		/** @copydoc GpuParamBlockBuffer::writeToGPU */
-		void writeToGPU(const UINT8* data, UINT32 queueIdx = 0) override;
 
 		/** 
 		 * Gets the resource wrapping the buffer object, on the specified device. If GPU param block buffer's device mask
@@ -31,7 +28,6 @@ namespace bs { namespace ct
 		void initialize() override;
 
 	private:
-		VulkanHardwareBuffer* mBuffer;
 		GpuDeviceFlags mDeviceMask;
 	};
 

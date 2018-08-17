@@ -69,6 +69,10 @@
   *	Core resource types and resource management functionality (loading, saving, etc.).
   */
 
+/** @defgroup Particles Particles
+  *	Emission, updated and rendering of particles in the particle system.
+  */
+
 /** @cond RTTI */
 /** @defgroup RTTI-Impl-Core RTTI types
  *  RTTI implementations for classes within the core layer.
@@ -125,6 +129,10 @@
 
 /** @defgroup Material-Internal Material
  *	Materials, shaders and related functionality.
+ */
+
+/** @defgroup Particles-Internal Particles
+ *	Emission, updated and rendering of particles in the particle system.
  */
 
 /** @defgroup Physics-Internal Physics
@@ -348,6 +356,10 @@ namespace bs
 	class CLightProbeVolume;
 	class Transform;
 	class SceneActor;
+	class CoreObjectManager;
+	struct CollisionData;
+	class ParticleSystem;
+	class CParticleSystem;
 	// Asset import
 	class SpecificImporter;
 	class Importer;
@@ -367,8 +379,7 @@ namespace bs
 	class PhysicsMaterial;
 	class PhysicsMesh;
 	class AudioClip;
-	class CoreObjectManager;
-	struct CollisionData;
+	class SpriteTexture;
 	// Scene
 	class SceneObject;
 	class Component;
@@ -444,12 +455,14 @@ namespace bs
 		class TimerQuery;
 		class OcclusionQuery;
 		class TextureView;
-		class RenderableElement;
+		class RenderElement;
 		class RenderWindowManager;
 		class RenderStateManager;
 		class HardwareBufferManager;
 		class ReflectionProbe;
 		class Skybox;
+		class ParticleSystem;
+		class SpriteTexture;
 	}
 }
 
@@ -519,7 +532,7 @@ namespace bs
 		TID_PrefabObjectDiff = 1079,
 		TID_PrefabComponentDiff = 1080,
 		TID_CGUIWidget = 1081,
-		TID_ProfilerOverlay = 1082,
+		/// TID_ProfilerOverlay = 1082,
 		TID_StringTable = 1083,
 		TID_LanguageData = 1084,
 		TID_LocalizedStringData = 1085,
@@ -592,11 +605,37 @@ namespace bs
 		TID_DepthStencilStateDesc = 1152,
 		TID_SerializedGpuProgramData = 1153,
 		TID_SubShader = 1154,
+		TID_ParticleSystem = 1155,
+		TID_ColorDistribution = 1156,
+		TID_TDistribution = 1157,
+		TID_SHADER_PARAM_ATTRIBUTE = 1158,
+		TID_DataParamInfo = 1159,
+		TID_SpriteSheetGridAnimation = 1160,
+		TID_ParticleEmitter = 1161,
+		TID_ParticleEmitterConeShape = 1162,
+		TID_ParticleEmitterSphereShape = 1163,
+		TID_ParticleEmitterHemisphereShape = 1164,
+		TID_ParticleEmitterBoxShape = 1165,
+		TID_ParticleEmitterCircleShape = 1166,
+		TID_ParticleEmitterRectShape = 1167,
+		TID_ParticleEmitterLineShape = 1168,
+		TID_ParticleEmitterStaticMeshShape = 1169,
+		TID_ParticleEmitterSkinnedMeshShape = 1170,
+		TID_ParticleTextureAnimation = 1171,
+		TID_ParticleCollisions = 1172,
+		TID_ParticleOrbit = 1173,
+		TID_ParticleVelocity = 1174,
+		TID_ParticleSystemSettings = 1175,
+		TID_ParticleSystemEmitters = 1176,
+		TID_ParticleSystemEvolvers = 1177,
+		TID_CParticleSystem = 1178,
+		TID_ParticleGravity = 1179,
 
 		// Moved from Engine layer
 		TID_CCamera = 30000,
 		TID_Camera = 30003,
 		TID_CRenderable = 30001,
+		TID_SpriteTexture = 30002,
 		TID_Renderable = 30004,
 		TID_Light = 30011,
 		TID_CLight = 30012,
@@ -607,7 +646,7 @@ namespace bs
 		TID_DepthOfFieldSettings = 30020,
 		TID_AmbientOcclusionSettings = 30021,
 		TID_ScreenSpaceReflectionsSettings = 30022,
-		TID_ShadowSettings = 30023
+		TID_ShadowSettings = 30023,
 	};
 }
 
@@ -636,6 +675,7 @@ namespace bs
 	typedef ResourceHandle<PhysicsMesh> HPhysicsMesh;
 	typedef ResourceHandle<AudioClip> HAudioClip;
 	typedef ResourceHandle<AnimationClip> HAnimationClip;
+	typedef ResourceHandle<SpriteTexture> HSpriteTexture;
 
 	/** @} */
 }
@@ -676,6 +716,7 @@ namespace bs
 	typedef GameObjectHandle<CLightProbeVolume> HLightProbeVolume;
 	typedef GameObjectHandle<CAudioSource> HAudioSource;
 	typedef GameObjectHandle<CAudioListener> HAudioListener;
+	typedef GameObjectHandle<CParticleSystem> HParticleSystem;
 
 	/** @} */
 }
@@ -724,6 +765,9 @@ namespace bs
 	};
 
 	#define BS_ALL_LAYERS 0xFFFFFFFFFFFFFFFF
+
+	/** Used for marking a CoreObject dependency as dirty. */
+	static constexpr INT32 DIRTY_DEPENDENCY_MASK = 1 << 31;
 }
 
 #include "Utility/BsCommonTypes.h"

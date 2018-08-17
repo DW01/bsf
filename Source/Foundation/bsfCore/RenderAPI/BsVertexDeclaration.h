@@ -203,9 +203,6 @@ namespace bs
 	/**	Converts a vertex semantic enum to a readable name. */
 	BS_CORE_EXPORT String toString(const VertexElementSemantic& val);
 
-	/**	Converts a vertex semantic enum to a readable name. */
-	BS_CORE_EXPORT WString toWString(const VertexElementSemantic& val);
-
 	/** @} */
 
 	namespace ct
@@ -222,7 +219,7 @@ namespace bs
 	class BS_CORE_EXPORT VertexDeclaration : public CoreObject
 	{
 	public:
-		virtual ~VertexDeclaration() { }
+		virtual ~VertexDeclaration() = default;
 
 		/** @copydoc CoreObject::initialize */
 		void initialize() override;

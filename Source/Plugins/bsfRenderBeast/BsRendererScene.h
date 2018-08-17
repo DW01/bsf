@@ -3,16 +3,16 @@
 #pragma once
 
 #include "BsRenderBeastPrerequisites.h"
-#include "BsObjectRendering.h"
-#include "BsSamplerOverrides.h"
-#include "BsLightRendering.h"
+#include "BsRendererLight.h"
 #include "BsRendererView.h"
-#include "Renderer/BsLight.h"
-#include "BsLightProbes.h"
+#include "BsRendererParticles.h"
+#include "Shading/BsLightProbes.h"
+#include "Utility/BsSamplerOverrides.h"
 
 namespace bs 
 { 
 	struct EvaluatedAnimationData;
+	struct ParticleSimulationData;
 
 	namespace ct
 	{
@@ -34,7 +34,7 @@ namespace bs
 		UnorderedMap<const Camera*, UINT32> cameraToView;
 		
 		// Renderables
-		Vector<RendererObject*> renderables;
+		Vector<RendererRenderable*> renderables;
 		Vector<CullInfo> renderableCullInfos;
 
 		// Lights
@@ -52,6 +52,10 @@ namespace bs
 
 		// Light probes (indirect lighting)
 		LightProbes lightProbes;
+
+		// Particles
+		Vector<RendererParticles> particleSystems;
+		Vector<AABox> particleSystemBounds;
 
 		// Sky
 		Skybox* skybox = nullptr;
@@ -128,6 +132,15 @@ namespace bs
 		/** Removes a skybox from the scene. */
 		void unregisterSkybox(Skybox* skybox);
 
+		/** Registers a new particle system in the scene. */
+		void registerParticleSystem(ParticleSystem* particleSystem);
+
+		/** Updates information about a previously registered particle system. */
+		void updateParticleSystem(ParticleSystem* particleSystem, bool tfrmOnly);
+
+		/** Removes a particle system from the scene. */
+		void unregisterParticleSystem(ParticleSystem* particleSystem);
+
 		/** Returns a container with all relevant scene objects. */
 		const SceneInfo& getSceneInfo() const { return mInfo; }
 
@@ -142,6 +155,9 @@ namespace bs
 		 */
 		void refreshSamplerOverrides(bool force = false);
 
+		/** Updates global per frame parameter buffers with new values. To be called at the start of every frame. */
+		void setParamFrameParams(float time);
+
 		/**
 		 * Performs necessary steps to make a renderable ready for rendering. This must be called at least once every frame,
 		 * for every renderable that will be drawn. Multiple calls for the same renderable during a single frame will result
@@ -151,6 +167,9 @@ namespace bs
 		 * @param[in]	frameInfo	Global information describing the current frame.
 		 */
 		void prepareRenderable(UINT32 idx, const FrameInfo& frameInfo);
+
+		/** Updates the bounds for all the particle systems from the provided object. */
+		void updateParticleSystemBounds(const ParticleSimulationData* particleRenderData);
 
 		/** Returns a modifiable version of SceneInfo. Only to be used by friends who know what they are doing. */
 		SceneInfo& _getSceneInfo() { return mInfo; }
@@ -165,10 +184,20 @@ namespace bs
 		void updateCameraRenderTargets(Camera* camera, bool remove = false);
 
 		SceneInfo mInfo;
+		SPtr<GpuParamBlockBuffer> mPerFrameParamBuffer;
 		UnorderedMap<SamplerOverrideKey, MaterialSamplerOverrides*> mSamplerOverrides;
 
 		SPtr<RenderBeastOptions> mOptions;
 	};
+
+	BS_PARAM_BLOCK_BEGIN(PerFrameParamDef)
+		BS_PARAM_BLOCK_ENTRY(float, gTime)
+	BS_PARAM_BLOCK_END
+
+	extern PerFrameParamDef gPerFrameParamDef;
+
+	/** Basic shader that is used when no other is available. */
+	class DefaultMaterial : public RendererMaterial<DefaultMaterial> { RMAT_DEF("Default.bsl"); };
 
 	/** @} */
 }}

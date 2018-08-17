@@ -34,45 +34,71 @@ namespace bs
 			Color textColor;
 		};
 
-		GUIElementStyle()
-			: fontSize(8), textHorzAlign(THA_Left), textVertAlign(TVA_Top), imagePosition(GUIImagePosition::Left)
-			, wordWrap(false), width(0), height(0), minWidth(0), maxWidth(0), minHeight(0), maxHeight(0)
-			, fixedWidth(false), fixedHeight(false)
-		{
-
-		}
-
 		HFont font; /**< Font to use for all text within the GUI element. */
-		UINT32 fontSize; /**< Font size to use for all text within the GUI element. */
-		TextHorzAlign textHorzAlign; /**< Horizontal alignment of text within the GUI element. */
-		TextVertAlign textVertAlign; /**< Vertical alignment of text within the GUI element. */
-		GUIImagePosition imagePosition; /**< Position of content image relative to text. */
-		bool wordWrap; /**< Should the text word wrap if it doesn't fit. */
+		UINT32 fontSize = 8; /**< Font size to use for all text within the GUI element. */
+		TextHorzAlign textHorzAlign = THA_Left; /**< Horizontal alignment of text within the GUI element. */
+		TextVertAlign textVertAlign = TVA_Top; /**< Vertical alignment of text within the GUI element. */
+		GUIImagePosition imagePosition = GUIImagePosition::Left; /**< Position of content image relative to text. */
+		bool wordWrap = false; /**< Should the text word wrap if it doesn't fit. */
 
-		GUIElementStateStyle normal; /**< Style used when element is in normal state and off. */
-		GUIElementStateStyle hover; /**< Style used when element is in hover state and off. */
-		GUIElementStateStyle active; /**< Style used when element is in active state and off. */
-		GUIElementStateStyle focused; /**< Style used when element is in focused state and off. */
+		/** 
+		 * Style used when the element doesn't have focus nor is the user interacting with the element. Used when the 
+		 * element is in the 'off' state.
+		 */
+		GUIElementStateStyle normal;
 
-		// For controls that can be turned on-off
-		GUIElementStateStyle normalOn; /**< Style used when element is in normal state and on. */
-		GUIElementStateStyle hoverOn; /**< Style used when element is in hover state and on. */
-		GUIElementStateStyle activeOn; /**< Style used when element is in active state and on. */
-		GUIElementStateStyle focusedOn; /**< Style used when element is in focused state and on. */
+		/** 
+		 * Style used when the user is hovering the pointer over the element, while the element doesn't have focus. Used
+		 * when the element is in the 'off' state.
+		 */
+		GUIElementStateStyle hover;
+
+		/** 
+		 * Style used when the user is actively interacting with the element. Used when the element is in the 'off' state.
+		 */
+		GUIElementStateStyle active;
+
+		/** 
+		 * Style used when the element has focus but the pointer is not hovering over the element. Used when the element is
+		 * in the 'off' state.
+		 */
+		GUIElementStateStyle focused;
+
+		/** 
+		 * Style used when the element has focus and the pointer is hovering over the element. Used when the element is
+		 * in the 'off' state.
+		 */
+		GUIElementStateStyle focusedHover;
+
+		/** Same as GUIElementStyle::normal, except it's used when element is in the 'on' state. */
+		GUIElementStateStyle normalOn;
+
+		/** Same as GUIElementStyle::hover, except it's used when element is in the 'on' state. */
+		GUIElementStateStyle hoverOn;
+
+		/** Same as GUIElementStyle::active, except it's used when element is in the 'on' state. */
+		GUIElementStateStyle activeOn;
+
+		/** Same as GUIElementStyle::focused, except it's used when element is in the 'on' state. */
+		GUIElementStateStyle focusedOn;
+
+		/** Same as GUIElementStyle::focusedHover, except it's used when element is in the 'on' state. */
+		GUIElementStateStyle focusedHoverOn;
+
 
 		RectOffset border; /**< Determines how the element is scaled (using the typical Scale9Grid approach). */
 		RectOffset margins; /**< Determines offset from the background graphics to the content. Input uses bounds offset by this value. */
 		RectOffset contentOffset; /**< Additional offset to the content, that doesn't effect the bounds. Applied on top of the margins offsets. */
 		RectOffset padding; /**< Determines extra distance between this and other elements in a layout. */
 
-		UINT32 width; /**< Wanted width of the GUI element in pixels. Only used if fixedWidth is enabled. */
-		UINT32 height; /**< Wanted height of the GUI element in pixels. Only used if fixedHeight is enabled. */
-		UINT32 minWidth; /**< Minimum width allowed for the GUI element. Used by the layout only when exact width is not specified. */
-		UINT32 maxWidth; /**< Maximum width allowed for the GUI element. Used by the layout only when exact width is not specified. */
-		UINT32 minHeight; /**< Minimum height allowed for the GUI element. Used by the layout only when exact height is not specified. */
-		UINT32 maxHeight; /**< Maximum height allowed for the GUI element. Used by the layout only when exact height is not specified. */
-		bool fixedWidth; /**< Determines should the layout resize the element depending on available size. If true no resizing will be done. */
-		bool fixedHeight; /**< Determines should the layout resize the element depending on available size. If true no resizing will be done. */
+		UINT32 width = 0; /**< Wanted width of the GUI element in pixels. Only used if fixedWidth is enabled. */
+		UINT32 height = 0; /**< Wanted height of the GUI element in pixels. Only used if fixedHeight is enabled. */
+		UINT32 minWidth = 0; /**< Minimum width allowed for the GUI element. Used by the layout only when exact width is not specified. */
+		UINT32 maxWidth = 0; /**< Maximum width allowed for the GUI element. Used by the layout only when exact width is not specified. */
+		UINT32 minHeight = 0; /**< Minimum height allowed for the GUI element. Used by the layout only when exact height is not specified. */
+		UINT32 maxHeight = 0; /**< Maximum height allowed for the GUI element. Used by the layout only when exact height is not specified. */
+		bool fixedWidth = false; /**< Determines should the layout resize the element depending on available size. If true no resizing will be done. */
+		bool fixedHeight = false; /**< Determines should the layout resize the element depending on available size. If true no resizing will be done. */
 
 		Map<String, String> subStyles; /**< Sub-styles used by certain more complex elements. */
 

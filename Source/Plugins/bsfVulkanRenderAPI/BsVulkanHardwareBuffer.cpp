@@ -10,9 +10,9 @@
 
 namespace bs { namespace ct
 {
-	VulkanBuffer::VulkanBuffer(VulkanResourceManager* owner, VkBuffer buffer, VkBufferView view, VmaAllocation allocation,
-							   UINT32 rowPitch, UINT32 slicePitch)
-		: VulkanResource(owner, false), mBuffer(buffer), mView(view), mAllocation(allocation), mRowPitch(rowPitch)
+	VulkanBuffer::VulkanBuffer(VulkanResourceManager* owner, VkBuffer buffer, VmaAllocation allocation, UINT32 rowPitch
+		, UINT32 slicePitch)
+		: VulkanResource(owner, false), mBuffer(buffer), mAllocation(allocation), mRowPitch(rowPitch)
 	{
 		if (rowPitch != 0)
 			mSliceHeight = slicePitch / rowPitch;
@@ -24,8 +24,8 @@ namespace bs { namespace ct
 	{
 		VulkanDevice& device = mOwner->getDevice();
 
-		if (mView != VK_NULL_HANDLE)
-			vkDestroyBufferView(device.getLogical(), mView, gVulkanAllocator);
+		for(auto& entry : mViews)
+			vkDestroyBufferView(device.getLogical(), entry.view, gVulkanAllocator);
 
 		vkDestroyBuffer(device.getLogical(), mBuffer, gVulkanAllocator);
 		device.freeMemory(mAllocation);
@@ -89,33 +89,115 @@ namespace bs { namespace ct
 		vkCmdUpdateBuffer(cb->getHandle(), mBuffer, offset, length, (uint32_t*)data);
 	}
 
+	void VulkanBuffer::notifyDone(UINT32 globalQueueIdx, VulkanUseFlags useFlags)
+	{
+		{
+			Lock lock(mMutex);
+			destroyUnusedViews();
+		}
+
+		VulkanResource::notifyDone(globalQueueIdx, useFlags);
+	}
+
+	void VulkanBuffer::notifyUnbound()
+	{
+		{
+			Lock lock(mMutex);
+			destroyUnusedViews();
+		}
+
+		VulkanResource::notifyUnbound();
+	}
+
+	VkBufferView VulkanBuffer::createView(VkFormat format)
+	{
+		const auto iterFind = std::find_if(mViews.begin(), mViews.end(), 
+			[format](const ViewInfo& x) { return x.format == format; });
+
+		if(iterFind != mViews.end())
+		{
+			iterFind->useCount++;
+			return iterFind->view;
+		}
+
+		VkBufferViewCreateInfo viewCI;
+		viewCI.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+		viewCI.pNext = nullptr;
+		viewCI.flags = 0;
+		viewCI.offset = 0;
+		viewCI.range = VK_WHOLE_SIZE;
+		viewCI.format = format;
+		viewCI.buffer = mBuffer;
+
+		VkBufferView view;
+		VkResult result = vkCreateBufferView(getDevice().getLogical(), &viewCI, gVulkanAllocator, &view);
+		assert(result == VK_SUCCESS);
+
+		mViews.push_back(ViewInfo(format, view));
+		return view;
+	}
+
+	void VulkanBuffer::freeView(VkBufferView view)
+	{
+		const auto iterFind = std::find_if(mViews.begin(), mViews.end(), 
+			[view](const ViewInfo& x) { return x.view == view; });
+
+		if(iterFind != mViews.end())
+		{
+			assert(iterFind->useCount > 0);
+			iterFind->useCount--;
+		}
+		else
+		{
+			assert(false);
+		}
+	}
+	
+	void VulkanBuffer::destroyUnusedViews()
+	{
+		for(auto iter = mViews.begin(); iter != mViews.end();)
+		{
+			if(iter->useCount == 0)
+			{
+				vkDestroyBufferView(getDevice().getLogical(), iter->view, gVulkanAllocator);
+				iter = mViews.erase(iter);
+			}
+			else
+				++iter;
+		}
+	}
+
 	VulkanHardwareBuffer::VulkanHardwareBuffer(BufferType type, GpuBufferFormat format, GpuBufferUsage usage, 
 		UINT32 size, GpuDeviceFlags deviceMask)
-		: HardwareBuffer(size), mBuffers(), mStagingBuffer(nullptr), mStagingMemory(nullptr), mMappedDeviceIdx(-1)
-		, mMappedGlobalQueueIdx(-1), mMappedOffset(0), mMappedSize(0), mMappedLockOptions(GBL_WRITE_ONLY)
-		, mDirectlyMappable((usage & GBU_DYNAMIC) != 0), mSupportsGPUWrites(type == BT_STORAGE), mRequiresView(false)
-		, mIsMapped(false)
+		: HardwareBuffer(size, usage, deviceMask), mBuffers(), mStagingBuffer(nullptr), mStagingMemory(nullptr)
+		, mMappedDeviceIdx(-1), mMappedGlobalQueueIdx(-1), mMappedOffset(0), mMappedSize(0)
+		, mMappedLockOptions(GBL_WRITE_ONLY), mDirectlyMappable((usage & GBU_DYNAMIC) != 0)
+		, mSupportsGPUWrites(type == BT_STRUCTURED || ((usage & GBU_LOADSTORE) == GBU_LOADSTORE)), mIsMapped(false)
 	{
 		VkBufferUsageFlags usageFlags = 0;
 		switch(type)
 		{
 		case BT_VERTEX:
 			usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+			if((usage & GBU_LOADSTORE) == GBU_LOADSTORE)
+				usageFlags |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
 			break;
 		case BT_INDEX:
 			usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+
+			if((usage & GBU_LOADSTORE) == GBU_LOADSTORE)
+				usageFlags |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
 			break;
 		case BT_UNIFORM:
 			usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 			break;
 		case BT_GENERIC:
 			usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-			mRequiresView = true;
-			break;
-		case BT_STORAGE:
-			usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT | 
-				VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
-			mRequiresView = true;
+
+			if((usage & GBU_LOADSTORE) == GBU_LOADSTORE)
+				usageFlags |= VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+
 			break;
 		case BT_STRUCTURED:
 			usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
@@ -129,13 +211,6 @@ namespace bs { namespace ct
 		mBufferCI.usage = usageFlags;
 		mBufferCI.queueFamilyIndexCount = 0;
 		mBufferCI.pQueueFamilyIndices = nullptr;
-
-		mViewCI.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-		mViewCI.pNext = nullptr;
-		mViewCI.flags = 0;
-		mViewCI.format = VulkanUtility::getBufferFormat(format);
-		mViewCI.offset = 0;
-		mViewCI.range = VK_WHOLE_SIZE;
 
 		VulkanRenderAPI& rapi = static_cast<VulkanRenderAPI&>(RenderAPI::instance());
 		VulkanDevice* devices[BS_MAX_DEVICES];
@@ -192,19 +267,8 @@ namespace bs { namespace ct
 
 		VmaAllocation allocation = device.allocateMemory(buffer, flags);
 
-		VkBufferView view;
-		if (mRequiresView && !staging)
-		{
-			mViewCI.buffer = buffer;
-
-			result = vkCreateBufferView(vkDevice, &mViewCI, gVulkanAllocator, &view);
-			assert(result == VK_SUCCESS);
-		}
-		else
-			view = VK_NULL_HANDLE;
-
 		mBufferCI.usage = usage; // Restore original usage
-		return device.getResourceManager().create<VulkanBuffer>(buffer, view, allocation);
+		return device.getResourceManager().create<VulkanBuffer>(buffer, allocation);
 	}
 
 	void* VulkanHardwareBuffer::map(UINT32 offset, UINT32 length, GpuLockOptions options, UINT32 deviceIdx, UINT32 queueIdx)

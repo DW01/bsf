@@ -12,7 +12,7 @@ target_include_directories(bsfPhysX PRIVATE "./")
 
 # Defines
 target_compile_definitions(bsfPhysX PRIVATE -DBS_PHYSX_EXPORTS)
-target_compile_definitions(bsfPhysX PRIVATE $<$<CONFIG:Debug>:_DEBUG> $<$<CONFIG:OptimizedDebug>:NDEBUG>
+target_compile_definitions(bsfPhysX PRIVATE $<$<CONFIG:Debug>:_DEBUG> $<$<CONFIG:RelWithDebInfo>:NDEBUG> $<$<CONFIG:MINSIZEREL>:NDEBUG>
 		$<$<CONFIG:Release>:NDEBUG>)
 
 # Libraries
@@ -26,17 +26,6 @@ target_link_libraries(bsfPhysX PRIVATE bsf)
 set_property(TARGET bsfPhysX PROPERTY FOLDER Plugins)
 
 # Install
-install(
-	TARGETS bsfPhysX
-	RUNTIME DESTINATION bin
-	LIBRARY DESTINATION lib
-	ARCHIVE DESTINATION lib
-)
+install_bsf_target(bsfPhysX)
 
-if(WIN32)
-	install(
-		FILES $<TARGET_PDB_FILE:bsfPhysX> 
-		DESTINATION bin 
-		OPTIONAL
-	)
-endif()
+conditional_cotire(bsfPhysX)

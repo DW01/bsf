@@ -6,10 +6,11 @@
 #  bsf_FOUND
 
 message(STATUS "Looking for bsf installation...")
-set(bsf_INSTALL_DIR ${PROJECT_SOURCE_DIR}/Dependencies/bsf CACHE PATH "")
+if(NOT bsf_INSTALL_DIR)
+	set(bsf_INSTALL_DIR ${PROJECT_SOURCE_DIR}/Dependencies/bsf CACHE PATH "")
+endif()
 
 set(bsf_INCLUDE_SEARCH_DIRS "${bsf_INSTALL_DIR}/include")
-set(bsf_LIBRARY_SEARCH_DIRS "${bsf_INSTALL_DIR}/lib")
 set(INCLUDE_FILES "bsfCore/BsCorePrerequisites.h")
 
 find_path(bsf_INCLUDE_DIR NAMES NAMES ${INCLUDE_FILES} PATHS ${bsf_INCLUDE_SEARCH_DIRS} NO_DEFAULT_PATH)
@@ -22,44 +23,48 @@ else()
 	set(bsf_FOUND FALSE)
 endif()
 
-MACRO(add_imported_library LIB_NAME LIB_PATH)
+# Add configuration specific search directories
+list(APPEND bsf_LIBRARY_RELEASE_SEARCH_DIRS "${bsf_INSTALL_DIR}/lib/Release")
+list(APPEND bsf_LIBRARY_DEBUG_SEARCH_DIRS "${bsf_INSTALL_DIR}/lib/Debug")
+
+# Add search directories with no specified configuration
+list(APPEND bsf_LIBRARY_RELEASE_SEARCH_DIRS "${bsf_INSTALL_DIR}/lib")
+list(APPEND bsf_LIBRARY_DEBUG_SEARCH_DIRS "${bsf_INSTALL_DIR}/lib")
+
+find_library(bsf_LIBRARY_RELEASE NAMES bsf PATHS ${bsf_LIBRARY_RELEASE_SEARCH_DIRS} NO_DEFAULT_PATH)
+find_library(bsf_LIBRARY_RELEASE NAMES bsf PATHS ${bsf_LIBRARY_RELEASE_SEARCH_DIRS})
+
+find_library(bsf_LIBRARY_DEBUG NAMES bsf PATHS ${bsf_LIBRARY_DEBUG_SEARCH_DIRS} NO_DEFAULT_PATH)
+find_library(bsf_LIBRARY_DEBUG NAMES bsf PATHS ${bsf_LIBRARY_DEBUG_SEARCH_DIRS})
+
+if(bsf_LIBRARY_RELEASE)
 	if(NOT WIN32)
-		add_library(${LIB_NAME} SHARED IMPORTED)
+		add_library(bsf SHARED IMPORTED)
 	else()
-		add_library(${LIB_NAME} STATIC IMPORTED)
-	endif()
-
-	set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION "${LIB_PATH}")
-ENDMACRO()
-
-MACRO(find_imported_library FOLDER_NAME LIB_NAME IS_OPTIONAL)
-	find_library(${LIB_NAME}_LIBRARY NAMES ${LIB_NAME} PATHS ${${FOLDER_NAME}_LIBRARY_SEARCH_DIRS} NO_DEFAULT_PATH)
-	find_library(${LIB_NAME}_LIBRARY NAMES ${LIB_NAME} PATHS ${${FOLDER_NAME}_LIBRARY_SEARCH_DIRS})
-	
-	if(${LIB_NAME}_LIBRARY)
-		add_imported_library(${FOLDER_NAME}::${LIB_NAME} "${${LIB_NAME}_LIBRARY}")
-		
-		list(APPEND ${FOLDER_NAME}_LIBRARIES ${FOLDER_NAME}::${LIB_NAME})
-	elseif(NOT ${IS_OPTIONAL})
-		set(${FOLDER_NAME}_FOUND FALSE)
-		message(STATUS "...Cannot find imported library: ${LIB_NAME} ${${LIB_NAME}_LIBRARY}")
+		add_library(bsf STATIC IMPORTED)
 	endif()
 	
-	mark_as_advanced(${LIB_NAME}_LIBRARY)
-ENDMACRO()
+	if(CMAKE_CONFIGURATION_TYPES) # Multiconfig generator?
+		set_target_properties(bsf PROPERTIES IMPORTED_LOCATION_RELEASE "${bsf_LIBRARY_RELEASE}")
+		set_target_properties(bsf PROPERTIES IMPORTED_LOCATION_RELWITHDEBINFO "${bsf_LIBRARY_RELEASE}")
+		set_target_properties(bsf PROPERTIES IMPORTED_LOCATION_MINSIZEREL "${bsf_LIBRARY_RELEASE}")
+	
+		if(bsf_LIBRARY_DEBUG)
+			set_target_properties(bsf PROPERTIES IMPORTED_LOCATION_DEBUG "${bsf_LIBRARY_DEBUG}")
+		else()
+			set_target_properties(bsf PROPERTIES IMPORTED_LOCATION_DEBUG "${bsf_LIBRARY_RELEASE}")
+		endif()
+	else()
+		set_target_properties(bsf PROPERTIES IMPORTED_LOCATION "${bsf_LIBRARY_RELEASE}")
+	endif()
+	
+	set(bsf_LIBRARIES bsf)	
+else()
+	set(bsf_FOUND FALSE)
+endif()
 
-find_imported_library(bsf bsf NO)
-find_imported_library(bsf bsfD3D11RenderAPI YES)
-find_imported_library(bsf bsfGLRenderAPI YES)
-find_imported_library(bsf bsfVulkanRenderAPI YES)
-find_imported_library(bsf bsfOpenAudio YES)
-find_imported_library(bsf bsfFMOD YES)
-find_imported_library(bsf bsfFBXImporter YES)
-find_imported_library(bsf bsfFontImporter YES)
-find_imported_library(bsf bsfFreeImgImporter YES)
-find_imported_library(bsf bsfPhysX NO)
-find_imported_library(bsf bsfRenderBeast NO)
-find_imported_library(bsf bsfSL NO)
+mark_as_advanced(bsf_LIBRARY_RELEASE)
+mark_as_advanced(bsf_LIBRARY_DEBUG)
 
 if(NOT bsf_FOUND)
 	if(bsf_FIND_REQUIRED)
@@ -72,7 +77,7 @@ else()
 	list(APPEND INCLUDE_DIRS "${bsf_INCLUDE_DIR}/bsfCore")
 	list(APPEND INCLUDE_DIRS "${bsf_INCLUDE_DIR}/bsfEngine")
 	
-	set_target_properties(bsf::bsf PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${INCLUDE_DIRS}")
+	set_target_properties(bsf PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${INCLUDE_DIRS}")
 	mark_as_advanced(bsf_INSTALL_DIR)
 	message(STATUS "...bsf OK.")
 endif()

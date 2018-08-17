@@ -10,6 +10,7 @@ find_package(nvtt REQUIRED)
 if(LINUX)
 	find_package(X11 REQUIRED)
 	find_package(LibUUID REQUIRED)
+	find_package(LibICU REQUIRED)
 
 	if(NOT X11_Xcursor_FOUND)
 		message(FATAL_ERROR "Could not find XCursor library.")
@@ -42,7 +43,8 @@ target_compile_definitions(bsf PRIVATE
 	-DBS_CORE_EXPORTS
 	-DBS_UTILITY_EXPORTS
 	$<$<CONFIG:Debug>:BS_CONFIG=BS_CONFIG_DEBUG>
-	$<$<CONFIG:OptimizedDebug>:BS_CONFIG=BS_CONFIG_OPTIMIZEDDEBUG>
+	$<$<CONFIG:RelWithDebInfo>:BS_CONFIG=BS_CONFIG_RELWITHDEBINFO>
+	$<$<CONFIG:MinSizeRel>:BS_CONFIG=BS_CONFIG_MINSIZEREL>
 	$<$<CONFIG:Release>:BS_CONFIG=BS_CONFIG_RELEASE>)
 
 # Libraries
@@ -56,9 +58,10 @@ target_link_libraries(bsf PRIVATE ${snappy_LIBRARIES})
 target_link_libraries(bsf PUBLIC ThirdParty)
 
 if(LINUX)
-	## External lib: X11, LibUUID
+	## External lib: X11, LibUUID, LibICU
 	target_link_libraries(bsf PUBLIC ${X11_LIBRARIES} ${X11_Xcursor_LIB} ${X11_Xrandr_LIB} ${X11_Xi_LIB})
 	target_link_libraries(bsf PRIVATE ${LibUUID_LIBRARIES})
+	target_link_libraries(bsf PRIVATE ${LibICU_LIBRARIES})
 endif()
 
 if(APPLE)
@@ -86,35 +89,43 @@ set_property(TARGET bsf PROPERTY FOLDER Foundation)
 install(
 	DIRECTORY bsfUtility
 	DESTINATION include
-	FILES_MATCHING PATTERN "*.h"
+	FILES_MATCHING 
+	PATTERN "*.h"
+	PATTERN "*.hpp"
 	PATTERN "Private" EXCLUDE
 )
 
 install(
 	DIRECTORY bsfCore 
 	DESTINATION include
-	FILES_MATCHING PATTERN "*.h"
+	FILES_MATCHING 
+	PATTERN "*.h"
+	PATTERN "*.hpp"
 	PATTERN "Private" EXCLUDE
 )
 
 install(
 	DIRECTORY bsfEngine
 	DESTINATION include
-	FILES_MATCHING PATTERN "*.h"
+	FILES_MATCHING 
+	PATTERN "*.h"
+	PATTERN "*.hpp"
 	PATTERN "Private" EXCLUDE
 )
 
-if(WIN32)
-	install(
-		FILES $<TARGET_PDB_FILE:bsf> 
-		DESTINATION bin 
-		OPTIONAL
-	)
+install_bsf_target(bsf)
+
+# Precompiled headers (Cotire)
+if(MSVC)
+	find_windows_system_headers(windows_headers "Windows.h")
+	get_filename_component(windows_system_header_dir "${windows_headers}" DIRECTORY)
+	set(ignore_paths "${CMAKE_CURRENT_SOURCE_DIR};" "${windows_system_header_dir}/..")
+else()
+	find_clang_invalid_libc_pch_headers(clang_bad_headers)
+	set(ignore_paths "${CMAKE_CURRENT_SOURCE_DIR};${X11_INCLUDE_DIR}/X11;${clang_bad_headers}")
 endif()
 
-install(
-	TARGETS bsf
-	RUNTIME DESTINATION bin
-	LIBRARY DESTINATION lib
-	ARCHIVE DESTINATION lib
-)
+set_directory_properties(PROPERTIES
+	COTIRE_PREFIX_HEADER_IGNORE_PATH "${ignore_paths}")
+
+conditional_cotire(bsf)

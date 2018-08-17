@@ -68,7 +68,7 @@ namespace bs
 		for(INT32 i = 0; i < numDevices; i++)
 		{
 			mFMOD->getDriverInfo(i, nameBuffer, sizeof(nameBuffer), nullptr, nullptr, nullptr, nullptr);
-			mAllDevices[i].name = toWString(nameBuffer);
+			mAllDevices[i].name = String(nameBuffer);
 		}
 
 		INT32 defaultDevice = 0;
@@ -82,7 +82,9 @@ namespace bs
 
 	FMODAudio::~FMODAudio()
 	{
-		assert(mListeners.size() == 0 && mSources.size() == 0); // Everything should be destroyed at this point
+		stopManualSources();
+
+		assert(mListeners.empty() && mSources.empty()); // Everything should be destroyed at this point
 		mFMOD->release();
 	}
 

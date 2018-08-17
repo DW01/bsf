@@ -1,11 +1,12 @@
 Materials 						{#simpleMaterial}
 ===============
+[TOC]
 
 Materials are resources that control how are meshes rendered. They are represented using the @ref bs::Material "Material" class. Each material must have one @ref bs::Shader "Shader" object, and zero or more parameters.
 
 A shader is a set of GPU programs and render states that tell the GPU how is a mesh meant to be rendered. Generally these GPU programs have parameters that can control what they output (for example, which texture to use). A material allows you to set those parameters. You can think of shaders as templates, and materials as instances of shaders - similar as you would think of a *class* vs. *object* relationship in a programming language.
 
-# Retrieving a shader
+# Retrieving a shader {#simpleMaterial_a}
 Before we can create a material we first need to pick a shader to use as a basis. bs::f allows you to create fully custom shaders, but this is an advanced topic and is left for a later chapter. For the majority of purposes when rendering 3D geometry you can use either of the following two shaders:
  - Standard - Physically based shader for opaque 3D geometry
  - Transparent - Physically based shader for transparent 3D geometry
@@ -25,7 +26,7 @@ Both of these shaders provide physically based shading and expect four different
 
 At minimum you need to provide the albedo texture, while others can be left as default (or be assigned pure white, or pure black textures) if not required. 
  
-# Material creation
+# Material creation {#simpleMaterial_b}
 To create a material use the @ref bs::Material::create "Material::create()" method, which expects a **Shader** as a parameter.
 
 ~~~~~~~~~~~~~{.cpp}
@@ -33,7 +34,7 @@ To create a material use the @ref bs::Material::create "Material::create()" meth
 HMaterial material = Material::create(shader);
 ~~~~~~~~~~~~~
 
-# Setting parameters
+# Setting parameters {#simpleMaterial_c}
 As we mentioned, the main purpose of a material is to provide a way to set various parameters exposed by the shader. In the example below we show how to set the albedo texture parameter.
 
 ~~~~~~~~~~~~~{.cpp}
@@ -55,7 +56,65 @@ material->setVec3("position", Vector3(0, 15.0f, 10.0f));
 material->setMat4("someTransform", Matrix4::IDENTITY);
 ~~~~~~~~~~~~~
 
-## Sampler states
+## Animated parameters {#simpleMaterial_d}
+Certain material parameters can be animated, meaning they will change as time passes. The types of animable parameters are:
+ - **float** - Instead of calling **Material::setFloat()** call @ref bs::Material::setFloatCurve "Material::setFloatCurve()" and pass a @ref bs::TAnimationCurve<float> "bs::TAnimationCurve<float>" object as the parameter. Animation curve consists of a set of key-frames that get interpolated between depending on the time the curve gets sampled at. 
+ - **Color** - Instead of calling **Material::setColor()** call @ref bs::Material::setColorGradient "Material::setColorGradient()" and pass a @ref bs::ColorGradient "ColorGradient" object as the parameter. Similarly to animation curves the **ColorGradient** contains a set of key-frames, each containing a color, which then get interpolated between depending on the time that's used to evaluate them.
+ - **Texture** - Instead of calling **Material::setTexture()** call @ref bs::Material::setSpriteTexture "Material::setSpriteTexture()", which accepts a **SpriteTexture** object. Sprite textures allow you to provide texture animation and as time passes different frames of texture animation will be presented to the user. Sprite textures are explained in more detail later on.
+ 
+An example using all three types of animated parameters: 
+ 
+~~~~~~~~~~~~~{.cpp}
+// Create an animation curve with three keys:
+// [0] - Value 1 at time 0.0s
+// [1] - Value 2 at time 0.5s
+// [2] - Value 1 at time 1.0s
+// The curve starts at value of 1, goes to 2 and then back to 1, in the duration of one second.
+// (Middle two values of each keyframe represent tangents that allow finer control
+// of the curve, be you can leave them at zero)
+Vector<TKeyframe<float>> keyframes = 
+{
+	{ 1.0f, 0.0f, 0.0f, 0.0f },
+	{ 2.0f, 0.0f, 0.0f, 0.5f },
+	{ 1.0f, 0.0f, 0.0f, 1.0f }
+};
+
+TAnimationCurve<float> curve(keyframes);
+material->setFloatCurve("gScale", curve);
+
+// Create a color gradient with three keys
+// [0] - Red color at time 0.0s
+// [1] - Blue color at time 2.5s
+// [2] - Red color at time 5.0s
+// The gradient starts with red color, interpolates towards blue and then back to red,
+// in the duration of five seconds.
+ColorGradient gradient;
+gradient.setKeys(
+	{
+		ColorGradientKey(Color::Red, 0.0f),
+		ColorGradientKey(Color::Blue, 2.5f),
+		ColorGradientKey(Color::Red, 5.0f)
+	});
+
+material->setColorGradient("gTint", Color::White);
+
+// Create a sprite texture with sprite sheet animation (explained later)
+HTexture texture = ...; // Import texture as normal
+HSpriteTexture spriteTexture = SpriteTexture::create(texture);
+
+SpriteSheetGridAnimation anim;
+anim.numRows = 3;
+anim.numColumns = 3;
+anim.count = 8;
+anim.fps = 8;
+
+spriteTexture->setAnimation(anim);
+spriteTexture->setAnimationPlayback(SpriteAnimationPlayback::Loop);
+
+material->setSpriteTexture("gAlbedoTex", spriteTexture);
+~~~~~~~~~~~~~
+ 
+## Sampler states {#simpleMaterial_c_a}
 Sampler states are a special type of parameters that can be set by calling @ref bs::Material::setSamplerState "Material::setSamplerState()". These states are used to control how is a texture read in a shader. For example they control what type of filtering to use, how to handle out of range texture coordinates and similar. In most cases you don't need to set sampler states as the default one should be adequate. 
 
 Sampler states are created by calling @ref bs::SamplerState::create "SamplerState::create()", while previously filling out the @ref bs::SAMPLER_STATE_DESC "SAMPLER_STATE_DESC" structure.

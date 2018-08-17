@@ -32,12 +32,12 @@ namespace bs
 		gCoreThread().queueCommand(std::bind(&RendererMaterialManager::destroyOnCore));
 	}
 
-	void RendererMaterialManager::_registerMaterial(ct::RendererMaterialMetaData* metaData, const Path& shaderPath)
+	void RendererMaterialManager::_registerMaterial(ct::RendererMaterialMetaData* metaData, const char* shaderPath)
 	{
 		Lock lock(getMutex());
 
 		Vector<RendererMaterialData>& materials = getMaterials();
-		materials.push_back({ metaData, shaderPath, });
+		materials.push_back({ metaData, shaderPath });
 	}
 
 	void RendererMaterialManager::initOnCore(const Vector<SPtr<ct::Shader>>& shaders)
@@ -47,6 +47,7 @@ namespace bs
 		Vector<RendererMaterialData>& materials = getMaterials();
 		for (UINT32 i = 0; i < materials.size(); i++)
 		{
+			materials[i].metaData->shaderPath = materials[i].shaderPath;
 			materials[i].metaData->shader = shaders[i];
 
 			// Note: Making the assumption here that all the techniques are generated due to shader variations
@@ -55,6 +56,12 @@ namespace bs
 
 			for(auto& entry : techniques)
 				materials[i].metaData->variations.add(entry->getVariation());
+
+#if BS_PROFILING_ENABLED
+			const String& filename = materials[i].shaderPath.getFilename(false);
+			materials[i].metaData->profilerSampleName = ProfilerString("RM: ") + 
+				ProfilerString(filename.data(), filename.size());
+#endif
 		}
 	}
 
@@ -80,6 +87,7 @@ namespace bs
 		for (UINT32 i = 0; i < materials.size(); i++)
 		{
 			materials[i].metaData->shader = nullptr;
+			materials[i].metaData->overrideShader = nullptr;
 
 			for (auto& entry : materials[i].metaData->instances)
 			{

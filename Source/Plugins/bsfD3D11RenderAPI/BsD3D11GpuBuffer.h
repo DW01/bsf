@@ -14,27 +14,9 @@ namespace bs { namespace ct
 
 	/**	DirectX 11 implementation of a generic GPU buffer. */
 	class D3D11GpuBuffer : public GpuBuffer
-    {
-    public:
+	{
+	public:
 		~D3D11GpuBuffer();
-
-		/** @copydoc GpuBuffer::lock */
-		void* lock(UINT32 offset, UINT32 length, GpuLockOptions options, UINT32 deviceIdx = 0,
-				   UINT32 queueIdx = 0) override;
-
-		/** @copydoc GpuBuffer::unlock */
-		void unlock() override;
-
-		/** @copydoc GpuBuffer::readData */
-		void readData(UINT32 offset, UINT32 length, void* dest, UINT32 deviceIdx = 0, UINT32 queueIdx = 0) override;
-
-		/** @copydoc GpuBuffer::writeData */
-        void writeData(UINT32 offset, UINT32 length, const void* source,
-			BufferWriteType writeFlags = BWT_NORMAL, UINT32 queueIdx = 0) override;
-
-		/** @copydoc GpuBuffer::copyData */
-		void copyData(HardwareBuffer& srcBuffer, UINT32 srcOffset, UINT32 dstOffset, UINT32 length, 
-			bool discardWholeBuffer = false, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/**
 		 * Creates a buffer view that may be used for binding a buffer to a slot in the pipeline. Views allow you to specify
@@ -50,8 +32,8 @@ namespace bs { namespace ct
 		 * @note Only Default and RandomWrite views are supported for this type of buffer. 
 		 */
 		// TODO Low Priority: Perhaps reflect usage flag limitation by having an enum with only the supported two options?
-		static GpuBufferView* requestView(const SPtr<D3D11GpuBuffer>& buffer, UINT32 firstElement, 
-			UINT32 numElements, GpuViewUsage usage);
+		static GpuBufferView* requestView(D3D11GpuBuffer* buffer, UINT32 firstElement, UINT32 numElements, 
+			GpuViewUsage usage);
 
 		/**
 		 * Releases a view created with requestView. 
@@ -73,6 +55,7 @@ namespace bs { namespace ct
 		friend class D3D11HardwareBufferManager;
 
 		D3D11GpuBuffer(const GPU_BUFFER_DESC& desc, GpuDeviceFlags deviceMask);
+		D3D11GpuBuffer(const GPU_BUFFER_DESC& desc, SPtr<HardwareBuffer> underlyingBuffer);
 
 		/**	Destroys all buffer views regardless if their reference count is zero or not. */
 		void clearBufferViews();
@@ -92,11 +75,9 @@ namespace bs { namespace ct
 			UINT32 refCount;
 		};
 
-		D3D11HardwareBuffer* mBuffer;
-		GpuBufferView* mBufferView;
-
+		GpuBufferView* mBufferView = nullptr;
 		UnorderedMap<GPU_BUFFER_VIEW_DESC, GpuBufferReference*, GpuBufferView::HashFunction, GpuBufferView::EqualFunction> mBufferViews;
-    };
+	};
 
 	/** @} */
 }}

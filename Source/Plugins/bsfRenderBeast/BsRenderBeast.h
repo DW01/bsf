@@ -5,10 +5,7 @@
 #include "BsRenderBeastPrerequisites.h"
 #include "Renderer/BsRenderer.h"
 #include "Renderer/BsRendererMaterial.h"
-#include "BsObjectRendering.h"
-#include "BsPostProcessing.h"
 #include "BsRendererView.h"
-#include "BsRendererObject.h"
 #include "BsRendererScene.h"
 
 namespace bs 
@@ -34,13 +31,13 @@ namespace bs
 	/** Contains information global to an entire frame. */
 	struct FrameInfo
 	{
-		FrameInfo(const FrameTimings& timings, const EvaluatedAnimationData* animData = nullptr)
-			:timeDelta(timings.timeDelta), frameIdx(timings.frameIdx), animData(animData)
+		FrameInfo(const FrameTimings& timings, PerFrameData perFrameData)
+			:timeDelta(timings.timeDelta), frameIdx(timings.frameIdx), perFrameData(perFrameData)
 		{ }
 
 		float timeDelta;
 		UINT64 frameIdx;
-		const EvaluatedAnimationData* animData;
+		PerFrameData perFrameData;
 	};
 
 	/**
@@ -58,13 +55,13 @@ namespace bs
 
 	public:
 		RenderBeast();
-		~RenderBeast() { }
+		~RenderBeast() = default;
 
 		/** @copydoc Renderer::getName */
 		const StringID& getName() const override;
 
 		/** @copydoc Renderer::renderAll */
-		void renderAll(const EvaluatedAnimationData* animData) override;
+		void renderAll(PerFrameData perFrameData) override;
 
 		/**	Sets options used for controlling the rendering. */
 		void setOptions(const SPtr<RendererOptions>& options) override;
@@ -84,6 +81,12 @@ namespace bs
 		/** @copydoc Renderer::captureSceneCubeMap */
 		void captureSceneCubeMap(const SPtr<Texture>& cubemap, const Vector3& position, 
 			const CaptureSettings& settings) override;
+
+		/** @copydoc Renderer::getShaderExtensionPointInfo */
+		ShaderExtensionPointInfo getShaderExtensionPointInfo(const String& name) override;
+
+		/** @copydoc Renderer::setGlobalShaderOverride */
+		void setGlobalShaderOverride(const String& name, const SPtr<bs::Shader>& shader) override;
 
 	private:
 		/** @copydoc Renderer::notifyCameraAdded */
@@ -137,6 +140,15 @@ namespace bs
 		/** @copydoc Renderer::notifySkyboxRemoved */
 		void notifySkyboxRemoved(Skybox* skybox) override;
 
+		/** @copydoc Renderer::notifyParticleSystemAdded */
+		void notifyParticleSystemAdded(ParticleSystem* particleSystem) override;
+
+		/** @copydoc Renderer::notifyParticleSystemUpdated */
+		void notifyParticleSystemUpdated(ParticleSystem* particleSystem, bool tfrmOnly) override;
+
+		/** @copydoc Renderer::notifyParticleSystemRemoved */
+		void notifyParticleSystemRemoved(ParticleSystem* particleSystem) override;
+
 		/**
 		 * Updates the render options on the core thread.
 		 *
@@ -147,12 +159,12 @@ namespace bs
 		/**
 		 * Performs rendering over all camera proxies.
 		 *
-		 * @param[in]	timings		Information about frame time and frame index.
-		 * @param[in]	animData	Data used for rendering animated renderables.
+		 * @param[in]	timings			Information about frame time and frame index.
+		 * @param[in]	perFrameData	Per-frame data provided by external systems.
 		 *
 		 * @note	Core thread only.
 		 */
-		void renderAllCore(FrameTimings timings, const EvaluatedAnimationData* animData);
+		void renderAllCore(FrameTimings timings, PerFrameData perFrameData);
 
 		/**
 		 * Renders all views in the provided view group.
@@ -189,9 +201,6 @@ namespace bs
 
 		// Scene data
 		SPtr<RendererScene> mScene;
-
-		//// Base pass
-		ObjectRenderer* mObjectRenderer = nullptr;
 
 		SPtr<RenderBeastOptions> mCoreOptions;
 

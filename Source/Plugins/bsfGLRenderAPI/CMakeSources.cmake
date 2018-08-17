@@ -29,7 +29,7 @@ set(BS_GLRENDERAPI_INC_NOFILTER
 	"BsGLRenderAPI.h"
 	"BsGLRenderAPIFactory.h"
 	"BsGLUtil.h"
-	"BsGLBuffer.h"
+	"BsGLHardwareBuffer.h"
 	"BsGLCommandBuffer.h"
 	"BsGLCommandBufferManager.h"
 	"BsGLTextureView.h"
@@ -58,7 +58,7 @@ set(BS_GLRENDERAPI_SRC_NOFILTER
 	"BsGLRenderAPI.cpp"
 	"BsGLRenderAPIFactory.cpp"
 	"BsGLPlugin.cpp"
-	"BsGLBuffer.cpp"
+	"BsGLHardwareBuffer.cpp"
 	"BsGLCommandBuffer.cpp"
 	"BsGLCommandBufferManager.cpp"
 	"BsGLTextureView.cpp"
@@ -101,6 +101,9 @@ set(BS_GLRENDERAPI_SRC_LINUX
 	"Linux/BsLinuxVideoModeInfo.cpp"
 	"glew.cpp"
 )
+
+set_source_files_properties ("Linux/BsLinuxContext.cpp" PROPERTIES
+		COTIRE_EXCLUDED "True")
 
 set(BS_GLRENDERAPI_INC_MACOS
 	"MacOS/BsMacOSContext.h"

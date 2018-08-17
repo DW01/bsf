@@ -16,7 +16,7 @@ namespace bs
 	}
 
 	GUIListBox::GUIListBox(const String& styleName, const Vector<HString>& elements, bool isMultiselect, const GUIDimensions& dimensions)
-		:GUIButtonBase(styleName, GUIContent(HString(L"")), dimensions), mElements(elements), mIsMultiselect(isMultiselect)
+		:GUIButtonBase(styleName, GUIContent(HString("")), dimensions), mElements(elements), mIsMultiselect(isMultiselect)
 	{
 		mElementStates.resize(elements.size(), false);
 		if (!mIsMultiselect && mElementStates.size() > 0)
@@ -148,6 +148,26 @@ namespace bs
 		return processed;
 	}
 
+	bool GUIListBox::_commandEvent(const GUICommandEvent& ev)
+	{
+		const bool processed = GUIButtonBase::_commandEvent(ev);
+
+		if(ev.getType() == GUICommandEventType::Confirm)
+		{
+			if(!_isDisabled())
+			{
+				if (mDropDownBox == nullptr)
+					openListBox();
+				else
+					closeListBox();
+			}
+
+			return true;
+		}
+
+		return processed;
+	}
+
 	void GUIListBox::elementSelected(UINT32 idx)
 	{
 		if (idx >= (UINT32)mElements.size())
@@ -186,7 +206,7 @@ namespace bs
 		UINT32 i = 0;
 		for(auto& elem : mElements)
 		{
-			WString identifier = toWString(i);
+			String identifier = toString(i);
 			desc.dropDownData.entries.push_back(GUIDropDownDataEntry::button(identifier, std::bind(&GUIListBox::elementSelected, this, i)));
 			desc.dropDownData.localizedNames[identifier] = elem;
 			i++;
@@ -240,16 +260,16 @@ namespace bs
 			if (numSelected == 1)
 				setContent(GUIContent(mElements[selectedIdx]));
 			else if (numSelected == 0)
-				setContent(GUIContent(HEString(L"None")));
+				setContent(GUIContent(HEString("None")));
 			else
-				setContent(GUIContent(HEString(L"Multiple")));
+				setContent(GUIContent(HEString("Multiple")));
 		}
 		else
 		{
 			if(!mElements.empty())
 				setContent(GUIContent(mElements[selectedIdx]));
 			else
-				setContent(GUIContent(HEString(L"None")));
+				setContent(GUIContent(HEString("None")));
 		}
 	}
 

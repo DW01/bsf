@@ -4,7 +4,7 @@
 #include "Mesh/BsMesh.h"
 #include "RenderAPI/BsVertexDataDesc.h"
 #include "Utility/BsShapeMeshes3D.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "CoreThread/BsCoreThread.h"
 #include "Material/BsMaterial.h"
 #include "RenderAPI/BsGpuParams.h"
@@ -16,6 +16,7 @@
 #include "Renderer/BsRendererExtension.h"
 #include "Resources/BsBuiltinResources.h"
 #include "Renderer/BsCamera.h"
+#include "Profiling/BsProfilerGPU.h"
 
 using namespace std::placeholders;
 
@@ -133,7 +134,7 @@ namespace bs
 	void DebugDraw::_update()
 	{
 		mActiveMeshes.clear();
-		mActiveMeshes = mDrawHelper->buildMeshes(DrawHelper::SortType::None, Vector3::ZERO);
+		mActiveMeshes = mDrawHelper->buildMeshes(DrawHelper::SortType::None);
 
 		Vector<MeshRenderData> proxyData = createMeshProxyData(mActiveMeshes);
 
@@ -153,6 +154,8 @@ namespace bs
 
 	void DebugDrawMat::execute(const SPtr<GpuParamBlockBuffer>& params, const SPtr<Mesh>& mesh, const SubMesh& subMesh)
 	{
+		BS_RENMAT_PROFILE_BLOCK
+
 		mParams->setParamBlockBuffer("Params", params);
 
 		bind();

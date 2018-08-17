@@ -146,7 +146,7 @@ namespace bs
 		if (mInternal != nullptr && !internal)
 		{
 			if (mParent != nullptr)
-				mParent->removeCollider(mThisHandle);
+				mParent->removeCollider(static_object_cast<CCollider>(mThisHandle));
 
 			Rigidbody* rigidBodyPtr = nullptr;
 
@@ -156,11 +156,12 @@ namespace bs
 			mInternal->setRigidbody(rigidBodyPtr);
 
 			if (rigidbody != nullptr)
-				rigidbody->addCollider(mThisHandle);
+				rigidbody->addCollider(static_object_cast<CCollider>(mThisHandle));
 		}
 
 		mParent = rigidbody;
 		updateCollisionReportMode();
+		updateTransform();
 	}
 
 	bool CCollider::rayCast(const Ray& ray, PhysicsQueryHit& hit, float maxDist) const
@@ -207,7 +208,7 @@ namespace bs
 	void CCollider::destroyInternal()
 	{
 		if (mParent != nullptr)
-			mParent->removeCollider(mThisHandle);
+			mParent->removeCollider(static_object_cast<CCollider>(mThisHandle));
 
 		mParent = nullptr;
 
@@ -273,7 +274,7 @@ namespace bs
 			Vector3 relativePos = invRotation.rotate(myPos - parentPos) *  invScale;
 			Quaternion relativeRot = invRotation * myRot;
 
-			relativePos = relativePos + myRot.rotate(mLocalPosition * scale);
+			relativePos = relativePos + relativeRot.rotate(mLocalPosition * scale);
 			relativeRot = relativeRot * mLocalRotation;
 
 			mInternal->setTransform(relativePos, relativeRot);
@@ -305,13 +306,13 @@ namespace bs
 	void CCollider::triggerOnCollisionBegin(const CollisionDataRaw& data)
 	{
 		CollisionData hit;
-		hit.contactPoints = std::move(data.contactPoints);
-		hit.collider[0] = mThisHandle;
+		hit.contactPoints = data.contactPoints;
+		hit.collider[0] = static_object_cast<CCollider>(mThisHandle);
 
 		if(data.colliders[1] != nullptr)
 		{
 			CCollider* other = (CCollider*)data.colliders[1]->_getOwner(PhysicsOwnerType::Component);
-			hit.collider[1] = other->getHandle();
+			hit.collider[1] = static_object_cast<CCollider>(other->getHandle());
 		}
 
 		onCollisionBegin(hit);
@@ -320,13 +321,13 @@ namespace bs
 	void CCollider::triggerOnCollisionStay(const CollisionDataRaw& data)
 	{
 		CollisionData hit;
-		hit.contactPoints = std::move(data.contactPoints);
-		hit.collider[0] = mThisHandle;
+		hit.contactPoints = data.contactPoints;
+		hit.collider[0] = static_object_cast<CCollider>(mThisHandle);
 
 		if (data.colliders[1] != nullptr)
 		{
 			CCollider* other = (CCollider*)data.colliders[1]->_getOwner(PhysicsOwnerType::Component);
-			hit.collider[1] = other->getHandle();
+			hit.collider[1] = static_object_cast<CCollider>(other->getHandle());
 		}
 
 		onCollisionStay(hit);
@@ -335,13 +336,13 @@ namespace bs
 	void CCollider::triggerOnCollisionEnd(const CollisionDataRaw& data)
 	{
 		CollisionData hit;
-		hit.contactPoints = std::move(data.contactPoints);
-		hit.collider[0] = mThisHandle;
+		hit.contactPoints = data.contactPoints;
+		hit.collider[0] = static_object_cast<CCollider>(mThisHandle);
 
 		if (data.colliders[1] != nullptr)
 		{
 			CCollider* other = (CCollider*)data.colliders[1]->_getOwner(PhysicsOwnerType::Component);
-			hit.collider[1] = other->getHandle();
+			hit.collider[1] = static_object_cast<CCollider>(other->getHandle());
 		}
 
 		onCollisionEnd(hit);

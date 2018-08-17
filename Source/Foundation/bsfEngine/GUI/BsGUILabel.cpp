@@ -3,7 +3,7 @@
 #include "GUI/BsGUILabel.h"
 #include "GUI/BsGUIElementStyle.h"
 #include "2D/BsTextSprite.h"
-#include "2D/BsSpriteTexture.h"
+#include "Image/BsSpriteTexture.h"
 #include "GUI/BsGUIDimensions.h"
 #include "GUI/BsGUIHelper.h"
 
@@ -121,7 +121,7 @@ namespace bs
 		mDesc.vertAlign = _getStyle()->textVertAlign;
 		mDesc.width = mLayoutData.area.width;
 		mDesc.height = mLayoutData.area.height;
-		mDesc.text = mContent.getText();
+		mDesc.text = mContent.text;
 		mDesc.color = getTint() * _getStyle()->normal.textColor;;
 
 		mTextSprite->update(mDesc, (UINT64)_getParentWidget());

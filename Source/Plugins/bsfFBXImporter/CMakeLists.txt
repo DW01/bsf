@@ -15,26 +15,20 @@ target_compile_definitions(bsfFBXImporter PRIVATE -DBS_FBX_EXPORTS)
 
 # Libraries
 ## External lib: FBX
-target_link_libraries(bsfFBXImporter ${FBXSDK_LIBRARIES})
+target_link_libraries(bsfFBXImporter PRIVATE ${FBXSDK_LIBRARIES})
 
 ## Local libs
-target_link_libraries(bsfFBXImporter bsf)
+target_link_libraries(bsfFBXImporter PRIVATE bsf)
+
+## OS libs
+if(APPLE) # MacOS
+	target_link_framework(bsfFBXImporter CoreFoundation)
+endif()
 
 # IDE specific
 set_property(TARGET bsfFBXImporter PROPERTY FOLDER Plugins)
 
 # Install
-install(
-	TARGETS bsfFBXImporter
-	RUNTIME DESTINATION bin
-	LIBRARY DESTINATION lib
-	ARCHIVE DESTINATION lib
-)
+install_bsf_target(bsfFBXImporter)
 
-if(WIN32)
-	install(
-		FILES $<TARGET_PDB_FILE:bsfFBXImporter> 
-		DESTINATION bin 
-		OPTIONAL
-	)
-endif()
+conditional_cotire(bsfFBXImporter)
