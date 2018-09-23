@@ -55,7 +55,7 @@ namespace ct
 	class RenderCompositorNode
 	{
 	public:
-		virtual ~RenderCompositorNode() { }
+		virtual ~RenderCompositorNode() = default;
 
 	protected:
 		friend class RenderCompositor;
@@ -267,6 +267,24 @@ namespace ct
 		SPtr<PooledRenderTexture> output;
 
 		static StringID getNodeId() { return "MSAACoverage"; }
+		static SmallVector<StringID, 4> getDependencies(const RendererView& view);
+	protected:
+		/** @copydoc RenderCompositorNode::render */
+		void render(const RenderCompositorNodeInputs& inputs) override;
+
+		/** @copydoc RenderCompositorNode::clear */
+		void clear() override;
+	};
+
+	/************************************************************************/
+	/* 							UTILITY NODES                     			*/
+	/************************************************************************/
+
+	/** Simulates GPU particle systems. */
+	class RCNodeParticleSimulate : public RenderCompositorNode
+	{
+	public:
+		static StringID getNodeId() { return "ParticleSimulate"; }
 		static SmallVector<StringID, 4> getDependencies(const RendererView& view);
 	protected:
 		/** @copydoc RenderCompositorNode::render */

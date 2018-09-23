@@ -2,6 +2,8 @@
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "Particles/BsParticleEvolver.h"
 #include "Private/Particles/BsParticleSet.h"
+#include "Private/RTTI/BsParticleSystemRTTI.h"
+#include "Particles/BsVectorField.h"
 #include "Image/BsSpriteTexture.h"
 #include "BsParticleSystem.h"
 #include "Material/BsMaterial.h"
@@ -9,7 +11,6 @@
 #include "Physics/BsPhysics.h"
 #include "Physics/BsCollider.h"
 #include "Math/BsLineSegment3.h"
-#include "Private/RTTI/BsParticleSystemRTTI.h"
 
 namespace bs
 {
@@ -110,7 +111,7 @@ namespace bs
 			float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
 			particleT = Math::repeat(mDesc.numCycles * particleT, 1.0f);
 
-			const float frame = particleT * numFrames;
+			const float frame = particleT * (numFrames - 1);
 			particles.frame[i] = frameOffset + Math::clamp(frame, 0.0f, (float)(numFrames - 1));
 		}
 	}
@@ -203,7 +204,7 @@ namespace bs
 	}
 
 	ParticleGravity::ParticleGravity(const PARTICLE_GRAVITY_DESC& desc)
-		:ParticleEvolver(), mDesc(desc)
+		:mDesc(desc)
 	{ }
 
 	void ParticleGravity::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set) const

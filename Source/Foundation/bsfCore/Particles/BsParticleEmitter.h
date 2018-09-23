@@ -710,6 +710,15 @@ namespace bs
 		const ColorDistribution& getInitialColor() const { return mInitialColor; }
 
 		/** 
+		 * Determines a range of values determining a random offset to apply to particle position after it has been emitted. 
+		 * Offset will be randomly selected in all three axes in range [-value, value].
+		 */
+		void setRandomOffset(float value) { mRandomOffset = value; }
+
+		/** @copydoc setRandomOffset */
+		float getRandomOffset() const { return mRandomOffset; }
+
+		/** 
 		 * Determines should particle U texture coordinate be randomly flipped, mirroring the image. The value represents
 		 * a percent of particles that should be flipped, in range [0, 1]. 
 		 */
@@ -752,10 +761,12 @@ namespace bs
 		Vector3Distribution mInitialRotation3D = Vector3::ZERO;
 		bool mUse3DRotation = false;
 
-		ColorDistribution mInitialColor = Color::Black;
+		ColorDistribution mInitialColor = Color::White;
 
 		float mFlipU = 0.0f;
 		float mFlipV = 0.0f;
+		
+		float mRandomOffset = 0.0f;
 
 		// Internal state
 		mutable float mEmitAccumulator = 0.0f;

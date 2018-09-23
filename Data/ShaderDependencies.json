@@ -184,17 +184,23 @@
             "Path": "VertexInput.bslinc"
         }
     ],
+    "GpuParticleBounds.bsl": null,
     "GpuParticleClear.bsl": [
         {
             "Path": "GpuParticleTileVertex.bslinc"
         }
     ],
+    "GpuParticleCurveInject.bsl": null,
     "GpuParticleInject.bsl": null,
     "GpuParticleSimulate.bsl": [
         {
             "Path": "GpuParticleTileVertex.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
         }
     ],
+    "GpuParticleSortPrepare.bsl": null,
     "IrradianceAccumulateCubeSH.bsl": [
         {
             "Path": "PPBase.bslinc"
@@ -508,6 +514,11 @@
         },
         {
             "Path": "PerCameraData.bslinc"
+        }
+    ],
+    "RadixSortClear.bsl": [
+        {
+            "Path": "RadixSortCommon.bslinc"
         }
     ],
     "RadixSortCount.bsl": [

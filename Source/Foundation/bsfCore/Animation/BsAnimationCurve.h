@@ -5,6 +5,7 @@
 #include "BsCorePrerequisites.h"
 #include "Animation/BsCurveCache.h"
 #include "Math/BsVector3.h"
+#include "Math/BsVector2.h"
 #include "Math/BsQuaternion.h"
 #include "Allocators/BsPoolAlloc.h"
 
@@ -34,6 +35,7 @@ namespace bs
 
 	template struct BS_SCRIPT_EXPORT(m:Animation,n:KeyFrame,pl:true) TKeyframe<float>;
 	template struct BS_SCRIPT_EXPORT(m:Animation,n:KeyFrameVec3,pl:true) TKeyframe<Vector3>;
+	template struct BS_SCRIPT_EXPORT(m:Animation,n:KeyFrameVec2,pl:true) TKeyframe<Vector2>;
 	template struct BS_SCRIPT_EXPORT(m:Animation,n:KeyFrameQuat,pl:true) TKeyframe<Quaternion>;
 
 	/**
@@ -136,6 +138,9 @@ namespace bs
 		 */
 		void makeAdditive();
 
+		/** Returns the time of the first and last keyframe in the curve. */
+		std::pair<float, float> getTimeRange() const;
+
 		/** Calculates the minimal and maximal value of the curve. */
 		std::pair<T, T> calculateRange() const;
 
@@ -215,6 +220,7 @@ namespace bs
 #ifdef BS_SBGEN
 	template class BS_SCRIPT_EXPORT(m:Animation,n:AnimationCurve) TAnimationCurve<float>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:Vector3Curve) TAnimationCurve<Vector3>;
+	template class BS_SCRIPT_EXPORT(m:Animation,n:Vector2Curve) TAnimationCurve<Vector2>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:QuaternionCurve) TAnimationCurve<Quaternion>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:IntegerCurve) TAnimationCurve<INT32>;
 #endif
@@ -277,6 +283,7 @@ namespace bs
 #ifdef BS_SBGEN
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedFloatCurve,pl:true) TNamedAnimationCurve<float>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedVector3Curve,pl:true) TNamedAnimationCurve<Vector3>;
+	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedVector2Curve,pl:true) TNamedAnimationCurve<Vector2>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedQuaternionCurve,pl:true) TNamedAnimationCurve<Quaternion>;
 	template class BS_SCRIPT_EXPORT(m:Animation,n:NamedIntegerCurve,pl:true) TNamedAnimationCurve<INT32>;
 #endif

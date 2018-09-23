@@ -644,22 +644,21 @@ namespace bs {	namespace ct
 		const UINT32 rendererId = particleSystem->getRendererId();
 		RendererParticles& rendererParticles = mInfo.particleSystems[rendererId];
 
+		const ParticleSystemSettings& settings = particleSystem->getSettings();
+		if (settings.simulationSpace == ParticleSimulationSpace::Local)
+			rendererParticles.localToWorld = particleSystem->getTransform().getMatrix();
+		else
+			rendererParticles.localToWorld = Matrix4::IDENTITY;
+
 		if(tfrmOnly)
 		{
 			SPtr<GpuParamBlockBuffer>& paramBuffer = rendererParticles.particlesParamBuffer;
-			gParticlesParamDef.gWorldTfrm.set(paramBuffer, particleSystem->getTransform().getMatrix());
+			gParticlesParamDef.gWorldTfrm.set(paramBuffer, rendererParticles.localToWorld);
 		}
 		else
 		{
-			const ParticleSystemSettings& settings = particleSystem->getSettings();
-			Matrix4 transform;
-			if (settings.simulationSpace == ParticleSimulationSpace::Local)
-				transform = particleSystem->getTransform().getMatrix();
-			else
-				transform = Matrix4::IDENTITY;
-
 			SPtr<GpuParamBlockBuffer> paramBuffer = gParticlesParamDef.createBuffer();
-			gParticlesParamDef.gWorldTfrm.set(paramBuffer, transform);
+			gParticlesParamDef.gWorldTfrm.set(paramBuffer, rendererParticles.localToWorld);
 
 			Vector3 axisForward = settings.orientationPlane.normal;
 
@@ -679,7 +678,7 @@ namespace bs {	namespace ct
 			if(settings.gpuSimulation)
 			{
 				if(!rendererParticles.gpuParticleSystem)
-					rendererParticles.gpuParticleSystem = bs_pool_new<GpuParticleSystem>(particleSystem->getId());
+					rendererParticles.gpuParticleSystem = bs_pool_new<GpuParticleSystem>(particleSystem);
 			}
 			else
 			{
@@ -724,7 +723,9 @@ namespace bs {	namespace ct
 
 			const ParticleOrientation orientation = settings.orientation;
 			const bool lockY = settings.orientationLockY;
-			const ShaderVariation* variation = &getParticleShaderVariation(orientation, lockY);
+			const bool gpu = settings.gpuSimulation;
+			const bool is3d = settings.renderMode == ParticleRenderMode::Mesh;
+			const ShaderVariation* variation = &getParticleShaderVariation(orientation, lockY, gpu, is3d);
 
 			FIND_TECHNIQUE_DESC findDesc;
 			findDesc.variation = variation;
@@ -742,13 +743,57 @@ namespace bs {	namespace ct
 
 			SPtr<GpuParams> gpuParams = renElement.params->getGpuParams();
 
+			if(gpu)
+			{
+				gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gPositionTimeTex", 
+					renElement.paramsGPU.positionTimeTexture);
+				gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gSizeRotationTex", 
+					renElement.paramsGPU.sizeRotationTexture);
+				gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gCurvesTex", 
+					renElement.paramsGPU.curvesTexture);
+
+				rendererParticles.gpuParticlesParamBuffer = gGpuParticlesParamDef.createBuffer();
+				renElement.is3D = false;
+			}
+			else
+			{
+				switch(settings.renderMode)
+				{
+				case ParticleRenderMode::Billboard: 
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gPositionAndRotTex",
+						renElement.paramsCPUBillboard.positionAndRotTexture);
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gColorTex",
+						renElement.paramsCPUBillboard.colorTexture);
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gSizeAndFrameIdxTex",
+						renElement.paramsCPUBillboard.sizeAndFrameIdxTexture);
+
+					renElement.is3D = false;
+					break;
+				case ParticleRenderMode::Mesh: 
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gPositionTex",
+						renElement.paramsCPUMesh.positionTexture);
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gColorTex",
+						renElement.paramsCPUMesh.colorTexture);
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gSizeTex",
+						renElement.paramsCPUMesh.sizeTexture);
+					gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gRotationTex",
+						renElement.paramsCPUMesh.rotationTexture);
+
+					renElement.is3D = true;
+					renElement.mesh = settings.mesh;
+					break;
+				default: 
+					break;
+				}
+
+				rendererParticles.gpuParticlesParamBuffer = nullptr;
+			}
+
 			// Note: Perhaps perform buffer validation to ensure expected buffer has the same size and layout as the 
 			// provided buffer, and show a warning otherwise. But this is perhaps better handled on a higher level.
 			gpuParams->setParamBlockBuffer("ParticleParams", rendererParticles.particlesParamBuffer);
+			gpuParams->setParamBlockBuffer("GpuParticleParams", rendererParticles.gpuParticlesParamBuffer);
 
-			gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gPositionAndRotTex", renElement.positionAndRotTexture);
-			gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gColorTex", renElement.colorTexture);
-			gpuParams->getTextureParam(GPT_VERTEX_PROGRAM, "gSizeAndFrameIdxTex", renElement.sizeAndFrameIdxTexture);
 			gpuParams->getBufferParam(GPT_VERTEX_PROGRAM, "gIndices", renElement.indicesBuffer);
 
 			gpuParams->getParamInfo()->getBindings(
@@ -757,6 +802,81 @@ namespace bs {	namespace ct
 				renElement.perCameraBindings
 			);
 
+			if(gpu)
+			{
+				// Allocate curves
+				GpuParticleCurves& curves = GpuParticleSimulation::instance().getResources().getCurveTexture();
+				curves.free(rendererParticles.colorCurveAlloc);
+				curves.free(rendererParticles.sizeScaleFrameIdxCurveAlloc);
+
+				static constexpr UINT32 NUM_CURVE_SAMPLES = 128;
+				Color samples[NUM_CURVE_SAMPLES];
+
+				const ParticleGpuSimulationSettings& gpuSimSettings = particleSystem->getGpuSimulationSettings();
+
+				// Write color over lifetime curve
+				LookupTable colorLookup = gpuSimSettings.colorOverLifetime.toLookupTable(NUM_CURVE_SAMPLES, true);
+
+				for (UINT32 i = 0; i < NUM_CURVE_SAMPLES; i++)
+				{
+					const float* sample = colorLookup.getSample(i);
+					samples[i] = Color(sample[0], sample[1], sample[2], sample[3]);
+				}
+
+				rendererParticles.colorCurveAlloc = curves.alloc(samples, NUM_CURVE_SAMPLES);
+
+				// Write size over lifetime / sprite animation curve
+				LookupTable sizeLookup = gpuSimSettings.sizeScaleOverLifetime.toLookupTable(NUM_CURVE_SAMPLES, true);
+
+				float frameSamples[NUM_CURVE_SAMPLES];
+				if(spriteTexture && spriteTexture->getAnimationPlayback() != SpriteAnimationPlayback::None)
+				{
+					const SpriteSheetGridAnimation& anim = spriteTexture->getAnimation();
+					for (UINT32 i = 0; i < NUM_CURVE_SAMPLES; i++)
+					{
+						const float t = i / (float)(NUM_CURVE_SAMPLES - 1);
+						frameSamples[i] = t * (anim.count - 1);
+					}
+				}
+				else
+					memset(frameSamples, 0, sizeof(frameSamples));
+
+				for (UINT32 i = 0; i < NUM_CURVE_SAMPLES; i++)
+				{
+					const float* sample = sizeLookup.getSample(i);
+					samples[i] = Color(sample[0], sample[1], frameSamples[i], 0.0f);
+				}
+
+				rendererParticles.sizeScaleFrameIdxCurveAlloc = curves.alloc(samples, NUM_CURVE_SAMPLES);
+
+				const Vector2 colorUVOffset = GpuParticleCurves::getUVOffset(rendererParticles.colorCurveAlloc);
+				const float colorUVScale = GpuParticleCurves::getUVScale(rendererParticles.colorCurveAlloc);
+
+				const Vector2 sizeScaleFrameIdxUVOffset = 
+					GpuParticleCurves::getUVOffset(rendererParticles.sizeScaleFrameIdxCurveAlloc);
+				const float sizeScaleFrameIdxUVScale = 
+					GpuParticleCurves::getUVScale(rendererParticles.sizeScaleFrameIdxCurveAlloc);
+
+				const SPtr<GpuParamBlockBuffer>& gpuParticlesParamBuffer = rendererParticles.gpuParticlesParamBuffer;
+				gGpuParticlesParamDef.gColorCurveOffset.set(gpuParticlesParamBuffer, colorUVOffset);
+				gGpuParticlesParamDef.gColorCurveScale.set(gpuParticlesParamBuffer, Vector2(colorUVScale, 0.0f));
+				gGpuParticlesParamDef.gSizeScaleFrameIdxCurveOffset.set(gpuParticlesParamBuffer, 
+					sizeScaleFrameIdxUVOffset);
+				gGpuParticlesParamDef.gSizeScaleFrameIdxCurveScale.set(gpuParticlesParamBuffer, 
+					Vector2(sizeScaleFrameIdxUVScale, 0.0f));
+
+				// Write sprite animation curve
+				if (spriteTexture)
+				{
+					gParticlesParamDef.gUVOffset.set(paramBuffer, spriteTexture->getOffset());
+					gParticlesParamDef.gUVScale.set(paramBuffer, spriteTexture->getScale());
+
+					const SpriteSheetGridAnimation& anim = spriteTexture->getAnimation();
+					gParticlesParamDef.gSubImageSize.set(paramBuffer,
+						Vector4((float)anim.numColumns, (float)anim.numRows, 1.0f / anim.numColumns, 1.0f / anim.numRows));
+				}
+			}
+
 			// TODO - Set up buffers/bindings required for advanced lighting
 		}
 	}
@@ -764,8 +884,13 @@ namespace bs {	namespace ct
 	void RendererScene::unregisterParticleSystem(ParticleSystem* particleSystem)
 	{
 		const UINT32 rendererId = particleSystem->getRendererId();
-
 		RendererParticles& rendererParticles = mInfo.particleSystems[rendererId];
+
+		// Free curves
+		GpuParticleCurves& curves = GpuParticleSimulation::instance().getResources().getCurveTexture();
+		curves.free(rendererParticles.colorCurveAlloc);
+		curves.free(rendererParticles.sizeScaleFrameIdxCurveAlloc);
+
 		if (rendererParticles.gpuParticleSystem)
 		{
 			bs_pool_delete(rendererParticles.gpuParticleSystem);
@@ -834,6 +959,7 @@ namespace bs {	namespace ct
 
 		viewDesc.target.numSamples = camera->getMSAACount();
 
+		viewDesc.mainView = camera->isMain();
 		viewDesc.triggerCallbacks = true;
 		viewDesc.runPostProcessing = true;
 		viewDesc.capturingReflections = false;
@@ -1040,7 +1166,7 @@ namespace bs {	namespace ct
 		mInfo.renderableReady[idx] = true;
 	}
 
-	void RendererScene::updateParticleSystemBounds(const ParticleSimulationData* particleRenderData)
+	void RendererScene::updateParticleSystemBounds(const ParticlePerFrameData* particleRenderData)
 	{
 		// Note: Avoid updating bounds for deterministic particle systems every frame. Also see if this can be copied
 		// over in a faster way (or ideally just assigned)
@@ -1049,22 +1175,18 @@ namespace bs {	namespace ct
 		{
 			const UINT32 rendererId = entry.particleSystem->getRendererId();
 
+			AABox worldBounds = AABox::INF_BOX;
 			const auto iterFind = particleRenderData->cpuData.find(entry.particleSystem->getId());
 			if(iterFind != particleRenderData->cpuData.end())
-			{
-				AABox worldBounds = iterFind->second->bounds;
-
-				const ParticleSystemSettings& settings = entry.particleSystem->getSettings();
-				if (settings.simulationSpace == ParticleSimulationSpace::Local)
-					worldBounds.transformAffine(entry.particleSystem->getTransform().getMatrix());
-
-				mInfo.particleSystemBounds[rendererId] = worldBounds;
-			}
+				worldBounds = iterFind->second->bounds;
 			else if(entry.gpuParticleSystem)
-			{
-				// TODO - For now we don't cull GPU simulated particle systems
-				mInfo.particleSystemBounds[rendererId] = AABox::INF_BOX;
-			}
+				worldBounds = entry.gpuParticleSystem->getBounds();
+
+			const ParticleSystemSettings& settings = entry.particleSystem->getSettings();
+			if (settings.simulationSpace == ParticleSimulationSpace::Local)
+				worldBounds.transformAffine(entry.localToWorld);
+
+			mInfo.particleSystemBounds[rendererId] = worldBounds;
 		}
 	}
 }}

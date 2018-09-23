@@ -1023,7 +1023,7 @@ namespace bs
 				{
 					assert(paramSize == sizeof(Rect2));
 					
-					typename TSpriteTextureType<Core>::Type spriteTexture = 
+					CoreVariantHandleType<SpriteTexture, Core> spriteTexture =
 						params->getOwningSpriteTexture(*materialParamInfo);
 
 					UINT32 writeOffset = paramInfo.offset * sizeof(UINT32);
@@ -1055,7 +1055,7 @@ namespace bs
 							const ColorGradient& gradient = params->getColorGradientParam(*materialParamInfo, i);
 
 							const float wrappedT = Math::repeat(t, gradient.getDuration());
-							value.setAsRGBA(gradient.evaluate(wrappedT));
+							value = Color::fromRGBA(gradient.evaluate(wrappedT));
 						}
 						else
 							memcpy(&value, data + arrayOffset, paramSize);

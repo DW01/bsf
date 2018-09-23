@@ -8,17 +8,48 @@ mixin ParticleVertex
 	{
 		ORIENT = { 0, 1, 2 }; // 0 - Camera plane, 1 - Camera position, 2 - Axis
 		LOCK_Y = { false, true };
+		GPU = { false, true };
+		IS_3D = { false, true };
 	};
 
 	code
 	{
+		#if IS_3D && !GPU
+		struct VertexInput
+		{
+			float3 position : POSITION;
+			float2 uv0 : TEXCOORD0;
+			uint instanceId	: SV_InstanceID;		
+		};		
+		
+		struct ParticleInput
+		{
+			float3 position;
+			float3 rotation;
+			float3 size;
+			float3 velocity;
+			float4 color;
+		};
+		#else
 		struct VertexInput
 		{
 			float2 position : POSITION;
 			float2 uv0 : TEXCOORD0;
 			uint instanceId	: SV_InstanceID;		
+		};		
+		
+		struct ParticleInput
+		{
+			float3 position;
+			float rotation;
+			float2 uvflip;
+			float2 size;
+			float3 velocity;
+			float frame;
+			float4 color;
 		};
-	
+		#endif
+		
 		struct VStoFS
 		{
 			float4 position : SV_Position;
@@ -26,9 +57,129 @@ mixin ParticleVertex
 			float4 color : COLOR0;
 		};
 		
+		#if GPU
+		Texture2D gPositionTimeTex; // position in .xyz, time (in [0, 1] range) in .w
+		Texture2D gSizeRotationTex; // size in .xy, rotation in .z
+		
+		Texture2D gCurvesTex;
+		
+		[alias(gCurvesTex)]
+		SamplerState gCurvesSampler;
+		
+		[internal]
+		cbuffer GpuParticleParams
+		{
+			float2 gColorCurveOffset;
+			float2 gColorCurveScale;
+			float2 gSizeScaleFrameIdxCurveOffset;
+			float2 gSizeScaleFrameIdxCurveScale;
+		};
+		
+		ParticleInput getParticleInput(uint2 index)
+		{
+			uint3 pixelPos;
+			pixelPos.xy = index;
+			pixelPos.z = 0;
+			
+			ParticleInput pi;
+			
+			float4 posAndTime = gPositionTimeTex.Load(pixelPos);
+			pi.position = posAndTime.xyz;
+			
+			float time = posAndTime.w;
+			float aliveMask = step(time, 1.0f);
+			
+			float4 sizeAndRotation = gSizeRotationTex.Load(pixelPos);
+			
+			float2 sizeScaleFrameIdxCurveUV = gSizeScaleFrameIdxCurveOffset + time * gSizeScaleFrameIdxCurveScale;
+			float3 sizeScaleFrameIdx = gCurvesTex.SampleLevel(gCurvesSampler, sizeScaleFrameIdxCurveUV, 0).xyz;
+			
+			float2 sizeScale = sizeScaleFrameIdx.xy;
+			
+			pi.uvflip = sign(sizeAndRotation.xy);
+			pi.size = abs(sizeAndRotation.xy) * sizeScale.xy * aliveMask;
+			pi.rotation = sizeAndRotation.z;
+			
+			pi.frame = sizeScaleFrameIdx.z;
+			
+			float2 colorCurveUV = gColorCurveOffset + time * gColorCurveScale;
+			pi.color = gCurvesTex.SampleLevel(gCurvesSampler, colorCurveUV, 0);
+			
+			return pi;
+		}
+		#elif IS_3D
+		Texture2D gPositionTex;
+		Texture2D gColorTex;
+		Texture2D gSizeTex;
+		Texture2D gRotationTex;
+		
+		ParticleInput getParticleInput(uint2 index)
+		{
+			uint3 pixelPos;
+			pixelPos.xy = index;
+			pixelPos.z = 0;
+			
+			ParticleInput pi;
+			
+			pi.position = gPositionTex.Load(pixelPos).xyz;
+			pi.rotation = gRotationTex.Load(pixelPos).xyz;
+			pi.color = gColorTex.Load(pixelPos);
+			pi.size = gSizeTex.Load(pixelPos).xyz;
+			
+			return pi;
+		}
+		
+		float3x3 getRotationScaleMatrix(float3 anglesRad, float3 scale)
+		{
+			float cx, sx, cy, sy, cz, sz;
+			sincos(anglesRad.x, sx, cx);
+			sincos(anglesRad.y, sy, cy);
+			sincos(anglesRad.z, sz, cz);
+			
+			float3x3 m;
+			m[0][0] = (cy * cz + sx * sy * sz) * scale.x;
+			m[0][1] = cz * sx * sy - cy * sz;
+			m[0][2] = cx * sy;
+
+			m[1][0] = cx * sz;
+			m[1][1] = cx * cz * scale.y;
+			m[1][2] = -sx;
+
+			m[2][0] = -cz * sy + cy * sx * sz;
+			m[2][1] = cy * cz * sx + sy * sz;
+			m[2][2] = cx * cy * scale.z;
+			
+			return m;
+		}
+		
+		#else
 		Texture2D gPositionAndRotTex; // position in .xyz, rotation in radians in .w
 		Texture2D gColorTex;
 		Texture2D gSizeAndFrameIdxTex; // size in .xy, uv flip encoded in sign of .xy, frame index in .z, .w unused
+		
+		ParticleInput getParticleInput(uint2 index)
+		{
+			uint3 pixelPos;
+			pixelPos.xy = index;
+			pixelPos.z = 0;
+			
+			ParticleInput pi;
+			
+			float4 posAndRot = gPositionAndRotTex.Load(pixelPos);
+			pi.position = posAndRot.xyz;
+			pi.rotation = posAndRot.w;
+			
+			float4 sizeAndFrame = gSizeAndFrameIdxTex.Load(pixelPos);
+			pi.uvflip = sign(sizeAndFrame.xy);
+			pi.size = abs(sizeAndFrame.xy);
+			pi.frame = sizeAndFrame.z;
+			
+			pi.color = gColorTex.Load(pixelPos);
+			
+			return pi;
+		}
+		#endif
+		
 		Buffer<uint2> gIndices;
 
 		[internal]
@@ -41,71 +192,70 @@ mixin ParticleVertex
 			float3 gAxisUp;
 			uint gTexSize;
 			float3 gAxisRight;
-		}		
-
+			uint gBufferOffset;
+		}
+		
 		VStoFS vsmain(VertexInput input)
 		{
-			uint3 pixelPos;
-			pixelPos.xy = gIndices[input.instanceId];
-			pixelPos.z = 0;
-		
-			float4 posAndRot = gPositionAndRotTex.Load(pixelPos);
-			float4 worldPosition = mul(gWorldTfrm, float4(posAndRot.xyz, 1.0f));
-			
-			float3 sizeAndFrame = gSizeAndFrameIdxTex.Load(pixelPos).xyz;
-			float2 uvflip = sign(sizeAndFrame.xy);
-			float2 size = abs(sizeAndFrame.xy);
-			
-			float frame = sizeAndFrame.z;
-			
-			float3 axisRight, axisUp;
-			#if ORIENT == 2 // Axis
-				axisRight = gAxisRight;
-				axisUp = gAxisUp;
-			#elif ORIENT == 1 // Towards camera origin
-				float3 diff = gViewOrigin - worldPosition.xyz;
-				
-				float3 cameraUp = float3(gMatView[1][0], gMatView[1][1], gMatView[1][2]);
-				axisRight = normalize(cross(diff, cameraUp));
-				
-				#if LOCK_Y
-					axisUp = float3(0, 1, 0);
-				#else
-					axisUp = normalize(cross(axisRight, diff));
-				#endif
-			#else // Towards camera plane
-				axisRight = float3(gMatView[0][0], gMatView[0][1], gMatView[0][2]);
-				
-				#if LOCK_Y
-					axisUp = float3(0, 1, 0);				
-				#else
-					axisUp = float3(gMatView[1][0], gMatView[1][1], gMatView[1][2]);
-				#endif
-			#endif
-
-			float rotSin, rotCos;
-			sincos(posAndRot.w, rotSin, rotCos);
-			
-			float3 rotAxisRight = rotSin * axisUp + rotCos * axisRight;
-			float3 rotAxisUp = rotCos * axisUp - rotSin * axisRight;
-			
-			worldPosition.xyz += rotAxisRight * input.position.x * size.x + rotAxisUp * input.position.y  * size.y;	
-			
-			float2 uv;
-			uv.x = uvflip.x >= 0.0f ? input.uv0.x : 1.0f - input.uv0.x;
-			uv.y = uvflip.y >= 0.0f ? input.uv0.y : 1.0f - input.uv0.y;
-			
-			frame -= frac(frame);
-			float row = fmod(frame, gSubImageSize.x);
-			float column = floor(frame * gSubImageSize.z);
-			
-			float2 subUV = (float2(row, column) + uv) * gSubImageSize.zw;
+			ParticleInput pi = getParticleInput(gIndices[gBufferOffset + input.instanceId]);
 			
 			VStoFS output;
-			output.color = gColorTex.Load(pixelPos);
-			output.uv0 = gUVOffset + subUV * gUVSize;
+			output.color = pi.color;
+			
+			float4 worldPosition = mul(gWorldTfrm, float4(pi.position, 1.0f));
+
+			#if IS_3D && !GPU
+				float3x3 rotScale = getRotationScaleMatrix(pi.rotation, pi.size);
+				worldPosition.xyz += mul(rotScale, input.position);
+
+				output.uv0 = input.uv0;
+			#else // IS_3D
+				float3 axisRight, axisUp;
+				#if ORIENT == 2 // Axis
+					axisRight = gAxisRight;
+					axisUp = gAxisUp;
+				#elif ORIENT == 1 // Towards camera origin
+					float3 diff = gViewOrigin - worldPosition.xyz;
+					
+					float3 cameraUp = float3(gMatView[1][0], gMatView[1][1], gMatView[1][2]);
+					axisRight = normalize(cross(diff, cameraUp));
+					
+					#if LOCK_Y
+						axisUp = float3(0, 1, 0);
+					#else
+						axisUp = normalize(cross(axisRight, diff));
+					#endif
+				#else // Towards camera plane
+					axisRight = float3(gMatView[0][0], gMatView[0][1], gMatView[0][2]);
+					
+					#if LOCK_Y
+						axisUp = float3(0, 1, 0);				
+					#else
+						axisUp = float3(gMatView[1][0], gMatView[1][1], gMatView[1][2]);
+					#endif
+				#endif
+
+				float rotSin, rotCos;
+				sincos(pi.rotation, rotSin, rotCos);
+				
+				float3 rotAxisRight = rotSin * axisUp + rotCos * axisRight;
+				float3 rotAxisUp = rotCos * axisUp - rotSin * axisRight;
+				
+				worldPosition.xyz += rotAxisRight * input.position.x * pi.size.x + rotAxisUp * input.position.y  * pi.size.y;	
+				
+				float2 uv;
+				uv.x = pi.uvflip.x >= 0.0f ? input.uv0.x : 1.0f - input.uv0.x;
+				uv.y = pi.uvflip.y >= 0.0f ? input.uv0.y : 1.0f - input.uv0.y;
+				
+				float frame = pi.frame - frac(pi.frame);
+				float row = floor(frame * gSubImageSize.z);
+				float column = fmod(frame, gSubImageSize.x);
+				
+				float2 subUV = (float2(row, column) + uv) * gSubImageSize.zw;
+				output.uv0 = gUVOffset + subUV * gUVSize;
+			#endif
+
 			output.position = mul(gMatViewProj, worldPosition);
-		
 			return output;
 		}
 	};

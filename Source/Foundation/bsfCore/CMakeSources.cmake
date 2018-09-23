@@ -59,6 +59,7 @@ set(BS_CORE_INC_CORETHREAD
 	"bsfCore/CoreThread/BsCoreObject.h"
 	"bsfCore/CoreThread/BsCommandQueue.h"
 	"bsfCore/CoreThread/BsCoreObjectCore.h"
+	"bsfCore/CoreThread/BsCoreObjectSync.h"
 )
 
 set(BS_CORE_INC_IMPORTER
@@ -383,6 +384,7 @@ set(BS_CORE_INC_RTTI
 	"bsfCore/Private/RTTI/BsParticleDistributionRTTI.h"
 	"bsfCore/Private/RTTI/BsSpriteTextureRTTI.h"
 	"bsfCore/Private/RTTI/BsCParticleSystemRTTI.h"
+	"bsfCore/Private/RTTI/BsVectorFieldRTTI.h"
 )
 
 set(BS_CORE_SRC_RENDERER
@@ -596,6 +598,7 @@ set(BS_CORE_INC_PARTICLES
 	"bsfCore/Particles/BsParticleManager.h"
 	"bsfCore/Particles/BsParticleDistribution.h"
 	"bsfCore/Particles/BsParticleModule.h"
+	"bsfCore/Particles/BsVectorField.h"
 	"bsfCore/Private/Particles/BsParticleSet.h"
 )
 
@@ -604,6 +607,8 @@ set(BS_CORE_SRC_PARTICLES
 	"bsfCore/Particles/BsParticleEmitter.cpp"
 	"bsfCore/Particles/BsParticleEvolver.cpp"
 	"bsfCore/Particles/BsParticleManager.cpp"
+	"bsfCore/Particles/BsParticleDistribution.cpp"
+	"bsfCore/Particles/BsVectorField.cpp"
 )
 
 set(BS_CORE_INC_PLATFORM

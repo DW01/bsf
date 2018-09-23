@@ -29,10 +29,6 @@ namespace bs
 	 *  @{
 	 */
 
-	template<bool Core> struct TMaterialHandleType { };
-	template<> struct TMaterialHandleType<false> { typedef HMaterial Type; };
-	template<> struct TMaterialHandleType<true> { typedef SPtr<ct::Material> Type; };
-
 	/** @} */
 
 	/** @addtogroup Particles
@@ -84,19 +80,63 @@ namespace bs
 		YoungToOld
 	};
 
+	/** Determines how are particles represented on the screen. */
+	enum class ParticleRenderMode
+	{
+		/** Particle is represented using a 2D quad. */
+		Billboard,
+
+		/** Particle is represented using a 3D mesh. */
+		Mesh
+	};
+
+	/** Controls depth buffer collisions for GPU simulated particles. */
+	struct ParticleDepthCollisionSettings : IReflectable
+	{
+		/** Determines if depth collisions are enabled. */
+		bool enabled = false;
+
+		/** 
+		 * Determines the elasticity (bounciness) of the particle collision. Lower values make the collision less bouncy
+		 * and higher values more. 
+		 */
+		float restitution = 1.0f;
+
+		/**
+		 * Determines how much velocity should a particle lose after a collision, in percent of its current velocity. In
+		 * range [0, 1].
+		 */
+		float dampening = 0.5f;
+
+		/** Scale which to apply to particle size in order to determine the collision radius. */
+		float radiusScale = 1.0f;
+
+		/** Applies an operation over all the serializable fields of this object. */
+		template<class Processor>
+		void rttiProcess(Processor p);
+
+		/************************************************************************/
+		/* 								RTTI		                     		*/
+		/************************************************************************/
+
+	public:
+		friend class ParticleDepthCollisonSettingsRTTI;
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
+	};
+
+	/** @} */
 	/** @addtogroup Implementation
 	 *  @{
 	 */
 
-	/** Template version of ParticleSystemSettings used for creating the object for both sim and core threads. */
-	template<bool Core>
-	struct TParticleSystemSettings
+	/** Common base for both sim and core thread variants of ParticleSystemSettings. */
+	struct ParticleSystemSettingsBase
 	{
-		typedef typename TMaterialHandleType<Core>::Type MaterialType;
-
 		/** 
 		 * If true the particle system will be simulated on the GPU. This allows much higher particle counts at lower
-		 * performance cost. Note that GPU simulation only supports a subset of particle system evolvers.
+		 * performance cost. GPU simulation ignores any provided evolvers and instead uses ParticleGpuSimulationSettings
+		 * to customize the GPU simulation. 
 		 */
 		bool gpuSimulation = false;
 
@@ -120,7 +160,7 @@ namespace bs
 
 		/** 
 		 * Determines how (and if) are particles sorted. Sorting controls in what order are particles rendered. 
-		 * If @p gpuSimulation is enabled only distance based sorting is supported.
+		 * If GPU simulation is enabled only distance based sorting is supported.
 		 */
 		ParticleSortMode sortMode = ParticleSortMode::None;
 
@@ -133,7 +173,11 @@ namespace bs
 		/** Determines should the particle system time wrap around once it reaches its duration. */
 		bool isLooping = true;
 
-		/** Determines the maximum number of particles that can ever be active in this system. */
+		/** 
+		 * Determines the maximum number of particles that can ever be active in this system. This number is ignored
+		 * if GPU simulation is enabled, and instead particle count is instead only limited by the size of the internal
+		 * buffers (shared between all particle systems).
+		 */
 		UINT32 maxParticles = 2000;
 
 		/** 
@@ -148,8 +192,120 @@ namespace bs
 		 */
 		UINT32 manualSeed = 0;
 
+		/**
+		 * Determines should the particle system bounds be automatically calculated, or should the fixed value provided
+		 * be used. Bounds are used primarily for culling purposes. Note that automatic bounds are not supported when GPU
+		 * simulation is enabled.
+		 */
+		bool useAutomaticBounds = true;
+
+		/** 
+		 * Custom bounds to use them @p useAutomaticBounds is disabled. The bounds are in the simulation space of the
+		 * particle system.
+		 */
+		AABox customBounds;
+
+		/** Determines how is each particle represented on the screen. */
+		ParticleRenderMode renderMode = ParticleRenderMode::Billboard;
+	};
+
+	/** Templated common base for both sim and core thread variants of ParticleSystemSettings. */
+	template<bool Core>
+	struct TParticleSystemSettings : ParticleSystemSettingsBase
+	{
+		using MaterialType = CoreVariantHandleType<Material, Core>;
+		using MeshType = CoreVariantHandleType<Mesh, Core>;
+
 		/** Material to render the particles with. */
 		MaterialType material;
+
+		/** Mesh used for representing individual particles when using the Mesh rendering mode. */
+		MeshType mesh;
+
+		/** Applies an operation over all the serializable fields of this object. */
+		template<class Processor>
+		void rttiProcess(Processor p);
+	};
+
+	/** Common base for both sim and core thread variants of ParticleVectorFieldSettings. */
+	struct ParticleVectorFieldSettingsBase
+	{
+		/** Intensity of the forces and velocities applied by the vector field. */
+		float intensity = 1.0f;
+
+		/** 
+		 * Determines how closely does the particle velocity follow the vectors in the field. If set to 1 particles
+		 * will be snapped to the exact velocity of the value in the field, and if set to 0 the field will not influence
+		 * particle velocities directly. 
+		 */
+		float tightness = 0.0f;
+
+		/** Scale to apply to the vector field bounds. This is multiplied with the bounds of the vector field resource. */
+		Vector3 scale = Vector3::ONE;
+
+		/** 
+		 * Amount of to move the vector field by relative to the parent particle system. This is added to the bounds
+		 * provided in the vector field resource.
+		 */
+		Vector3 offset = Vector3::ZERO;
+
+		/** Initial rotation of the vector field. */
+		Quaternion rotation = Quaternion::IDENTITY;
+
+		/** 
+		 * Determines the amount to rotate the vector field every second, in degrees, around XYZ axis respectively. 
+		 * Evaluated over the particle system lifetime. 
+		 */
+		Vector3Distribution rotationRate = Vector3(0.0f, 90.0f, 0.0f);
+
+		/** 
+		 * Determines should the field influence particles outside of the field bounds. If true the field will be tiled
+		 * infinitely in the X direction.
+		 */
+		bool tilingX = false;
+
+		/** 
+		 * Determines should the field influence particles outside of the field bounds. If true the field will be tiled
+		 * infinitely in the Y direction.
+		 */
+		bool tilingY = false;
+
+		/** 
+		 * Determines should the field influence particles outside of the field bounds. If true the field will be tiled
+		 * infinitely in the Z direction.
+		 */
+		bool tilingZ = false;
+	};
+
+	/** Templated common base for both sim and core thread variants of ParticleVectorFieldSettings. */
+	template<bool Core>
+	struct TParticleVectorFieldSettings : ParticleVectorFieldSettingsBase
+	{
+		/** Vector field resource used for influencing the particles. */
+		CoreVariantHandleType<VectorField, Core> vectorField;
+
+		/** Applies an operation over all the serializable fields of this object. */
+		template<class Processor>
+		void rttiProcess(Processor p);
+	};
+
+	/** Common base for both sim and core threat variants of ParticleGpuSimulationSettings. */
+	struct ParticleGpuSimulationSettingsBase
+	{
+		/** Determines particle color, evaluated over the particle lifetime. */
+		ColorDistribution colorOverLifetime = Color::White;
+
+		/** Determines particle size, evaluated over the particle lifetime. Multiplied by the initial particle size. */
+		Vector2Distribution sizeScaleOverLifetime = Vector2::ONE;
+
+		/** Constant acceleration to apply for each step of the simulation. */
+		Vector3 acceleration = Vector3::ZERO;
+
+		/** Amount of resistance to apply in the direction opposite of the particle's velocity. */
+		float drag = 0.0f;
+
+		/** Settings controlling particle depth buffer collisions. */
+		ParticleDepthCollisionSettings depthCollision;
 	};
 
 	/** @} */
@@ -158,7 +314,7 @@ namespace bs
 	 *  @{
 	 */
 
-	/** Settings used for controlling a ParticleSystem. */
+	/** Generic settings used for controlling a ParticleSystem. */
 	struct BS_CORE_EXPORT ParticleSystemSettings : TParticleSystemSettings<false>, IReflectable
 	{
 		/************************************************************************/
@@ -170,11 +326,65 @@ namespace bs
 		RTTITypeBase* getRTTI() const override;
 	};
 
+	/** Settings used for controlling a vector field in a GPU simulated particle system. */
+	struct BS_CORE_EXPORT ParticleVectorFieldSettings : TParticleVectorFieldSettings<false>, IReflectable
+	{
+		/************************************************************************/
+		/* 								RTTI		                     		*/
+		/************************************************************************/
+
+	public:
+		friend class ParticleVectorFieldSettingsRTTI;
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
+	};
+
+	/** Settings used for controlling particle system GPU simulation. */
+	struct BS_CORE_EXPORT ParticleGpuSimulationSettings : ParticleGpuSimulationSettingsBase, IReflectable
+	{
+		/** Settings used for controlling a vector field. */
+		ParticleVectorFieldSettings vectorField;
+
+		/************************************************************************/
+		/* 								RTTI		                     		*/
+		/************************************************************************/
+
+	public:
+		friend class ParticleGpuSimulationSettingsRTTI;
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
+	};
+
+	/** @} */
+
+	/** @addtogroup Particles-Internal 
+	 *  @{
+	 */
+
 	namespace ct
 	{
+		class VectorField;
+
 		/** Core thread counterpart of bs::ParticleSystemSettings. */
 		struct ParticleSystemSettings : TParticleSystemSettings<true> { };
+
+		/** Core thread counterpart of bs::ParticleVectorFieldSettings. */
+		struct ParticleVectorFieldSettings : TParticleVectorFieldSettings<true>
+		{ };
+
+		/** Core thread counterpart of bs::ParticleVectorFieldSettings. */
+		struct ParticleGpuSimulationSettings : ParticleGpuSimulationSettingsBase
+		{
+			/** @copydoc bs::ParticleGpuSimulationSettings::vectorField */
+			ParticleVectorFieldSettings vectorField;
+		};
 	}
+
+	/** @} */
+
+	/** @addtogroup Particles
+	 *  @{
+	 */
 
 	/** Manages a list of all emitters used by a ParticleSystem. */
 	class BS_CORE_EXPORT ParticleSystemEmitters : public IReflectable
@@ -270,22 +480,7 @@ namespace bs
 			if(iterFind != mList.end())
 				mList.erase(iterFind);
 
-			const ParticleEvolverProperties& props = evolver->getProperties();
-
-			switch(props.type)
-			{
-			default:
-			case ParticleEvolverType::CPU: 
-				mSortedListCPU.erase(evolver);
-				break;
-			case ParticleEvolverType::GPU: 
-				mSortedListGPU.erase(evolver);
-				break;
-			case ParticleEvolverType::CPUAndGPU: 
-				mSortedListCPU.erase(evolver);
-				mSortedListGPU.erase(evolver);
-				break;
-			}
+			mSortedList.erase(evolver);
 		}
 
 	private:
@@ -294,27 +489,11 @@ namespace bs
 		/** Registers the particle evolver in one or multiple sorted lists, depending on its type. */
 		void addToSortedList(ParticleEvolver* evolver)
 		{
-			const ParticleEvolverProperties& props = evolver->getProperties();
-
-			switch(props.type)
-			{
-			default:
-			case ParticleEvolverType::CPU: 
-				mSortedListCPU.insert(evolver);
-				break;
-			case ParticleEvolverType::GPU: 
-				mSortedListGPU.insert(evolver);
-				break;
-			case ParticleEvolverType::CPUAndGPU: 
-				mSortedListCPU.insert(evolver);
-				mSortedListGPU.insert(evolver);
-				break;
-			}
+			mSortedList.insert(evolver);
 		}
 
 		typedef std::function<bool(const ParticleEvolver*, const ParticleEvolver*)> EvolverComparison; 
-		Set<ParticleEvolver*, EvolverComparison> mSortedListCPU;
-		Set<ParticleEvolver*, EvolverComparison> mSortedListGPU;
+		Set<ParticleEvolver*, EvolverComparison> mSortedList;
 
 		Vector<SPtr<ParticleEvolver>> mList;
 
@@ -345,6 +524,12 @@ namespace bs
 
 		/** @copydoc setSettings */
 		const ParticleSystemSettings& getSettings() const { return mSettings; }
+
+		/** Determines settings that control particle GPU simulation. */
+		void setGpuSimulationSettings(const ParticleGpuSimulationSettings& settings);
+
+		/** @copydoc setGpuSimulationSettings */
+		const ParticleGpuSimulationSettings& getGpuSimulationSettings() const { return mGpuSimulationSettings; }
 
 		/** Returns an object that allows you to modify the list of emitters used by this system. */
 		ParticleSystemEmitters& getEmitters() { return mEmitters; }
@@ -379,14 +564,30 @@ namespace bs
 
 		/** 
 		 * Calculates the bounds of all the particles in the system. Should be called after a call to _simulate() to get
-		 * up-to-date bounds.
+		 * up-to-date bounds. The bounds are in the simulation space of the particle system.
 		 */
 		AABox _calculateBounds() const;
+
+		/** 
+		 * Advances the particle system time according to the current time, time delta and the provided settings. 
+		 * 
+		 * @param[in]		time		Current time to use as a base.
+		 * @param[in]		timeDelta	Amount of time to advance the time by.
+		 * @param[in]		duration	Maximum time allowed by the particle system.
+		 * @param[in]		loop		Determines what happens when the time exceeds @p duration. If true the time will
+		 *								wrap around to 0 and start over, if false the time will be clamped to @p
+		 *								duration.
+		 * @param[out]		timeStep	Actual time-step the simulation was advanced by. This is normally equal to
+		 *								@p timeDelta but might be a different value if time was clamped.
+		 * @return						New time value.
+		 */
+		static float _advanceTime(float time, float timeDelta, float duration, bool loop, float& timeStep);
 
 		/** @} */
 	private:
 		friend class ParticleManager;
 		friend class ParticleSystemRTTI;
+		friend class ct::ParticleSystem;
 
 		/** States the particle system can be in. */
 		enum class State
@@ -409,6 +610,7 @@ namespace bs
 		static SPtr<ParticleSystem> createEmpty();
 
 		ParticleSystemSettings mSettings;
+		ParticleGpuSimulationSettings mGpuSimulationSettings;
 		ParticleSystemEmitters mEmitters;
 		ParticleSystemEvolvers mEvolvers;
 
@@ -438,18 +640,6 @@ namespace bs
 
 	namespace ct
 	{
-		/** 
-		 * Contains a set of textures used for rendering a particle system. Each pixel in a texture represent properties
-		 * of a single particle.
-		 */
-		struct ParticleTextures
-		{
-			SPtr<Texture> positionAndRotation;
-			SPtr<Texture> color;
-			SPtr<Texture> sizeAndFrameIdx;
-			SPtr<GpuBuffer> indices; 
-		};
-
 		/** Core thread counterpart of bs::ParticleSystem. */
 		class BS_CORE_EXPORT ParticleSystem final : public CoreObject, public SceneActor, public INonCopyable 
 		{
@@ -458,6 +648,9 @@ namespace bs
 
 			/** @copydoc bs::ParticleSystem::setSettings */
 			const ParticleSystemSettings& getSettings() const { return mSettings; }
+
+			/** @copydoc bs::ParticleSystem::setGpuSimulationSettings */
+			const ParticleGpuSimulationSettings& getGpuSimulationSettings() const { return mGpuSimulationSettings; }
 
 			/**	Sets an ID that can be used for uniquely identifying this object by the renderer. */
 			void setRendererId(UINT32 id) { mRendererId = id; }
@@ -487,6 +680,7 @@ namespace bs
 			UINT32 mId;
 
 			ParticleSystemSettings mSettings;
+			ParticleGpuSimulationSettings mGpuSimulationSettings;
 		};
 	}
 
