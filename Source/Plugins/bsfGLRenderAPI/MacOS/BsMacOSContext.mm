@@ -53,6 +53,9 @@ namespace bs::ct
 		m = bs_new<Pimpl>();
 		m->context = [[NSOpenGLContext alloc] initWithFormat:pixelFormat shareContext:nil];
 
+		if(!m->context)
+			BS_EXCEPT(InternalErrorException, "Unable to create OpenGL context.");
+
 		markAsDirty();
 	}}
 
@@ -75,8 +78,9 @@ namespace bs::ct
 			return;
 		}
 
-		NSWindow* nsWindow = window->_getPrivateData()->window;
+		window->_registerGLContext((__bridge_retained void*) m->context);
 
+		NSWindow* nsWindow = window->_getPrivateData()->window;
 		[m->context setView:[nsWindow contentView]];
 		[m->context makeCurrentContext];
 		[m->context update];

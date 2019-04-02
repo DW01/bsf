@@ -27,6 +27,9 @@ namespace bs
 			BS_RTTI_MEMBER_PLAIN_NAMED(length, mInfo.length, 3)
 			BS_RTTI_MEMBER_PLAIN_NAMED(thickness, mInfo.thickness, 4)
 			BS_RTTI_MEMBER_PLAIN_NAMED(arc, mInfo.arc, 5)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeType, mInfo.mode.type, 6)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeInterval, mInfo.mode.interval, 7)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeSpeed, mInfo.mode.speed, 8)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -134,6 +137,9 @@ namespace bs
 	private:
 		BS_BEGIN_RTTI_MEMBERS
 			BS_RTTI_MEMBER_PLAIN_NAMED(length, mInfo.length, 0)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeType, mInfo.mode.type, 1)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeInterval, mInfo.mode.interval, 2)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeSpeed, mInfo.mode.speed, 3)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -162,6 +168,9 @@ namespace bs
 			BS_RTTI_MEMBER_PLAIN_NAMED(radius, mInfo.radius, 0)
 			BS_RTTI_MEMBER_PLAIN_NAMED(thickness, mInfo.thickness, 1)
 			BS_RTTI_MEMBER_PLAIN_NAMED(arc, mInfo.arc, 2)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeType, mInfo.mode.type, 3)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeInterval, mInfo.mode.interval, 4)
+			BS_RTTI_MEMBER_PLAIN_NAMED(modeSpeed, mInfo.mode.speed, 5)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -215,6 +224,7 @@ namespace bs
 		BS_BEGIN_RTTI_MEMBERS
 			BS_RTTI_MEMBER_PLAIN_NAMED(type, mInfo.type, 0)
 			BS_RTTI_MEMBER_REFL_NAMED(mesh, mInfo.mesh, 1)
+			BS_RTTI_MEMBER_PLAIN_NAMED(sequential, mInfo.sequential, 2)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -241,6 +251,7 @@ namespace bs
 	private:
 		BS_BEGIN_RTTI_MEMBERS
 			BS_RTTI_MEMBER_PLAIN_NAMED(type, mInfo.type, 0)
+			BS_RTTI_MEMBER_PLAIN_NAMED(sequential, mInfo.sequential, 1)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -261,6 +272,68 @@ namespace bs
 		}
 	};
 
+	template<> struct RTTIPlainType<ParticleBurst>
+	{
+		enum { id = TID_ParticleBurst }; enum { hasDynamicSize = 1 };
+
+		/** @copydoc RTTIPlainType::toMemory */
+		static void toMemory(const ParticleBurst& data, char* memory)
+		{
+			UINT32 size = sizeof(UINT32);
+			char* memoryStart = memory;
+			memory += sizeof(UINT32);
+
+			UINT32 version = 0; // In case the data structure changes
+			memory = rttiWriteElem(version, memory, size);
+			memory = rttiWriteElem(data.time, memory, size);
+			memory = rttiWriteElem(data.cycles, memory, size);
+			memory = rttiWriteElem(data.count, memory, size);
+			memory = rttiWriteElem(data.interval, memory, size);
+
+			memcpy(memoryStart, &size, sizeof(UINT32));
+		}
+
+		/** @copydoc RTTIPlainType::fromMemory */
+		static UINT32 fromMemory(ParticleBurst& data, char* memory)
+		{
+			UINT32 size = 0;
+			memory = rttiReadElem(size, memory);
+
+			UINT32 version;
+			memory = rttiReadElem(version, memory);
+
+			switch(version)
+			{
+			case 0:
+				memory = rttiReadElem(data.time, memory);
+				memory = rttiReadElem(data.cycles, memory);
+				memory = rttiReadElem(data.count, memory);
+				memory = rttiReadElem(data.interval, memory);
+				break;
+			default:
+				LOGERR("Unknown version of ParticleBurst data. Unable to deserialize.");
+				break;
+			}
+
+			return size;
+		}
+
+		/** @copydoc RTTIPlainType::getDynamicSize */
+		static UINT32 getDynamicSize(const ParticleBurst& data)
+		{
+			UINT64 dataSize = sizeof(UINT32) + sizeof(UINT32);
+			dataSize += rttiGetElemSize(data.time);
+			dataSize += rttiGetElemSize(data.cycles);
+			dataSize += rttiGetElemSize(data.count);
+			dataSize += rttiGetElemSize(data.interval);
+
+			assert(dataSize <= std::numeric_limits<UINT32>::max());
+
+			return (UINT32)dataSize;
+		}
+	};
+
+
 	class BS_CORE_EXPORT ParticleEmitterRTTI : public RTTIType<ParticleEmitter, IReflectable, ParticleEmitterRTTI>
 	{
 	private:
@@ -279,6 +352,7 @@ namespace bs
 			BS_RTTI_MEMBER_PLAIN(mFlipV, 11)
 			BS_RTTI_MEMBER_REFLPTR(mShape, 12)
 			BS_RTTI_MEMBER_PLAIN(mRandomOffset, 13)
+			BS_RTTI_MEMBER_PLAIN_ARRAY(mBursts, 14)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -380,6 +454,32 @@ namespace bs
 		}
 	};
 
+	class BS_CORE_EXPORT ParticleForceRTTI : public RTTIType<ParticleForce, IReflectable, ParticleForceRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN_NAMED(force, mDesc.force, 0)
+			BS_RTTI_MEMBER_PLAIN_NAMED(worldSpace, mDesc.worldSpace, 1)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "ParticleForce";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_ParticleForce;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<ParticleForce>();
+		}
+	};
+
 	class BS_CORE_EXPORT ParticleGravityRTTI : public RTTIType<ParticleGravity, IReflectable, ParticleGravityRTTI>
 	{
 	private:
@@ -402,6 +502,85 @@ namespace bs
 		SPtr<IReflectable> newRTTIObject() override
 		{
 			return bs_shared_ptr_new<ParticleGravity>();
+		}
+	};
+
+	class BS_CORE_EXPORT ParticleColorRTTI : public RTTIType<ParticleColor, IReflectable, ParticleColorRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN_NAMED(color, mDesc.color, 0)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "ParticleColor";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_ParticleColor;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<ParticleColor>();
+		}
+	};
+
+	class BS_CORE_EXPORT ParticleSizeRTTI : public RTTIType<ParticleSize, IReflectable, ParticleSizeRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN_NAMED(size, mDesc.size, 0)
+			BS_RTTI_MEMBER_PLAIN_NAMED(size3D, mDesc.size3D, 1)
+			BS_RTTI_MEMBER_PLAIN_NAMED(use3DSize, mDesc.use3DSize, 2)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "ParticleSize";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_ParticleSize;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<ParticleSize>();
+		}
+	};
+
+	class BS_CORE_EXPORT ParticleRotationRTTI : public RTTIType<ParticleRotation, IReflectable, ParticleRotationRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN_NAMED(rotation, mDesc.rotation, 0)
+			BS_RTTI_MEMBER_PLAIN_NAMED(rotation3D, mDesc.rotation3D, 1)
+			BS_RTTI_MEMBER_PLAIN_NAMED(use3DRotation, mDesc.use3DRotation, 2)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "ParticleRotation";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_ParticleRotation;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<ParticleRotation>();
 		}
 	};
 
@@ -538,7 +717,7 @@ namespace bs
 			BS_RTTI_MEMBER_PLAIN(simulationSpace, 0)
 			BS_RTTI_MEMBER_PLAIN(orientation, 1)
 			BS_RTTI_MEMBER_PLAIN(orientationLockY, 2)
-			BS_RTTI_MEMBER_PLAIN(orientationPlane, 3)
+			BS_RTTI_MEMBER_PLAIN(orientationPlaneNormal, 3)
 			BS_RTTI_MEMBER_PLAIN(sortMode, 4)
 			BS_RTTI_MEMBER_PLAIN(duration, 5)
 			BS_RTTI_MEMBER_PLAIN(isLooping, 6)
@@ -571,78 +750,19 @@ namespace bs
 		}
 	};
 
-	class BS_CORE_EXPORT ParticleSystemEmittersRTTI : 
-		public RTTIType<ParticleSystemEmitters, IReflectable, ParticleSystemEmittersRTTI>
-	{
-	private:
-		BS_BEGIN_RTTI_MEMBERS
-			BS_RTTI_MEMBER_REFLPTR_ARRAY(mList, 0)
-		BS_END_RTTI_MEMBERS
-
-	public:
-		const String& getRTTIName() override
-		{
-			static String name = "ParticleSystemEmitters";
-			return name;
-		}
-
-		UINT32 getRTTIId() override
-		{
-			return TID_ParticleSystemEmitters;
-		}
-
-		SPtr<IReflectable> newRTTIObject() override
-		{
-			return bs_shared_ptr_new<ParticleSystemEmitters>();
-		}
-	};
-
-	class BS_CORE_EXPORT ParticleSystemEvolversRTTI : 
-		public RTTIType<ParticleSystemEvolvers, IReflectable, ParticleSystemEvolversRTTI>
-	{
-	private:
-		BS_BEGIN_RTTI_MEMBERS
-			BS_RTTI_MEMBER_REFLPTR_ARRAY(mList, 0)
-		BS_END_RTTI_MEMBERS
-
-	public:
-		void onDeserializationEnded(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
-		{
-			auto evolvers = static_cast<ParticleSystemEvolvers*>(obj);
-
-			for(auto& entry : evolvers->mList)
-				evolvers->addToSortedList(entry.get());
-		}
-
-		const String& getRTTIName() override
-		{
-			static String name = "ParticleSystemEvolvers";
-			return name;
-		}
-
-		UINT32 getRTTIId() override
-		{
-			return TID_ParticleSystemEvolvers;
-		}
-
-		SPtr<IReflectable> newRTTIObject() override
-		{
-			return bs_shared_ptr_new<ParticleSystemEvolvers>();
-		}
-	};
-
 	class BS_CORE_EXPORT ParticleSystemRTTI : public RTTIType<ParticleSystem, IReflectable, ParticleSystemRTTI>
 	{
 	private:
 		BS_BEGIN_RTTI_MEMBERS
 			BS_RTTI_MEMBER_REFL(mSettings, 0)
-			BS_RTTI_MEMBER_REFL(mEmitters, 1)
-			BS_RTTI_MEMBER_REFL(mEvolvers, 2)
+			BS_RTTI_MEMBER_REFLPTR_ARRAY(mEmitters, 1)
+			BS_RTTI_MEMBER_REFLPTR_ARRAY(mEvolvers, 2)
 			BS_RTTI_MEMBER_REFL(mGpuSimulationSettings, 3)
+			BS_RTTI_MEMBER_PLAIN(mLayer, 4)
 		BS_END_RTTI_MEMBERS
 
 	public:
-		void onDeserializationEnded(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override
 		{
 			// Note: Since this is a CoreObject I should call initialize() right after deserialization,
 			// but since this specific type is used in Components we delay initialization until Component

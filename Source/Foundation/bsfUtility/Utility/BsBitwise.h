@@ -67,18 +67,6 @@ namespace bs
 	class Bitwise
 	{
 	public:
-		/** Returns the most significant bit set in a value. */
-		template<typename IntType>
-		static constexpr UINT32 mostSignificantBitSet(IntType value)
-		{
-			UINT32 result = 0;
-			while (value != 0) {
-				++result;
-				value >>= 1;
-			}
-			return result - 1;
-		}
-
 		/** Returns the power-of-two number greater or equal to the provided value. */
 		static UINT32 nextPow2(UINT32 n)
 		{
@@ -103,11 +91,27 @@ namespace bs
 			
 			return next;
 		}
+		/** Returns modular exponentiation for integers. */
+		static UINT32 modPow(UINT32 val1, UINT32 val2, UINT32 t)
+		{
+			int res = 1;
+
+			while (val2 != 0)
+			{
+				if (val2 & 1)
+					res = (res * val1) % t;
+
+				val2 >>= 1;
+				val1 = (val1 * val1) % t;
+			}
+
+			return res;
+		}
 #if BS_COMPILER == BS_COMPILER_MSVC
 #pragma intrinsic(_BitScanReverse,_BitScanForward)
 #endif
 
-		/** Finds the most-significant non-zero bit in the provided value. */
+		/** Finds the most-significant non-zero bit in the provided value and returns the index of that bit. */
 		static UINT32 mostSignificantBit(UINT32 val)
 		{
 #if BS_COMPILER == BS_COMPILER_MSVC
@@ -120,7 +124,7 @@ namespace bs
 			static_assert(false, "Not implemented");
 #endif
 		}
-		/** Finds the least-significant non-zero bit in the provided value. */
+		/** Finds the least-significant non-zero bit in the provided value and returns the index of that bit. */
 		static UINT32 leastSignificantBit(UINT32 val)
 		{
 #if BS_COMPILER == BS_COMPILER_MSVC
@@ -132,6 +136,59 @@ namespace bs
 #else
 			static_assert(false, "Not implemented");
 #endif
+		}
+
+		/** Finds the most-significant non-zero bit in the provided value and returns the index of that bit. */
+		static UINT32 mostSignificantBit(UINT64 val)
+		{
+#if BS_COMPILER == BS_COMPILER_MSVC
+#if BS_ARCH_TYPE == BS_ARCHITECTURE_x86_64
+			unsigned long index;
+			_BitScanReverse64(&index, val);
+			return index;
+#else // BS_ARCH_TYPE
+			if (static_cast<UINT32>(val >> 32) != 0)
+			{
+				_BitScanReverse(&index, static_cast<UINT32>(val >> 32));
+				return index + 32;
+		}
+			else
+			{
+				_BitScanReverse(&index, static_cast<UINT32>(val));
+				return index;
+			}
+#endif // BS_ARCH_TYPE
+#elif BS_COMPILER == BS_COMPILER_GNUC || BS_COMPILER == BS_COMPILER_CLANG
+			return 31 - __builtin_clzll(val);
+#else // BS_COMPILER
+			static_assert(false, "Not implemented");
+#endif // BS_COMPILER
+		}
+		/** Finds the least-significant non-zero bit in the provided value and returns the index of that bit. */
+		static UINT32 leastSignificantBit(UINT64 val)
+		{
+#if BS_COMPILER == BS_COMPILER_MSVC
+#if BS_ARCH_TYPE == BS_ARCHITECTURE_x86_64
+			unsigned long index;
+			_BitScanForward64(&index, val);
+			return index;
+#else // BS_ARCH_TYPE
+			if (static_cast<UINT32>(val) != 0)
+			{
+				_BitScanForward(&index, static_cast<UINT32>(val));
+				return index;
+			}
+			else
+			{
+				_BitScanForward(&index, static_cast<UINT32>(val >> 32));
+				return index + 32;
+			}
+#endif // BS_ARCH_TYPE
+#elif BS_COMPILER == BS_COMPILER_GNUC || BS_COMPILER == BS_COMPILER_CLANG
+			return __builtin_ctzll(val);
+#else // BS_COMPILER
+			static_assert(false, "Not implemented");
+#endif // BS_COMPILER
 		}
 
 		/** Determines whether the number is power-of-two or not. */
@@ -154,6 +211,16 @@ namespace bs
 				mask >>= 1;
 			}
 			return result;
+		}
+
+		/** Count the number of set bits in a mask. */
+		static uint32_t countSetBits(uint32_t val)
+		{
+			uint32_t count = 0;
+			for (count = 0; val; count++)
+				val &= val - 1;
+
+			return count;
 		}
 
 		/** Takes a value with a given src bit mask, and produces another value with a desired bit mask. */

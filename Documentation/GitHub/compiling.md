@@ -3,7 +3,7 @@
 ## Quick start
 Use the guide below to get bs::framework up and running as quickly as possible. Scroll further below for advanced build options that allow for more customization.
 
-- Install git (https://git-scm.com) and CMake 3.9.0 or higher (https://cmake.org)
+- Install git (https://git-scm.com) and CMake 3.12.4 or higher (https://cmake.org)
   - Ensure they are added to your *PATH* environment variable
 - Install other dependencies
   - See [here](#otherDeps)
@@ -105,7 +105,7 @@ The following dependencies will need to be installed manually. Which ones are re
       - `mv /usr/bin/bison /usr/bin/bison-2.3`
 
 **All OS**
-  - **Vulkan SDK 1.0.65.1** (Optional) 
+  - **Vulkan SDK 1.1.85.0** (Optional) 
     - Only needed if you selected the Vulkan render API during build configuration
     - https://lunarg.com/vulkan-sdk/
     - Set up VULKAN_SDK environment variable pointing to your instalation

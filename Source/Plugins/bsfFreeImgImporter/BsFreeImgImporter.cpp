@@ -137,12 +137,12 @@ namespace bs
 		Vector<SPtr<PixelData>> faceData;
 
 		TextureType texType;
-		if(textureImportOptions->getIsCubemap())
+		if(textureImportOptions->cubemap)
 		{
 			texType = TEX_TYPE_CUBE_MAP;
 
 			std::array<SPtr<PixelData>, 6> cubemapFaces;
-			if (generateCubemap(imgData, textureImportOptions->getCubemapSourceType(), cubemapFaces))
+			if (generateCubemap(imgData, textureImportOptions->cubemapSourceType, cubemapFaces))
 			{
 				faceData.insert(faceData.begin(), cubemapFaces.begin(), cubemapFaces.end());
 			}
@@ -159,30 +159,30 @@ namespace bs
 		}
 
 		UINT32 numMips = 0;
-		if (textureImportOptions->getGenerateMipmaps() && 
+		if (textureImportOptions->generateMips && 
 			Bitwise::isPow2(faceData[0]->getWidth()) && Bitwise::isPow2(faceData[0]->getHeight()))
 		{
 			UINT32 maxPossibleMip = PixelUtil::getMaxMipmaps(faceData[0]->getWidth(), faceData[0]->getHeight(), 
 				faceData[0]->getDepth(), faceData[0]->getFormat());
 
-			if (textureImportOptions->getMaxMip() == 0)
+			if (textureImportOptions->maxMip == 0)
 				numMips = maxPossibleMip;
 			else
-				numMips = std::min(maxPossibleMip, textureImportOptions->getMaxMip());
+				numMips = std::min(maxPossibleMip, textureImportOptions->maxMip);
 		}
 
 		int usage = TU_DEFAULT;
-		if (textureImportOptions->getCPUCached())
+		if (textureImportOptions->cpuCached)
 			usage |= TU_CPUCACHED;
 
-		bool sRGB = textureImportOptions->getSRGB();
+		bool sRGB = textureImportOptions->sRGB;
 
 		TEXTURE_DESC texDesc;
 		texDesc.type = texType;
 		texDesc.width = faceData[0]->getWidth();
 		texDesc.height = faceData[0]->getHeight();
 		texDesc.numMips = numMips;
-		texDesc.format = textureImportOptions->getFormat();
+		texDesc.format = textureImportOptions->format;
 		texDesc.usage = usage;
 		texDesc.hwGamma = sRGB;
 
@@ -369,11 +369,11 @@ namespace bs
 			srcElemSize = 4;
 			break;
 		case FIT_RGB16:
-			format = PF_RGBA16F;
+			format = PF_RGBA16;
 			srcElemSize = 2 * 3;
 			break;
 		case FIT_RGBA16:
-			format = PF_RGBA16F;
+			format = PF_RGBA16;
 			srcElemSize = 2 * 4;
 			break;
 		case FIT_RGBF:
@@ -445,13 +445,13 @@ namespace bs
 		{
 			output[i] = PixelData::create(faceSize, faceSize, 1, source->getFormat());
 
+			PixelVolume volume(faceStart.x, faceStart.y, faceStart.x + faceSize, faceStart.y + faceSize);
+			PixelUtil::copy(*source, *output[i], faceStart.x, faceStart.y);
+
 			if (vertical)
 				faceStart.y += faceSize;
 			else
 				faceStart.x += faceSize;
-
-			PixelVolume volume(faceStart.x, faceStart.y, faceStart.x + faceSize, faceStart.y + faceSize);
-			PixelUtil::copy(*source, *output[i], faceStart.x, faceStart.y);
 		}
 	}
 

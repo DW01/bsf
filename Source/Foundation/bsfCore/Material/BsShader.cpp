@@ -235,6 +235,11 @@ namespace bs
 	template struct TSHADER_DESC<true>;
 
 	template<bool Core>
+	TShader<Core>::TShader(UINT32 id)
+		:mId(id)
+	{ }
+
+	template<bool Core>
 	TShader<Core>::TShader(const String& name, const TSHADER_DESC<Core>& desc, UINT32 id)
 		:mName(name), mDesc(desc), mId(id)
 	{ }
@@ -406,12 +411,12 @@ namespace bs
 
 	template<bool Core>
 	Vector<SPtr<typename TShader<Core>::TechniqueType>> TShader<Core>::getCompatibleTechniques(
-		const ShaderVariation& variation) const
+		const ShaderVariation& variation, bool exact) const
 	{
 		Vector<SPtr<TechniqueType>> output;
 		for (auto& technique : mDesc.techniques)
 		{
-			if (technique->isSupported() && technique->getVariation() == variation)
+			if (technique->isSupported() && technique->getVariation().matches(variation, exact))
 				output.push_back(technique);
 		}
 
@@ -426,6 +431,10 @@ namespace bs
 	{
 		mMetaData = bs_shared_ptr_new<ShaderMetaData>();
 	}
+
+	Shader::Shader(UINT32 id)
+		:TShader(id)
+	{ }
 
 	SPtr<ct::Shader> Shader::getCore() const
 	{
@@ -615,7 +624,10 @@ namespace bs
 
 	SPtr<Shader> Shader::createEmpty()
 	{
-		SPtr<Shader> newShader = bs_core_ptr<Shader>(new (bs_alloc<Shader>()) Shader());
+		UINT32 id = ct::Shader::mNextShaderId.fetch_add(1, std::memory_order_relaxed);
+		assert(id < std::numeric_limits<UINT32>::max() && "Created too many shaders, reached maximum id.");
+
+		SPtr<Shader> newShader = bs_core_ptr<Shader>(new (bs_alloc<Shader>()) Shader(id));
 		newShader->_setThisPtr(newShader);
 
 		return newShader;

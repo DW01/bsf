@@ -7,15 +7,15 @@
 
 namespace bs
 {
-	void IReflectable::_registerDerivedClass(RTTITypeBase* derivedClass)
+	void IReflectable::_registerRTTIType(RTTITypeBase* rttiType)
 	{
-		if(_isTypeIdDuplicate(derivedClass->getRTTIId()))
+		if(_isTypeIdDuplicate(rttiType->getRTTIId()))
 		{
-			BS_EXCEPT(InternalErrorException, "RTTI type \"" + derivedClass->getRTTIName() + 
-				"\" has a duplicate ID: " + toString(derivedClass->getRTTIId()));
+			BS_EXCEPT(InternalErrorException, "RTTI type \"" + rttiType->getRTTIName() + 
+				"\" has a duplicate ID: " + toString(rttiType->getRTTIId()));
 		}
 
-		getDerivedClasses().push_back(derivedClass);
+		getAllRTTITypes()[rttiType->getRTTIId()] = rttiType;
 	}
 
 	SPtr<IReflectable> IReflectable::createInstanceFromTypeId(UINT32 rttiTypeId)
@@ -31,22 +31,9 @@ namespace bs
 
 	RTTITypeBase* IReflectable::_getRTTIfromTypeId(UINT32 rttiTypeId)
 	{
-		Stack<RTTITypeBase*> todo;
-
-		for(const auto& item : getDerivedClasses())
-			todo.push(item);
-
-		while(!todo.empty())
-		{
-			RTTITypeBase* curType = todo.top();
-			todo.pop();
-
-			if(curType->getRTTIId() == rttiTypeId)
-				return curType;
-
-			for(const auto& item : curType->getDerivedClasses())
-				todo.push(item);
-		}
+		const auto iterFind = getAllRTTITypes().find(rttiTypeId);
+		if(iterFind != getAllRTTITypes().end())
+			return iterFind->second;
 
 		return nullptr;
 	}
@@ -68,14 +55,10 @@ namespace bs
 	{
 		Stack<RTTITypeBase*> todo;
 
-		Vector<RTTITypeBase*> rootTypes = getDerivedClasses();
-		for (auto& entry : rootTypes)
-			todo.push(entry);
-
-		while(!todo.empty())
+		const UnorderedMap<UINT32, RTTITypeBase*>& allTypes = getAllRTTITypes();
+		for(auto& entry : allTypes)
 		{
-			RTTITypeBase* myType = todo.top();
-			todo.pop();
+			RTTITypeBase* myType = entry.second;
 
 			UINT32 myNumFields = myType->getNumFields();
 			for (UINT32 i = 0; i < myNumFields; i++)

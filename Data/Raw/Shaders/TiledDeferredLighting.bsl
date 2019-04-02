@@ -37,9 +37,11 @@ shader TiledDeferredLighting
 		}
 	
 		#if MSAA_COUNT > 1
+		Texture2DMS<float4> gInColor;
 		RWTexture2DArray<float4> gOutput;
 		Texture2D gMSAACoverage;
 		#else
+		Texture2D<float4> gInColor;
 		RWTexture2D<float4>	gOutput;
 		#endif
 					
@@ -49,7 +51,7 @@ shader TiledDeferredLighting
 		groupshared uint sNumLightsPerType[2];
 		groupshared uint sTotalNumLights;
 
-		float4 getLighting(float2 clipSpacePos, SurfaceData surfaceData)
+		float4 getLighting(uint2 pixelPos, float2 clipSpacePos, SurfaceData surfaceData, uint sampleIdx)
 		{
 			// x, y are now in clip space, z, w are in view space
 			// We multiply them by a special inverse view-projection matrix, that had the projection entries that effect
@@ -70,7 +72,14 @@ shader TiledDeferredLighting
 			float3 R = 2 * dot(V, N) * N - V;
 			float3 specR = getSpecularDominantDir(N, R, surfaceData.roughness);
 			
-			return getDirectLighting(worldPosition, V, specR, surfaceData, lightOffsets);				
+			float4 existingColor;
+			#if MSAA_COUNT > 1
+			existingColor = gInColor.Load(pixelPos.xy, sampleIdx);
+			#else
+			existingColor = gInColor.Load(int3(pixelPos.xy, 0));
+			#endif
+			
+			return existingColor + getDirectLighting(worldPosition, V, specR, surfaceData, lightOffsets);				
 		}
 		
 		[numthreads(TILE_SIZE, TILE_SIZE, 1)]
@@ -167,19 +176,19 @@ shader TiledDeferredLighting
 				flipSign = -1;
 			#endif
 			
-			float At = gMatProj[0][0] * tileScale.x;
-			float Ctt = gMatProj[0][2] * tileScale.x - tileBias.x;
+			float At = gMatProj[0].x * tileScale.x;
+			float Ctt = gMatProj[0].z * tileScale.x - tileBias.x;
 			
-			float Bt = gMatProj[1][1] * tileScale.y * flipSign;
-			float Dtt = (gMatProj[1][2] * tileScale.y + flipSign * tileBias.y) * flipSign;
+			float Bt = gMatProj[1].y * tileScale.y * flipSign;
+			float Dtt = (gMatProj[1].z * tileScale.y + flipSign * tileBias.y) * flipSign;
 			
 			// Extract left/right/top/bottom frustum planes from scaled projection matrix
 			// Note: Do this on the CPU? Since they're shared among all entries in a tile. Plus they don't change across frames.
 			float4 frustumPlanes[6];
-			frustumPlanes[0] = float4(At, 0.0f, gMatProj[3][2] + Ctt, 0.0f);
-			frustumPlanes[1] = float4(-At, 0.0f, gMatProj[3][2] - Ctt, 0.0f);
-			frustumPlanes[2] = float4(0.0f, -Bt, gMatProj[3][2] - Dtt, 0.0f);
-			frustumPlanes[3] = float4(0.0f, Bt, gMatProj[3][2] + Dtt, 0.0f);
+			frustumPlanes[0] = float4(At, 0.0f, gMatProj[3].z + Ctt, 0.0f);
+			frustumPlanes[1] = float4(-At, 0.0f, gMatProj[3].z - Ctt, 0.0f);
+			frustumPlanes[2] = float4(0.0f, -Bt, gMatProj[3].z - Dtt, 0.0f);
+			frustumPlanes[3] = float4(0.0f, Bt, gMatProj[3].z + Dtt, 0.0f);
 			
 			// Normalize
 			[unroll]
@@ -255,7 +264,7 @@ shader TiledDeferredLighting
 				#if MSAA_COUNT > 1
 				float coverage = gMSAACoverage.Load(int3(pixelPos, 0)).r;
 				
-				float4 lighting = getLighting(clipSpacePos.xy, surfaceData[0]);
+				float4 lighting = getLighting(pixelPos, clipSpacePos.xy, surfaceData[0], 0);
 				gOutput[uint3(pixelPos.xy, 0)] = lighting;
 				
 				bool doPerSampleShading = coverage > 0.5f;
@@ -264,7 +273,7 @@ shader TiledDeferredLighting
 					[unroll]
 					for(uint i = 1; i < MSAA_COUNT; ++i)
 					{
-						lighting = getLighting(clipSpacePos.xy, surfaceData[i]);
+						lighting = getLighting(pixelPos, clipSpacePos.xy, surfaceData[i], i);
 						gOutput[uint3(pixelPos.xy, i)] = lighting;
 					}
 				}
@@ -279,7 +288,7 @@ shader TiledDeferredLighting
 				}
 				
 				#else
-				float4 lighting = getLighting(clipSpacePos.xy, surfaceData[0]);
+				float4 lighting = getLighting(pixelPos, clipSpacePos.xy, surfaceData[0], 0);
 				gOutput[pixelPos] = lighting;
 				#endif
 			}

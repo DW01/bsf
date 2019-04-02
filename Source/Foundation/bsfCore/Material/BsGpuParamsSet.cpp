@@ -49,8 +49,8 @@ namespace std
 		size_t operator()(const bs::ValidParamKey& key) const
 		{
 			size_t hash = 0;
-			bs::hash_combine(hash, key.name);
-			bs::hash_combine(hash, key.type);
+			bs::bs_hash_combine(hash, key.name);
+			bs::bs_hash_combine(hash, key.type);
 
 			return hash;
 		}
@@ -425,7 +425,8 @@ namespace bs
 			if (findIter == validDataParameters.end())
 				continue;
 
-			if (findIter->second->type != iter->second.type && !(iter->second.type == GPDT_COLOR && findIter->second->type == GPDT_FLOAT4))
+			if (findIter->second->type != iter->second.type && 
+				!(iter->second.type == GPDT_COLOR && (findIter->second->type == GPDT_FLOAT4 || findIter->second->type == GPDT_FLOAT3)))
 			{
 				LOGWRN("Ignoring shader parameter \"" + iter->first + "\". Type doesn't match the one defined in the gpu program. "
 					+ "Shader defined type: " + toString(iter->second.type) + " - Gpu program defined type: " + toString(findIter->second->type));
@@ -599,6 +600,7 @@ namespace bs
 						paramInfo.paramIdx = paramIdx;
 						paramInfo.blockIdx = globalBlockIdx;
 						paramInfo.offset = dataParam.second.cpuMemOffset;
+						paramInfo.arrayStride = dataParam.second.arrayElementStride;
 					}
 				}
 			}
@@ -908,161 +910,193 @@ namespace bs
 			if (materialParamInfo->version <= mParamVersion && !updateAll && !isAnimated)
 				continue;
 
-			const GpuParamDataTypeInfo& typeInfo = GpuParams::PARAM_SIZES.lookup[(int)materialParamInfo->dataType];
-			UINT32 paramSize = typeInfo.numColumns * typeInfo.numRows * typeInfo.baseTypeSize;
-
-			UINT8* data = params->getData(materialParamInfo->index);
-			if(!isAnimated)
+			if(materialParamInfo->dataType != GPDT_STRUCT)
 			{
-				const bool transposeMatrices = ct::RenderAPI::instance().getAPIInfo().isFlagSet(RenderAPIFeatureFlag::ColumnMajorMatrices);
-				if (transposeMatrices)
+				const GpuParamDataTypeInfo& typeInfo = GpuParams::PARAM_SIZES.lookup[(int)materialParamInfo->dataType];
+				UINT32 paramSize = typeInfo.numColumns * typeInfo.numRows * typeInfo.baseTypeSize;
+
+				UINT8* data = params->getData(materialParamInfo->index);
+				if (!isAnimated)
 				{
-					auto writeTransposed = [&](auto& temp)
+					const bool transposeMatrices = ct::gCaps().conventions.matrixOrder == Conventions::MatrixOrder::ColumnMajor;
+					if (transposeMatrices)
+					{
+						auto writeTransposed = [&paramInfo, &paramSize, &arraySize, &paramBlock, data](auto& temp)
+						{
+							for (UINT32 i = 0; i < arraySize; i++)
+							{
+								UINT32 readOffset = i * paramSize;
+								memcpy(&temp, data + readOffset, paramSize);
+								auto transposed = temp.transpose();
+
+								UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+								paramBlock->write(writeOffset, &transposed, paramSize);
+							}
+						};
+
+						switch (materialParamInfo->dataType)
+						{
+						case GPDT_MATRIX_2X2:
+						{
+							MatrixNxM<2, 2> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_2X3:
+						{
+							MatrixNxM<2, 3> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_2X4:
+						{
+							MatrixNxM<2, 4> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_3X2:
+						{
+							MatrixNxM<3, 2> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_3X3:
+						{
+							Matrix3 matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_3X4:
+						{
+							MatrixNxM<3, 4> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_4X2:
+						{
+							MatrixNxM<4, 2> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_4X3:
+						{
+							MatrixNxM<4, 3> matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						case GPDT_MATRIX_4X4:
+						{
+							Matrix4 matrix;
+							writeTransposed(matrix);
+						}
+						break;
+						default:
+						{
+							for (UINT32 i = 0; i < arraySize; i++)
+							{
+								UINT32 arrayOffset = i * paramSize;
+								UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+								paramBlock->write(writeOffset, data + arrayOffset, paramSize);
+							}
+							break;
+						}
+						}
+					}
+					else
 					{
 						for (UINT32 i = 0; i < arraySize; i++)
 						{
-							UINT32 arrayOffset = i * paramSize;
-							memcpy(&temp, data + arrayOffset, paramSize);
-							auto transposed = temp.transpose();
-
-							paramBlock->write(paramInfo.offset * sizeof(UINT32) + arrayOffset, &transposed, paramSize);
+							UINT32 readOffset = i * paramSize;
+							UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+							paramBlock->write(writeOffset, data + readOffset, paramSize);
 						}
-					};
-
-					switch (materialParamInfo->dataType)
-					{
-					case GPDT_MATRIX_2X2:
-					{
-						MatrixNxM<2, 2> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_2X3:
-					{
-						MatrixNxM<2, 3> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_2X4:
-					{
-						MatrixNxM<2, 4> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_3X2:
-					{
-						MatrixNxM<3, 2> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_3X3:
-					{
-						Matrix3 matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_3X4:
-					{
-						MatrixNxM<3, 4> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_4X2:
-					{
-						MatrixNxM<4, 2> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_4X3:
-					{
-						MatrixNxM<4, 3> matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					case GPDT_MATRIX_4X4:
-					{
-						Matrix4 matrix;
-						writeTransposed(matrix);
-					}
-					break;
-					default:
-					{
-						paramBlock->write(paramInfo.offset * sizeof(UINT32), data, paramSize * arraySize);
-						break;
-					}
 					}
 				}
-				else
-					paramBlock->write(paramInfo.offset * sizeof(UINT32), data, paramSize * arraySize);
+				else // Animated
+				{
+					if (materialParamInfo->dataType == GPDT_FLOAT1)
+					{
+						assert(paramSize == sizeof(float));
+
+						for (UINT32 i = 0; i < arraySize; i++)
+						{
+							UINT32 readOffset = i * paramSize;
+							UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+
+							float value;
+							if (params->isAnimated(*materialParamInfo, i))
+							{
+								const TAnimationCurve<float>& curve = params->template getCurveParam<float>(*materialParamInfo, i);
+
+								value = curve.evaluate(t, true);
+							}
+							else
+								memcpy(&value, data + readOffset, paramSize);
+
+							paramBlock->write(writeOffset, &value, paramSize);
+						}
+					}
+					else if (materialParamInfo->dataType == GPDT_FLOAT4)
+					{
+						assert(paramSize == sizeof(Rect2));
+
+						CoreVariantHandleType<SpriteTexture, Core> spriteTexture =
+							params->getOwningSpriteTexture(*materialParamInfo);
+
+						UINT32 writeOffset = paramInfo.offset * sizeof(UINT32);
+						Rect2 uv = Rect2(0.0f, 0.0f, 1.0f, 1.0f);
+						if (spriteTexture != nullptr)
+							uv = spriteTexture->evaluate(t);
+
+						paramBlock->write(writeOffset, &uv, paramSize);
+
+						// Only the first array element receives sprite UVs, the rest are treated as normal
+						for (UINT32 i = 1; i < arraySize; i++)
+						{
+							UINT32 readOffset = i * paramSize;
+							writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+
+							paramBlock->write(writeOffset, data + readOffset, paramSize);
+						}
+					}
+					else if (materialParamInfo->dataType == GPDT_COLOR)
+					{
+						for (UINT32 i = 0; i < arraySize; i++)
+						{
+							assert(paramSize == sizeof(Color));
+
+							UINT32 readOffset = i * paramSize;
+							UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+
+							Color value;
+							if (params->isAnimated(*materialParamInfo, i))
+							{
+								const ColorGradient& gradient = params->getColorGradientParam(*materialParamInfo, i);
+
+								const float wrappedT = Math::repeat(t, gradient.getDuration());
+								value = Color::fromRGBA(gradient.evaluate(wrappedT));
+							}
+							else
+								memcpy(&value, data + readOffset, paramSize);
+
+							paramBlock->write(writeOffset, &value, paramSize);
+						}
+					}
+				}
 			}
-			else // Animated
+			else
 			{
-				if(materialParamInfo->dataType == GPDT_FLOAT1)
+				UINT32 paramSize = params->getStructSize(*materialParamInfo);
+				void* paramData = bs_stack_alloc(paramSize);
+				for (UINT32 i = 0; i < arraySize; i++)
 				{
-					assert(paramSize == sizeof(float));
+					params->getStructData(*materialParamInfo, paramData, paramSize, i);
 
-					for (UINT32 i = 0; i < arraySize; i++)
-					{
-						UINT32 arrayOffset = i * paramSize;
-						UINT32 writeOffset = paramInfo.offset * sizeof(UINT32) + arrayOffset;
-
-						float value;
-						if(params->isAnimated(*materialParamInfo, i))
-						{
-							const TAnimationCurve<float>& curve = params->template getCurveParam<float>(*materialParamInfo, i);
-
-							value = curve.evaluate(t, true);
-						}
-						else
-							memcpy(&value, data + arrayOffset, paramSize);
-
-						paramBlock->write(writeOffset, &value, paramSize);
-					}
-				}
-				else if(materialParamInfo->dataType == GPDT_FLOAT4)
-				{
-					assert(paramSize == sizeof(Rect2));
-					
-					CoreVariantHandleType<SpriteTexture, Core> spriteTexture =
-						params->getOwningSpriteTexture(*materialParamInfo);
-
-					UINT32 writeOffset = paramInfo.offset * sizeof(UINT32);
-					Rect2 uv = Rect2(0.0f, 0.0f, 1.0f, 1.0f);
-					if(spriteTexture != nullptr)
-						uv = spriteTexture->evaluate(t);
-
-					paramBlock->write(writeOffset, &uv, paramSize);
-
-					// Only the first array element receives sprite UVs, the rest are treated as normal
-					if(arraySize > 1)
-					{
-						writeOffset = paramInfo.offset * sizeof(UINT32) + paramSize;
-						paramBlock->write(writeOffset, data + paramSize, paramSize * (arraySize - 1));
-					}
-				}
-				else if(materialParamInfo->dataType == GPDT_COLOR)
-				{
-					for (UINT32 i = 0; i < arraySize; i++)
-					{
-						assert(paramSize == sizeof(Color));
-
-						UINT32 arrayOffset = i * paramSize;
-						UINT32 writeOffset = paramInfo.offset * sizeof(UINT32) + arrayOffset;
-
-						Color value;
-						if(params->isAnimated(*materialParamInfo, i))
-						{
-							const ColorGradient& gradient = params->getColorGradientParam(*materialParamInfo, i);
-
-							const float wrappedT = Math::repeat(t, gradient.getDuration());
-							value = Color::fromRGBA(gradient.evaluate(wrappedT));
-						}
-						else
-							memcpy(&value, data + arrayOffset, paramSize);
-
-						paramBlock->write(writeOffset, &value, paramSize);
-					}
-				}
+					UINT32 readOffset = i * paramSize;
+					UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
+					paramBlock->write(writeOffset, paramData, paramSize);
+				}	
+				bs_stack_free(paramData);
 			}
 		}
 

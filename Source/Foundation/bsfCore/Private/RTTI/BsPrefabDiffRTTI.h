@@ -8,6 +8,7 @@
 #include "Serialization/BsSerializedObject.h"
 #include "Scene/BsGameObjectManager.h"
 #include "Serialization/BsBinarySerializer.h"
+#include "Utility/BsUtility.h"
 
 namespace bs
 {
@@ -94,17 +95,25 @@ namespace bs
 			BS_RTTI_MEMBER_REFLPTR(mRoot, 0)
 		BS_END_RTTI_MEMBERS
 	public:
-		void onDeserializationStarted(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onDeserializationStarted(IReflectable* obj, SerializationContext* context) override
 		{
 			PrefabDiff* prefabDiff = static_cast<PrefabDiff*>(obj);
 
-			if (GameObjectManager::instance().isGameObjectDeserializationActive())
-				GameObjectManager::instance().registerOnDeserializationEndCallback(std::bind(&PrefabDiffRTTI::delayedOnDeserializationEnded, prefabDiff));
+			BS_ASSERT(context != nullptr && rtti_is_of_type<CoreSerializationContext>(context));
+			auto coreContext = static_cast<CoreSerializationContext*>(context);
+
+			if (coreContext->goState)
+			{
+				coreContext->goState->registerOnDeserializationEndCallback(
+					std::bind(&PrefabDiffRTTI::delayedOnDeserializationEnded, prefabDiff));
+			}
 		}
 
-		void onDeserializationEnded(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override
 		{
-			assert(GameObjectManager::instance().isGameObjectDeserializationActive());
+			BS_ASSERT(context != nullptr && rtti_is_of_type<CoreSerializationContext>(context));
+			const auto coreContext = static_cast<CoreSerializationContext*>(context);
+			BS_ASSERT(coreContext->goState);
 
 			// Make sure to deserialize all game object handles since their IDs need to be updated. Normally they are
 			// updated automatically upon deserialization but since we store them in intermediate form we need to manually
@@ -139,13 +148,12 @@ namespace bs
 			Vector<SerializedHandle> handleData(handleObjects.size());
 
 			UINT32 idx = 0;
-			BinarySerializer bs;
 			for (auto& handleObject : handleObjects)
 			{
 				SerializedHandle& handle = handleData[idx];
 
 				handle.object = handleObject;
-				handle.handle = std::static_pointer_cast<GameObjectHandleBase>(bs._decodeFromIntermediate(handleObject));
+				handle.handle = std::static_pointer_cast<GameObjectHandleBase>(handleObject->decode(context));
 
 				idx++;
 			}
@@ -162,11 +170,10 @@ namespace bs
 		{
 			Vector<SerializedHandle>& handleData = any_cast_ref<Vector<SerializedHandle>>(prefabDiff->mRTTIData);
 
-			BinarySerializer bs;
 			for (auto& serializedHandle : handleData)
 			{
 				if (serializedHandle.handle != nullptr)
-					*serializedHandle.object = *bs._encodeToIntermediate(serializedHandle.handle.get());
+					*serializedHandle.object = *SerializedObject::create(*serializedHandle.handle);
 			}
 
 			prefabDiff->mRTTIData = nullptr;

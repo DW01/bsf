@@ -935,16 +935,15 @@ namespace bs { namespace ct
 	{
 		std::array<Vector3, 8> output;
 
-		RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
+		const RenderAPICapabilities& caps = gCaps();
 
 		float flipY = 1.0f;
-		if (rapiInfo.isFlagSet(RenderAPIFeatureFlag::NDCYAxisDown))
+		if (caps.conventions.ndcYAxis == Conventions::Axis::Down)
 			flipY = -1.0f;
 
 		AABox frustumCube(
-			Vector3(-1, -1 * flipY, rapiInfo.getMinimumDepthInputValue()),
-			Vector3(1, 1 * flipY, rapiInfo.getMaximumDepthInputValue())
+			Vector3(-1, -1 * flipY, caps.minDepth),
+			Vector3(1, 1 * flipY, caps.maxDepth)
 		);
 
 		for(size_t i = 0; i < output.size(); i++)
@@ -987,12 +986,11 @@ namespace bs { namespace ct
 		
 		// Convert shadow clip space coordinates to UV coordinates relative to the shadow map rectangle, and normalize
 		// depth
-		RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
+		const Conventions& rapiConventions = gCaps().conventions;
 
 		float flipY = -1.0f;
 		// Either of these flips the Y axis, but if they're both true they cancel out
-		if (rapiInfo.isFlagSet(RenderAPIFeatureFlag::UVYAxisUp) ^ rapiInfo.isFlagSet(RenderAPIFeatureFlag::NDCYAxisDown))
+		if ((rapiConventions.uvYAxis == Conventions::Axis::Up) ^ (rapiConventions.ndcYAxis == Conventions::Axis::Down))
 			flipY = -flipY;
 
 		Matrix4 shadowMapTfrm
@@ -1023,8 +1021,7 @@ namespace bs { namespace ct
 
 		ProfileGPUBlock sampleBlock("Render shadow occlusion");
 
-		RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
+		const RenderAPICapabilities& caps = gCaps();
 		// TODO - Calculate and set a scissor rectangle for the light
 
 		SPtr<GpuParamBlockBuffer> shadowParamBuffer = gShadowProjectParamsDef.createBuffer();
@@ -1068,7 +1065,7 @@ namespace bs { namespace ct
 				ShadowProjectParams shadowParams(*light, shadowMap, shadowOmniParamBuffer, perViewBuffer, gbuffer);
 
 				ShadowProjectOmniMat* mat = ShadowProjectOmniMat::getVariation(effectiveShadowQuality, viewerInsideVolume, 
-					viewProps.numSamples > 1);
+					viewProps.target.numSamples > 1);
 				mat->bind(shadowParams);
 
 				gRendererUtility().draw(gRendererUtility().getSphereStencil());
@@ -1116,8 +1113,8 @@ namespace bs { namespace ct
 				if (isCSM)
 				{
 					// Need to map from API-specific clip space depth to [0, 1] range
-					depthScale = 1.0f / (rapiInfo.getMaximumDepthInputValue() - rapiInfo.getMinimumDepthInputValue());
-					depthOffset = -rapiInfo.getMinimumDepthInputValue() * depthScale;
+					depthScale = 1.0f / (caps.maxDepth - caps.minDepth);
+					depthOffset = -caps.minDepth * depthScale;
 				}
 				else
 				{
@@ -1197,7 +1194,8 @@ namespace bs { namespace ct
 				gShadowProjectParamsDef.gFace.set(shadowParamBuffer, (float)shadowMapFace);
 				ShadowProjectParams shadowParams(*light, shadowMap, shadowParamBuffer, perViewBuffer, gbuffer);
 
-				ShadowProjectMat* mat = ShadowProjectMat::getVariation(effectiveShadowQuality, isCSM, viewProps.numSamples > 1);
+				ShadowProjectMat* mat = ShadowProjectMat::getVariation(effectiveShadowQuality, isCSM, 
+					viewProps.target.numSamples > 1);
 				mat->bind(shadowParams);
 
 				if (!isCSM)
@@ -1503,14 +1501,15 @@ namespace bs { namespace ct
 
 		ProfileGPUBlock profileSample("Project radial light shadows");
 
-		RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
+		const RenderAPICapabilities& caps = gCaps();
+		const Conventions& rapiConventions = gCaps().conventions;
 
+		RenderAPI& rapi = RenderAPI::instance();
 		rapi.convertProjectionMatrix(proj, proj);
 
 		// Render cubemaps upside down if necessary
 		Matrix4 adjustedProj = proj;
-		if(rapiInfo.isFlagSet(RenderAPIFeatureFlag::UVYAxisUp))
+		if(caps.conventions.uvYAxis == Conventions::Axis::Up)
 		{
 			// All big APIs use the same cubemap sampling coordinates, as well as the same face order. But APIs that
 			// use bottom-up UV coordinates require the cubemap faces to be stored upside down in order to get the same
@@ -1521,7 +1520,7 @@ namespace bs { namespace ct
 			adjustedProj[1][1] = -proj[1][1];
 		}
 
-		bool renderAllFacesAtOnce = rapiInfo.isFlagSet(RenderAPIFeatureFlag::RenderTargetLayers);
+		bool renderAllFacesAtOnce = caps.hasCapability(RSC_RENDER_TARGET_LAYERS);
 
 		SPtr<GpuParamBlockBuffer> shadowCubeMatricesBuffer;
 		SPtr<GpuParamBlockBuffer> shadowCubeMasksBuffer;
@@ -1666,7 +1665,7 @@ namespace bs { namespace ct
 			const RenderSettings& viewSettings = view.getRenderSettings();
 
 			if(!viewSettings.enableShadows)
-				fadePercents.push_back(0.0f);
+				fadePercents.add(0.0f);
 			else
 			{
 				// Approximation for screen space sphere radius: screenSize * 0.5 * cot(fov) * radius / Z, where FOV is the 
@@ -1679,8 +1678,8 @@ namespace bs { namespace ct
 				float viewScaleX = viewProps.projTransform[0][0];
 				float viewScaleY = viewProps.projTransform[1][1];
 
-				float screenScaleX = viewScaleX * viewProps.viewRect.width * 0.5f;
-				float screenScaleY = viewScaleY * viewProps.viewRect.height * 0.5f;
+				float screenScaleX = viewScaleX * viewProps.target.viewRect.width * 0.5f;
+				float screenScaleY = viewScaleY * viewProps.target.viewRect.height * 0.5f;
 
 				float screenScale = std::max(screenScaleX, screenScaleY);
 
@@ -1695,7 +1694,7 @@ namespace bs { namespace ct
 
 				// Determine if the shadow should fade out
 				float fadePercent = Math::invLerp(optimalMapSize, (float)MIN_SHADOW_MAP_SIZE, (float)SHADOW_MAP_FADE_SIZE);
-				fadePercents.push_back(fadePercent);
+				fadePercents.add(fadePercent);
 				maxFadePercent = std::max(maxFadePercent, fadePercent);
 			}
 		}
@@ -1711,10 +1710,8 @@ namespace bs { namespace ct
 
 	void ShadowRendering::drawNearFarPlanes(float near, float far, bool drawNear) const
 	{
-		RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
-
-		float flipY = rapiInfo.isFlagSet(RenderAPIFeatureFlag::NDCYAxisDown) ? -1.0f : 1.0f;
+		const Conventions& rapiConventions = gCaps().conventions;
+		float flipY = (rapiConventions.ndcYAxis == Conventions::Axis::Down) ? -1.0f : 1.0f;
 
 		// Update VB with new vertices
 		Vector3 vertices[8] =
@@ -1735,6 +1732,7 @@ namespace bs { namespace ct
 		mPlaneVB->writeData(0, sizeof(vertices), vertices, BWT_DISCARD);
 
 		// Draw the mesh
+		RenderAPI& rapi = RenderAPI::instance();
 		rapi.setVertexDeclaration(mPositionOnlyVD);
 		rapi.setVertexBuffers(0, &mPlaneVB, 1);
 		rapi.setIndexBuffer(mPlaneIB);
@@ -1968,8 +1966,8 @@ namespace bs { namespace ct
 		if (light.getType() == LightType::Spot)
 			rangeScale = 1.0f / depthRange;
 		
-		auto& apiInfo = RenderAPI::instance().getAPIInfo();
-		float deviceDepthRange = apiInfo.getMaximumDepthInputValue() - apiInfo.getMinimumDepthInputValue();
+		const RenderAPICapabilities& caps = gCaps();
+		float deviceDepthRange = caps.maxDepth - caps.minDepth;
 
 		float defaultBias = 1.0f;
 		switch(light.getType())

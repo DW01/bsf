@@ -52,6 +52,14 @@ namespace bs
 		BS_SCRIPT_EXPORT()
 		Vector<ColorGradientKey> getKeys() const;
 
+		/** Returns the number of color keys in the gradient. */
+		BS_SCRIPT_EXPORT(pr:getter,n:NumKeys)
+		UINT32 getNumKeys() const { return mNumKeys; }
+
+		/** Returns the color key at the specified index. If out of range an empty key is returned. */
+		BS_SCRIPT_EXPORT()
+		ColorGradientKey getKey(UINT32 idx) const;
+
 		/** Specify a "gradient" that represents a single color value. */
 		BS_SCRIPT_EXPORT()
 		void setConstant(const Color& color);
@@ -65,6 +73,8 @@ namespace bs
 		/** Returns the time of the first and last keyframe in the gradient. */
 		std::pair<float, float> getTimeRange() const;
 
+		bool operator== (const ColorGradient& rhs) const;
+		bool operator!= (const ColorGradient& rhs) const { return !operator==(rhs); }
 	private:
 		friend struct RTTIPlainType<ColorGradient>;
 

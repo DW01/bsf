@@ -3,9 +3,21 @@ include(bsfUtility/CMakeSources.cmake)
 include(bsfCore/CMakeSources.cmake)
 include(bsfEngine/CMakeSources.cmake)
 
+# Ensure pre-built binary dependencies are up to date
+if(USE_BUNDLED_LIBRARIES)
+	if(EXPERIMENTAL_ENABLE_NETWORKING)
+		set(BS_RAKNET_PREBUILT_DEPENDENCY_VERSION 1) # Tick this when you change the binaries
+		check_and_update_binary_deps(bsfDep_RakNet RakNet ${BSF_SOURCE_DIR}/../Dependencies/RakNet ${BS_RAKNET_PREBUILT_DEPENDENCY_VERSION})
+	endif()
+endif()
+
 # Packages
 find_package(snappy REQUIRED)
 find_package(nvtt REQUIRED)
+
+if(EXPERIMENTAL_ENABLE_NETWORKING)
+	find_package(RakNet REQUIRED)
+endif()
 
 if(LINUX)
 	find_package(X11 REQUIRED)
@@ -29,13 +41,26 @@ endif()
 
 # Third party (non-package) libraries
 add_library(ThirdParty INTERFACE)
-target_include_directories(ThirdParty INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/bsfUtility/ThirdParty")
+target_include_directories(ThirdParty INTERFACE
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/bsfUtility/ThirdParty>
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/bsfUtility/ThirdParty>)
 
 # Target
 add_library(bsf SHARED ${BS_UTILITY_SRC} ${BS_CORE_SRC} ${BS_ENGINE_SRC})
+install_dll_on_build(bsf ${PROJECT_SOURCE_DIR})
+
+add_common_flags(bsf)
 
 # Includes
-target_include_directories(bsf PUBLIC "bsfUtility" "bsfCore" "bsfEngine")
+target_include_directories(bsf PUBLIC
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/bsfUtility>
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/bsfCore>
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/bsfEngine>
+	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/Generated/bsfUtility>
+	$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/Generated/bsfEngine>
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/bsfUtility>
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/bsfCore>
+	$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/bsfEngine>)
 
 # Defines
 target_compile_definitions(bsf PRIVATE 
@@ -47,12 +72,32 @@ target_compile_definitions(bsf PRIVATE
 	$<$<CONFIG:MinSizeRel>:BS_CONFIG=BS_CONFIG_MINSIZEREL>
 	$<$<CONFIG:Release>:BS_CONFIG=BS_CONFIG_RELEASE>)
 
+if(MSVC)
+	target_compile_options(bsf PUBLIC
+		$<$<COMPILE_LANGUAGE:CXX>:/GR->)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
+	target_compile_options(bsf PUBLIC
+		-fno-exceptions
+		$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+	target_compile_options(bsf PUBLIC
+		-fno-exceptions
+		$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+else()
+# TODO_OTHER_COMPILERS_GO_HERE
+endif()
+
 # Libraries
 ## External lib: NVTT
 target_link_libraries(bsf PRIVATE ${nvtt_LIBRARIES})	
 
 ## External lib: Snappy
 target_link_libraries(bsf PRIVATE ${snappy_LIBRARIES})
+
+## External lib: RakNet
+if(EXPERIMENTAL_ENABLE_NETWORKING)
+	target_link_libraries(bsf PRIVATE ${RakNet_LIBRARIES})
+endif()
 
 ## External libs: Header only libraries
 target_link_libraries(bsf PUBLIC ThirdParty)
@@ -86,34 +131,63 @@ endif()
 set_property(TARGET bsf PROPERTY FOLDER Foundation)
 
 # Install
-install(
-	DIRECTORY bsfUtility
-	DESTINATION include
-	FILES_MATCHING 
-	PATTERN "*.h"
-	PATTERN "*.hpp"
-	PATTERN "Private" EXCLUDE
-)
+if(NOT BS_IS_BANSHEE3D)
+	install(
+		DIRECTORY bsfUtility
+		DESTINATION include
+		FILES_MATCHING 
+		PATTERN "*.h"
+		PATTERN "*.hpp"
+		PATTERN "Private" EXCLUDE
+	)
 
-install(
-	DIRECTORY bsfCore 
-	DESTINATION include
-	FILES_MATCHING 
-	PATTERN "*.h"
-	PATTERN "*.hpp"
-	PATTERN "Private" EXCLUDE
-)
+	install(
+		DIRECTORY bsfCore 
+		DESTINATION include
+		FILES_MATCHING 
+		PATTERN "*.h"
+		PATTERN "*.hpp"
+		PATTERN "Private" EXCLUDE
+	)
 
-install(
-	DIRECTORY bsfEngine
-	DESTINATION include
-	FILES_MATCHING 
-	PATTERN "*.h"
-	PATTERN "*.hpp"
-	PATTERN "Private" EXCLUDE
-)
+	install(
+		DIRECTORY bsfEngine
+		DESTINATION include
+		FILES_MATCHING 
+		PATTERN "*.h"
+		PATTERN "*.hpp"
+		PATTERN "Private" EXCLUDE
+	)
+
+	install(
+		DIRECTORY ${PROJECT_BINARY_DIR}/Generated/bsfEngine
+		DESTINATION include
+		FILES_MATCHING
+		PATTERN "*.h"
+	)
+
+	install(
+		DIRECTORY ${PROJECT_BINARY_DIR}/Generated/bsfUtility
+		DESTINATION include
+		FILES_MATCHING
+		PATTERN "*.h"
+	)
+endif()
 
 install_bsf_target(bsf)
+
+if(NOT BS_IS_BANSHEE3D)
+	# This doesn't actually install anything as it is an imported library
+	# but it is required because it is a dependency of the bsf target
+	install(TARGETS ThirdParty EXPORT bsf)
+
+	install(
+		EXPORT bsf
+		NAMESPACE bsf::
+		FILE bsf-config.cmake
+		DESTINATION lib/bsf
+	)
+endif()
 
 # Precompiled headers (Cotire)
 if(MSVC)

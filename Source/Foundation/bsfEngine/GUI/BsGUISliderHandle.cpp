@@ -105,7 +105,7 @@ namespace bs
 
 		HSpriteTexture activeTex = getActiveTexture();
 		if(SpriteTexture::checkIsLoaded(activeTex))
-			desc.texture = activeTex.getInternalPtr();
+			desc.texture = activeTex;
 
 		UINT32 handleSize = getHandleSize();
 		if (mFlags.isSet(GUISliderHandleFlag::Horizontal))
@@ -478,7 +478,7 @@ namespace bs
 
 	INT32 GUISliderHandle::getHandlePosPx() const
 	{
-		UINT32 maxScrollAmount = getMaxSize() - getHandleSize();
+		INT32 maxScrollAmount = std::max(0, (INT32)getMaxSize() - (INT32)getHandleSize());
 		return Math::floorToInt(mPctHandlePos * maxScrollAmount);
 	}
 

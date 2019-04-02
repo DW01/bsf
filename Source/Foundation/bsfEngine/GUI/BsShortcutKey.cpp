@@ -12,8 +12,8 @@ namespace bs
 	size_t ShortcutKey::Hash::operator()(const ShortcutKey& x) const
 	{
 		size_t seed = 0;
-		hash_combine(seed, (UINT32)x.button);
-		hash_combine(seed, (UINT32)x.modifier);
+		bs_hash_combine(seed, (UINT32)x.button);
+		bs_hash_combine(seed, (UINT32)x.modifier);
 
 		return seed;
 	}
@@ -22,10 +22,6 @@ namespace bs
 	{
 		return a.button == b.button && a.modifier == b.modifier;
 	}
-
-	ShortcutKey::ShortcutKey()
-		:modifier(ButtonModifier::None), button(BC_UNASSIGNED)
-	{ }
 
 	ShortcutKey::ShortcutKey(ButtonModifier modifier, ButtonCode code)
 		: modifier(modifier), button(code)

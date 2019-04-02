@@ -81,9 +81,9 @@ namespace bs
 	/**	Types of frame buffers. */
 	enum FrameBufferType
 	{
-		FBT_COLOR = 0x1, /**< Clear the color surface. */
-		FBT_DEPTH = 0x2, /**< Clear the depth surface. */
-		FBT_STENCIL = 0x4 /**< Clear the stencil surface. */
+		FBT_COLOR = 0x1, /**< Color surface. */
+		FBT_DEPTH = 0x2, /**< Depth surface. */
+		FBT_STENCIL = 0x4 /**< Stencil surface. */
 	};
 
 	/**
@@ -513,7 +513,7 @@ namespace bs
 	};
 
 	/** Determines the type of the source image for generating cubemaps. */
-	enum class CubemapSourceType
+	enum class BS_SCRIPT_EXPORT(m:Utility,api:bsf,api:bed) CubemapSourceType
 	{
 		/** Source is a single image that will be replicated on all cubemap faces. */
 		Single,
@@ -549,7 +549,7 @@ namespace bs
 		RT_DEPTH = 1 << 30,
 		RT_STENCIL = 1 << 31,
 		RT_DEPTH_STENCIL = (1 << 30) | (1 << 31),
-		RT_ALL = 0xFF
+		RT_ALL = 0xFFFFFFFF
 	};
 
 	typedef Flags<RenderSurfaceMaskBits> RenderSurfaceMask;
@@ -654,8 +654,6 @@ namespace bs
 		UINT8* data;
 		UINT32 size;
 	};
-
-	typedef Map<String, String> NameValuePairList;
 
 	/** @cond SPECIALIZATIONS */
 	BS_ALLOW_MEMCPY_SERIALIZATION(TextureSurface);

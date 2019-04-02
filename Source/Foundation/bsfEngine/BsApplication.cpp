@@ -69,10 +69,7 @@ namespace bs
 		SceneManager::instance().setMainRenderTarget(getPrimaryWindow());
 		DebugDraw::startUp();
 
-		ScriptManager::startUp();
-
-		if(mStartUpDesc.scripting)
-			loadScriptSystem();
+		startUpScriptManager();
 	}
 
 	void Application::onShutDown()
@@ -90,9 +87,6 @@ namespace bs
 		ScriptManager::shutDown();
 		DebugDraw::shutDown();
 
-		if (mStartUpDesc.scripting)
-			unloadScriptSystem();
-
 		CoreApplication::onShutDown();
 	}
 
@@ -109,6 +103,7 @@ namespace bs
 	void Application::postUpdate()
 	{
 		CoreApplication::postUpdate();
+		updateScriptManager();
 
 		PROFILE_CALL(GUIManager::instance().update(), "GUI");
 		DebugDraw::instance()._update();
@@ -136,33 +131,19 @@ namespace bs
 		mProfilerOverlay = nullptr;
 	}
 
-	void Application::loadScriptSystem()
-	{
-#if BS_IS_BANSHEE3D
-		loadPlugin("bsfMono", &mMonoPlugin);
-		loadPlugin("SBansheeEngine", &mSBansheeEnginePlugin); 
-
-		ScriptManager::instance().initialize();
-#endif
-	}
-
-	void Application::unloadScriptSystem()
-	{
-#if BS_IS_BANSHEE3D
-		// These plugins must be unloaded before any other script plugins, because
-		// they will cause finalizers to trigger and various modules those finalizers
-		// might reference must still be active
-		if(mSBansheeEnginePlugin != nullptr)
-			unloadPlugin(mSBansheeEnginePlugin);
-
-		if(mMonoPlugin != nullptr)
-			unloadPlugin(mMonoPlugin);
-#endif
-	}
-
 	void Application::startUpRenderer()
 	{
 		// Do nothing, we activate the renderer at a later stage
+	}
+
+	void Application::startUpScriptManager()
+	{
+		ScriptManager::startUp();
+	}
+
+	void Application::updateScriptManager()
+	{
+		ScriptManager::instance().update();
 	}
 
 	START_UP_DESC Application::buildStartUpDesc(VideoMode videoMode, const String& title, bool fullscreen)
@@ -174,7 +155,6 @@ namespace bs
 		desc.renderer = BS_RENDERER_MODULE;
 		desc.audio = BS_AUDIO_MODULE;
 		desc.physics = BS_PHYSICS_MODULE;
-		desc.scripting = false;
 
 		desc.importers.push_back("bsfFreeImgImporter");
 		desc.importers.push_back("bsfFBXImporter");
@@ -192,47 +172,6 @@ namespace bs
 	{
 		return bs_shared_ptr_new<EngineShaderIncludeHandler>();
 	}
-
-#if BS_IS_BANSHEE3D
-	Path Application::getEngineAssemblyPath() const
-	{
-		Path assemblyPath = getBuiltinAssemblyFolder();
-		assemblyPath.append(String(ENGINE_ASSEMBLY) + ".dll");
-
-		return assemblyPath;
-	}
-
-	Path Application::getGameAssemblyPath() const
-	{
-		Path assemblyPath = getScriptAssemblyFolder();
-		assemblyPath.append(String(SCRIPT_GAME_ASSEMBLY) + ".dll");
-
-		return assemblyPath;
-	}
-
-	Path Application::getBuiltinAssemblyFolder() const
-	{
-		Path releaseAssemblyFolder = Paths::getReleaseAssemblyPath();
-		Path debugAssemblyFolder = Paths::getDebugAssemblyPath();
-
-#if BS_DEBUG_MODE == 0
-		if (FileSystem::exists(releaseAssemblyFolder))
-			return releaseAssemblyFolder;
-
-		return debugAssemblyFolder;
-#else
-		if (FileSystem::exists(debugAssemblyFolder))
-			return debugAssemblyFolder;
-
-		return releaseAssemblyFolder;
-#endif
-	}
-
-	Path Application::getScriptAssemblyFolder() const
-	{
-		return getBuiltinAssemblyFolder();
-	}
-#endif
 
 	Application& gApplication()
 	{

@@ -131,9 +131,9 @@ namespace bs
 	template<class ElemType>
 	char* rttiReadElem(ElemType& data, char* memory)
 	{
-		RTTIPlainType<ElemType>::fromMemory(data, memory);
+		UINT32 size = RTTIPlainType<ElemType>::fromMemory(data, memory);
 
-		return memory + rttiGetElemSize(data);
+		return memory + size;
 	}
 
 	/**
@@ -147,88 +147,27 @@ namespace bs
 	template<class ElemType>
 	char* rttiReadElem(ElemType& data, char* memory, UINT32& size)
 	{
-		RTTIPlainType<ElemType>::fromMemory(data, memory);
+		UINT32 elemSize = RTTIPlainType<ElemType>::fromMemory(data, memory);
 
-		UINT32 elemSize = rttiGetElemSize(data);
 		size += elemSize;
-
 		return memory + elemSize;
 	}
 
-	/** 
-	 * Overloads operator << and writes the provided values into the underlying buffer using rttiWriteElem(). Each write
-	 * advances the buffer to the next write location. Caller is responsible for not writing out of range.
-	 */
-	class RttiWriter
+	/** Helper for checking for existance of rttiEnumFields method on a class. */
+	template <class T>  
+	struct has_rttiEnumFields
 	{
-	public:
-		RttiWriter(char** writeDst)
-			:mWritePtr(writeDst)
-		{ }
+		struct dummy {};
 
-	private:
-		template<class T>
-		friend RttiWriter& operator << (RttiWriter&, const T&);
+		template <typename C, typename P>
+		static auto test(P* p) -> decltype(std::declval<C>().rttiEnumFields(*p), std::true_type());  
 
-		char** mWritePtr;
+		template <typename, typename>
+		static std::false_type test(...);
+
+		typedef decltype(test<T, dummy>(nullptr)) type;
+		static const bool value = std::is_same<std::true_type, decltype(test<T, dummy>(nullptr))>::value;
 	};
-
-	template<class T>
-	RttiWriter& operator << (RttiWriter& writer, const T& value)
-	{
-		(*writer.mWritePtr) = rttiWriteElem(value, (*writer.mWritePtr));
-		return writer;
-	}
-
-	/** 
-	 * Overloads operator << and reads values from the underlying buffer using rttiReadElem(). Each read advances the buffer
-	 * to the next value. Caller is responsible for not reading out of range.
-	 */
-	class RttiReader
-	{
-	public:
-		RttiReader(char** readDst)
-			:mReadPtr(readDst)
-		{ }
-
-	private:
-		template<class T>
-		friend RttiReader& operator << (RttiReader&, T&);
-
-		char** mReadPtr;
-	};
-
-	template<class T>
-	RttiReader& operator << (RttiReader& reader, T& value)
-	{
-		(*reader.mReadPtr) = rttiReadElem(value, (*reader.mReadPtr));
-		return reader;
-	}
-
-	/** 
-	 * Overloads operator << and calculates size of provided values using rttiGetElemSize(). All sizes are accumulated in
-	 * the location provided upon construction.
-	 */
-	class RttiSize
-	{
-	public:
-		RttiSize(UINT32& size)
-			:mSize(size)
-		{ }
-
-	private:
-		template<class T>
-		friend RttiSize& operator << (RttiSize&, const T&);
-
-		UINT32& mSize;
-	};
-
-	template<class T>
-	RttiSize& operator << (RttiSize& sizer, const T& value)
-	{
-		sizer.mSize += rttiGetElemSize(value);
-		return sizer;
-	}
 
 	/**
 	 * Notify the RTTI system that the specified type may be serialized just by using a memcpy.
@@ -296,6 +235,7 @@ namespace bs
 			memcpy(&numElements, memory, sizeof(UINT32));
 			memory += sizeof(UINT32);
 
+			data.clear();
 			for(UINT32 i = 0; i < numElements; i++)
 			{
 				T element;
@@ -488,7 +428,7 @@ namespace bs
 		typedef std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, StdAlloc<std::pair<const Key, Value>>> MapType;
 
 		/** @copydoc RTTIPlainType::toMemory */
-		static void toMemory(MapType& data, char* memory)
+		static void toMemory(const MapType& data, char* memory)
 		{
 			UINT32 size = sizeof(UINT32);
 			char* memoryStart = memory;
@@ -574,7 +514,7 @@ namespace bs
 		typedef std::unordered_set<Key, std::hash<Key>, std::equal_to<Key>, StdAlloc<Key>> MapType;
 
 		/** @copydoc RTTIPlainType::toMemory */
-		static void toMemory(MapType& data, char* memory)
+		static void toMemory(const MapType& data, char* memory)
 		{
 			UINT32 size = sizeof(UINT32);
 			char* memoryStart = memory;

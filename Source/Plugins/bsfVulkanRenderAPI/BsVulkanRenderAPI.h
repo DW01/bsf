@@ -95,9 +95,6 @@ namespace bs { namespace ct
 		/** @copydoc RenderAPI::convertProjectionMatrix */
 		void convertProjectionMatrix(const Matrix4& matrix, Matrix4& dest) override;
 
-		/** @copydoc RenderAPI::getAPIInfo */
-		const RenderAPIInfo& getAPIInfo() const override;
-
 		/** @copydoc RenderAPI::generateParamBlockDesc() */
 		GpuParamBlockDesc generateParamBlockDesc(const String& name, Vector<GpuParamDataDesc>& params) override;
 
@@ -113,7 +110,7 @@ namespace bs { namespace ct
 		SPtr<VulkanDevice> _getDevice(UINT32 idx) const { return mDevices[idx]; }
 
 		/** Returns the primary device that supports swap chain present operations. */
-		SPtr<VulkanDevice> _getPresentDevice() const { return mPrimaryDevices[0]; }
+		const SPtr<VulkanDevice>& _getPresentDevice() const { return mPrimaryDevices[0]; }
 
 		/** Gets the total number of Vulkan compatible devices available on this system. */
 		UINT32 _getNumDevices() const { return (UINT32)mDevices.size(); }

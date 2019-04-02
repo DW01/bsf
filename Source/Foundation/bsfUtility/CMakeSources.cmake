@@ -100,6 +100,10 @@ set(BS_UTILITY_INC_UTILITY
 	"bsfUtility/Utility/BsOctree.h"
 	"bsfUtility/Utility/BsDataBlob.h"
 	"bsfUtility/Utility/BsLookupTable.h"
+	"bsfUtility/Utility/BsSmallVector.h"
+	"bsfUtility/Utility/BsDynArray.h"
+	"bsfUtility/Utility/BsMinHeap.h"
+	"bsfUtility/Utility/BsDenseMap.h"
 )
 
 set(BS_UTILITY_SRC_ALLOCATORS
@@ -224,6 +228,7 @@ set(BS_UTILITY_INC_MATH
 	"bsfUtility/Math/BsLine2.h"
 	"bsfUtility/Math/BsSIMD.h"
 	"bsfUtility/Math/BsRandom.h"
+	"bsfUtility/Math/BsComplex.h"
 )
 
 set(BS_UTILITY_SRC_ERROR
@@ -266,6 +271,7 @@ set(BS_UTILITY_SRC_WIN32
 	"bsfUtility/Private/Win32/BsWin32CrashHandler.cpp"
 	"bsfUtility/Private/Win32/BsWin32PlatformUtility.cpp"
 	"bsfUtility/Private/Win32/BsWin32Window.cpp"
+	"bsfUtility/Private/Win32/BsWin32Resource.rc"
 )
 
 set(BS_UTILITY_SRC_UNIX

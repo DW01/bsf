@@ -16,18 +16,21 @@ namespace bs
 	class BS_CORE_EXPORT ShaderImportOptionsRTTI : public RTTIType<ShaderImportOptions, ImportOptions, ShaderImportOptionsRTTI>
 	{
 	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN(languages, 1)
+		BS_END_RTTI_MEMBERS
+
 		std::pair<String, String>& getDefinePair(ShaderImportOptions* obj, UINT32 idx)
 		{
 			return mDefinePairs[idx];
 		}
 
-
 		void setDefinePair(ShaderImportOptions* obj, UINT32 idx, std::pair<String, String>& val)
 		{
-			obj->getDefines()[val.first] = val.second;
+			obj->mDefines[val.first] = val.second;
 		}
 
-		UINT32 getNumDefines(ShaderImportOptions* obj) { return (UINT32)obj->getDefines().size(); }
+		UINT32 getNumDefines(ShaderImportOptions* obj) { return (UINT32)obj->mDefines.size(); }
 		void setNumDefines(ShaderImportOptions* obj, UINT32 val) { /* Do nothing */ }
 
 	public:
@@ -39,11 +42,11 @@ namespace bs
 		}
 
 		/** @copydoc ShaderImportOptionsRTTI::onSerializationStarted */
-		void onSerializationStarted(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onSerializationStarted(IReflectable* obj, SerializationContext* context) override
 		{
 			ShaderImportOptions* importOptions = static_cast<ShaderImportOptions*>(obj);
 
-			UnorderedMap<String, String>& defines = importOptions->getDefines();
+			UnorderedMap<String, String>& defines = importOptions->mDefines;
 			for (auto& entry : defines)
 				mDefinePairs.push_back(entry);
 		}

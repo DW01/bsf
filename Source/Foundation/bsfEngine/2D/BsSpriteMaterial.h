@@ -6,6 +6,7 @@
 #include "Material/BsMaterialParam.h"
 #include "Math/BsVector2I.h"
 #include "Image/BsColor.h"
+#include "Material/BsShaderVariation.h"
 
 namespace bs
 {
@@ -16,7 +17,7 @@ namespace bs
 	/** Extension structure that can be used by SpriteMaterial%s to access specialized data. */
 	struct SpriteMaterialExtraInfo
 	{
-		virtual ~SpriteMaterialExtraInfo() { }
+		virtual ~SpriteMaterialExtraInfo() = default;
 
 		/** Creates a new deep copy of the object. */
 		virtual SPtr<SpriteMaterialExtraInfo> clone() const
@@ -28,9 +29,7 @@ namespace bs
 	/** Contains information for initializing a sprite material. */
 	struct SpriteMaterialInfo
 	{
-		SpriteMaterialInfo()
-			:groupId(0)
-		{ }
+		SpriteMaterialInfo() { }
 
 		/** 
 		 * Creates a new deep copy of the object. This is different from standard copy constructor which will just reference
@@ -41,7 +40,9 @@ namespace bs
 			SpriteMaterialInfo info;
 			info.groupId = groupId;
 			info.texture = texture;
+			info.spriteTexture = spriteTexture;
 			info.tint = tint;
+			info.animationStartTime = animationStartTime;
 
 			if(additionalData != nullptr)
 				info.additionalData = additionalData->clone();
@@ -49,9 +50,11 @@ namespace bs
 			return info;
 		}
 
-		UINT64 groupId;
+		UINT64 groupId = 0;
 		HTexture texture;
+		HSpriteTexture spriteTexture;
 		Color tint;
+		float animationStartTime;
 		SPtr<SpriteMaterialExtraInfo> additionalData;
 	};
 
@@ -59,15 +62,19 @@ namespace bs
 	class BS_EXPORT SpriteMaterial
 	{
 	public:
-		SpriteMaterial(UINT32 id, const HMaterial& material);
+		SpriteMaterial(UINT32 id, const HMaterial& material, const ShaderVariation& variation = ShaderVariation::EMPTY,
+			bool allowBatching = true);
 		virtual ~SpriteMaterial();
 
 		/** Returns the unique ID of the sprite material. */
 		UINT32 getId() const { return mId; };
 
+		/** Determines is this material allowed to be batched with other materials with the same merge hash. */
+		bool allowBatching() const { return mAllowBatching; }
+
 		/** 
 		 * Generates a hash value that describes the contents of the sprite material info structure. Returned hash doesn't
-		 * guarantee that the two objects with the same hash are idential, but rather that the objects are mergeable via
+		 * guarantee that the two objects with the same hash are identical, but rather that the objects are mergeable via
 		 * merge().
 		 */
 		virtual UINT64 getMergeHash(const SpriteMaterialInfo& info) const;
@@ -105,9 +112,11 @@ namespace bs
 		static void destroy(const SPtr<ct::Material>& material, const SPtr<ct::GpuParamsSet>& params);
 
 		UINT32 mId;
+		bool mAllowBatching;
 
 		// Core thread only (everything below)
 		SPtr<ct::Material> mMaterial;
+		UINT32 mTechnique;
 		std::atomic<bool> mMaterialStored;
 
 		SPtr<ct::GpuParamsSet> mParams;

@@ -98,7 +98,7 @@ namespace bs
 			mWindow = nullptr;
 		}
 
-		mSwapChain = nullptr;
+		mSwapChain->destroy();
 		vkDestroySurfaceKHR(mRenderAPI._getInstance(), mSurface, gVulkanAllocator);
 
 		Platform::resetNonClientAreas(*this);
@@ -115,8 +115,8 @@ namespace bs
 		windowDesc.allowResize = mDesc.allowResize;
 		windowDesc.enableDoubleClick = true;
 		windowDesc.fullscreen = mDesc.fullscreen;
-		windowDesc.width = mDesc.videoMode.getWidth();
-		windowDesc.height = mDesc.videoMode.getHeight();
+		windowDesc.width = mDesc.videoMode.width;
+		windowDesc.height = mDesc.videoMode.height;
 		windowDesc.hidden = mDesc.hidden || mDesc.hideUntilSwap;
 		windowDesc.left = mDesc.left;
 		windowDesc.top = mDesc.top;
@@ -130,11 +130,10 @@ namespace bs
 #ifdef BS_STATIC_LIB
 		windowDesc.module = GetModuleHandle(NULL);
 #else
-		windowDesc.module = GetModuleHandle("BansheeVulkanRenderAPI.dll");
+		windowDesc.module = GetModuleHandle("bsfVulkanRenderAPI.dll");
 #endif
 
-		NameValuePairList::const_iterator opt;
-		opt = mDesc.platformSpecific.find("parentWindowHandle");
+		auto opt = mDesc.platformSpecific.find("parentWindowHandle");
 		if (opt != mDesc.platformSpecific.end())
 			windowDesc.parent = (HWND)parseUINT64(opt->second);
 
@@ -146,7 +145,7 @@ namespace bs
 		UINT32 numOutputs = videoModeInfo.getNumOutputs();
 		if (numOutputs > 0)
 		{
-			UINT32 actualMonitorIdx = std::min(mDesc.videoMode.getOutputIdx(), numOutputs - 1);
+			UINT32 actualMonitorIdx = std::min(mDesc.videoMode.outputIdx, numOutputs - 1);
 			const Win32VideoOutputInfo& outputInfo = static_cast<const Win32VideoOutputInfo&>(videoModeInfo.getOutputInfo(actualMonitorIdx));
 			windowDesc.monitor = outputInfo.getMonitorHandle();
 		}
@@ -161,7 +160,7 @@ namespace bs
 		mWindow = bs_new<Win32Window>(windowDesc);
 
 		mIsChild = windowDesc.parent != nullptr;
-		mDisplayFrequency = Math::roundToInt(mDesc.videoMode.getRefreshRate());
+		mDisplayFrequency = Math::roundToInt(mDesc.videoMode.refreshRate);
 
 		// Update local properties
 		props.isFullScreen = mDesc.fullscreen && !mIsChild;
@@ -206,9 +205,8 @@ namespace bs
 		mDepthFormat = format.depthFormat;
 
 		// Create swap chain
-		mSwapChain = bs_shared_ptr_new<VulkanSwapChain>();
-		mSwapChain->rebuild(presentDevice, mSurface, props.width, props.height, props.vsync, mColorFormat, mColorSpace, 
-			mDesc.depthBuffer, mDepthFormat);
+		mSwapChain = presentDevice->getResourceManager().create<VulkanSwapChain>(mSurface, props.width, props.height, 
+			props.vsync, mColorFormat, mColorSpace, mDesc.depthBuffer, mDepthFormat);
 
 		// Make the window full screen if required
 		if (!windowDesc.external)
@@ -257,7 +255,13 @@ namespace bs
 		if (!mRequiresNewBackBuffer)
 			return;
 
-		mSwapChain->acquireBackBuffer();
+		VkResult acquireResult = mSwapChain->acquireBackBuffer();
+		if(acquireResult == VK_SUBOPTIMAL_KHR || acquireResult == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			rebuildSwapChain();
+			mSwapChain->acquireBackBuffer();
+		}
+
 		mRequiresNewBackBuffer = false;
 	}
 
@@ -297,7 +301,10 @@ namespace bs
 			mSwapChain->notifyBackBufferWaitIssued();
 		}
 
-		queue->present(mSwapChain.get(), mSemaphoresTemp, numSemaphores);
+		VkResult presentResult = queue->present(mSwapChain, mSemaphoresTemp, numSemaphores);
+		if(presentResult == VK_SUBOPTIMAL_KHR || presentResult == VK_ERROR_OUT_OF_DATE_KHR)
+			rebuildSwapChain();
+
 		mRequiresNewBackBuffer = true;
 	}
 
@@ -444,7 +451,7 @@ namespace bs
 	{
 		THROW_IF_NOT_CORE_THREAD;
 
-		setFullscreen(mode.getWidth(), mode.getHeight(), mode.getRefreshRate(), mode.getOutputIdx());
+		setFullscreen(mode.width, mode.height, mode.refreshRate, mode.outputIdx);
 	}
 
 	void Win32RenderWindow::setWindowed(UINT32 width, UINT32 height)
@@ -503,19 +510,10 @@ namespace bs
 
 	void Win32RenderWindow::setVSync(bool enabled, UINT32 interval)
 	{
-		// Rebuild swap chain
-		
-		//// Need to make sure nothing is using the swap buffer before we re-create it
-		// Note: Optionally I can detect exactly on which queues (if any) are the swap chain images used on, and only wait
-		// on those
-		SPtr<VulkanDevice> presentDevice = mRenderAPI._getPresentDevice();
-		presentDevice->waitIdle();
-
-		mSwapChain->rebuild(presentDevice, mSurface, mProperties.width, mProperties.height, enabled, mColorFormat, mColorSpace, 
-			mDesc.depthBuffer, mDepthFormat);
-
 		mProperties.vsync = enabled;
 		mProperties.vsyncInterval = interval;
+
+		rebuildSwapChain();
 
 		{
 			ScopedSpinLock lock(mLock);
@@ -543,7 +541,7 @@ namespace bs
 		if(name == "SC")
 		{
 			VulkanSwapChain** sc = (VulkanSwapChain**)data;
-			*sc = mSwapChain.get();
+			*sc = mSwapChain;
 			return;
 		}
 
@@ -575,16 +573,7 @@ namespace bs
 			props.height = mWindow->getHeight();
 		}
 
-		// Resize swap chain
-		
-		//// Need to make sure nothing is using the swap buffer before we re-create it
-		// Note: Optionally I can detect exactly on which queues (if any) are the swap chain images used on, and only wait
-		// on those
-		SPtr<VulkanDevice> presentDevice = mRenderAPI._getPresentDevice();
-		presentDevice->waitIdle();
-
-		mSwapChain->rebuild(presentDevice, mSurface, props.width, props.height, props.vsync, mColorFormat, mColorSpace, 
-			mDesc.depthBuffer, mDepthFormat);
+		rebuildSwapChain();
 	}
 
 	void Win32RenderWindow::syncProperties()
@@ -592,5 +581,23 @@ namespace bs
 		ScopedSpinLock lock(mLock);
 		mProperties = mSyncedProperties;
 	}
+
+	void Win32RenderWindow::rebuildSwapChain()
+	{
+		//// Need to make sure nothing is using the swap buffer before we re-create it
+		// Note: Optionally I can detect exactly on which queues (if any) are the swap chain images used on, and only wait
+		// on those
+		SPtr<VulkanDevice> presentDevice = mRenderAPI._getPresentDevice();
+		presentDevice->waitIdle();
+
+		VulkanSwapChain* oldSwapChain = mSwapChain;
+
+		mSwapChain = presentDevice->getResourceManager().create<VulkanSwapChain>(mSurface, mProperties.width,
+			mProperties.height, mProperties.vsync, mColorFormat, mColorSpace, mDesc.depthBuffer, mDepthFormat,
+			oldSwapChain);
+
+		oldSwapChain->destroy();
+	}
+
 	}
 }

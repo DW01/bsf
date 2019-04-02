@@ -11,10 +11,6 @@
 
 namespace bs { namespace ct
 {
-	GLVertexArrayObject::GLVertexArrayObject()
-		:mHandle(0), mVertProgId(0), mAttachedBuffers(nullptr), mNumBuffers(0)
-	{ }
-
 	GLVertexArrayObject::GLVertexArrayObject(GLuint handle, UINT64 vertexProgramId, 
 		GLVertexBuffer** attachedBuffers, UINT32 numBuffers)
 		:mHandle(handle), mVertProgId(vertexProgramId), mAttachedBuffers(attachedBuffers), mNumBuffers(numBuffers)
@@ -23,10 +19,10 @@ namespace bs { namespace ct
 	::std::size_t GLVertexArrayObject::Hash::operator()(const GLVertexArrayObject &vao) const
 	{
 		std::size_t seed = 0;
-		hash_combine(seed, vao.mVertProgId);
+		bs_hash_combine(seed, vao.mVertProgId);
 
 		for (UINT32 i = 0; i < vao.mNumBuffers; i++)
-			hash_combine(seed, vao.mAttachedBuffers[i]->getGLBufferId());
+			bs_hash_combine(seed, vao.mAttachedBuffers[i]->getGLBufferId());
 
 		return seed;
 	}

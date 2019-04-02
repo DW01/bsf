@@ -15,7 +15,6 @@ using namespace std::placeholders;
 namespace bs
 {
 	CAnimation::CAnimation()
-		:mWrapMode(AnimWrapMode::Loop), mSpeed(1.0f), mEnableCull(true), mUseBounds(false), mPreviewMode(false)
 	{
 		mNotifyFlags = TCF_Transform;
 		setFlag(ComponentFlag::AlwaysRun, true);
@@ -24,7 +23,7 @@ namespace bs
 	}
 
 	CAnimation::CAnimation(const HSceneObject& parent)
-		: Component(parent), mWrapMode(AnimWrapMode::Loop), mSpeed(1.0f), mEnableCull(true), mUseBounds(false), mPreviewMode(false)
+		: Component(parent)
 	{
 		mNotifyFlags = TCF_Transform;
 		setFlag(ComponentFlag::AlwaysRun, true);
@@ -65,7 +64,7 @@ namespace bs
 	void CAnimation::blendAdditive(const HAnimationClip& clip, float weight, float fadeLength, UINT32 layer)
 	{
 		if (mInternal != nullptr && !mPreviewMode)
-			mInternal->play(clip);
+			mInternal->blendAdditive(clip, weight, fadeLength, layer);
 	}
 
 	void CAnimation::blend1D(const Blend1DInfo& info, float t)
@@ -161,7 +160,7 @@ namespace bs
 		{
 			if(mAnimatedRenderable != nullptr)
 			{
-				SPtr<Renderable> renderable = mAnimatedRenderable->_getRenderable();
+				SPtr<Renderable> renderable = mAnimatedRenderable->_getInternal();
 				if (renderable != nullptr)
 					renderable->setOverrideBounds(bounds);
 
@@ -433,11 +432,10 @@ namespace bs
 		{
 			if (mMappingInfos[i].bone == bone)
 			{
-				mMappingInfos.erase(mMappingInfos.begin() + i);
-
 				if(mInternal)
 					mInternal->unmapSceneObject(mMappingInfos[i].sceneObject);
 
+				mMappingInfos.erase(mMappingInfos.begin() + i);
 				i--;
 			}
 		}
@@ -475,7 +473,7 @@ namespace bs
 	{
 		SPtr<Renderable> renderable;
 		if (updateRenderable && mAnimatedRenderable != nullptr)
-			renderable = mAnimatedRenderable->_getRenderable();
+			renderable = mAnimatedRenderable->_getInternal();
 
 		if (mUseBounds)
 		{

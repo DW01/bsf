@@ -31,7 +31,7 @@ namespace bs
 	class BS_CORE_EXPORT AudioSource : public IReflectable, public SceneActor, public IResourceListener
 	{
 	public:
-		virtual ~AudioSource() { }
+		virtual ~AudioSource() = default;
 
 		/** Audio clip to play. */
 		virtual void setClip(const HAudioClip& clip);
@@ -118,7 +118,7 @@ namespace bs
 		static SPtr<AudioSource> create();
 
 	protected:
-		AudioSource();
+		AudioSource() = default;
 
 		/** @copydoc IResourceListener::getListenerResources */
 		void getListenerResources(Vector<HResource>& resources) override;
@@ -130,13 +130,13 @@ namespace bs
 		virtual void onClipChanged() { }
 
 		HAudioClip mAudioClip;
-		Vector3 mVelocity;
-		float mVolume;
-		float mPitch;
-		bool mLoop;
-		INT32 mPriority;
-		float mMinDistance;
-		float mAttenuation;
+		Vector3 mVelocity = BsZero;
+		float mVolume = 1.0f;
+		float mPitch = 1.0f;
+		bool mLoop = false;
+		INT32 mPriority = 0;
+		float mMinDistance = 1.0f;
+		float mAttenuation = 1.0f;
 
 		/************************************************************************/
 		/* 								RTTI		                     		*/

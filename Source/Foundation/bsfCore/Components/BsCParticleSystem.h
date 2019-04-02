@@ -17,33 +17,63 @@ namespace bs
 	 *
 	 * @note Wraps ParticleSystem as a Component.
 	 */
-	class BS_CORE_EXPORT CParticleSystem : public Component
+	class BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Particles,n:ParticleSystem) CParticleSystem : public Component
 	{
 	public:
 		CParticleSystem(const HSceneObject& parent);
 		virtual ~CParticleSystem() = default;
 		
 		/** @copydoc ParticleSystem::setSettings */
+		BS_SCRIPT_EXPORT(pr:setter,n:Settings,passByCopy,inline)
 		void setSettings(const ParticleSystemSettings& settings);
 
 		/** @copydoc ParticleSystem::getSettings */
+		BS_SCRIPT_EXPORT(pr:getter,n:Settings,passByCopy)
 		const ParticleSystemSettings& getSettings() const { return mSettings; }
 
 		/** @copydoc ParticleSystem::setGpuSimulationSettings */
+		BS_SCRIPT_EXPORT(pr:setter,n:GpuSimulationSettings,passByCopy)
 		void setGpuSimulationSettings(const ParticleGpuSimulationSettings& settings);
 
 		/** @copydoc ParticleSystem::getGpuSimulationSettings */
+		BS_SCRIPT_EXPORT(pr:getter,n:GpuSimulationSettings,passByCopy)
 		const ParticleGpuSimulationSettings& getGpuSimulationSettings() const { return mGpuSimulationSettings; }
 
+		/** @copydoc ParticleSystem::setEmitters */
+		BS_SCRIPT_EXPORT(pr:setter,n:Emitters)
+		void setEmitters(const Vector<SPtr<ParticleEmitter>>& emitters);
+
 		/** @copydoc ParticleSystem::getEmitters */
-		ParticleSystemEmitters& getEmitters();
+		BS_SCRIPT_EXPORT(pr:getter,n:Emitters)
+		const Vector<SPtr<ParticleEmitter>>& getEmitters() const { return mEmitters; }
+
+		/** @copydoc ParticleSystem::setEvolvers */
+		BS_SCRIPT_EXPORT(pr:setter,n:Evolvers)
+		void setEvolvers(const Vector<SPtr<ParticleEvolver>>& evolvers);
 
 		/** @copydoc ParticleSystem::getEvolvers */
-		ParticleSystemEvolvers& getEvolvers();
+		BS_SCRIPT_EXPORT(pr:getter,n:Evolvers)
+		const Vector<SPtr<ParticleEvolver>>& getEvolvers() const { return mEvolvers; }
+
+		/** @copydoc ParticleSystem::setLayer() */
+		BS_SCRIPT_EXPORT(pr:setter,n:Layer,layerMask)
+		void setLayer(UINT64 layer);
+
+		/** @copydoc ParticleSystem::getLayer() */
+		BS_SCRIPT_EXPORT(pr:getter,n:Layer,layerMask)
+		UINT64 getLayer() const { return mLayer; }
 
 		/** @name Internal
 		 *  @{
 		 */
+
+		/** 
+		 * Enables or disabled preview mode. Preview mode allows the particle system to play while the game is not running, 
+		 * primarily for preview purposes in the editor. Returns true if the preview mode was enabled, false if it was
+		 * disabled or enabling preview failed.
+		 */
+		BS_SCRIPT_EXPORT(n:TogglePreviewMode,v:internal)
+		bool _togglePreviewMode(bool enabled);
 
 		/** Returns the ParticleSystem implementation wrapped by this component. */
 		ParticleSystem* _getInternal() const { return mInternal.get(); }
@@ -78,8 +108,11 @@ namespace bs
 
 		ParticleSystemSettings mSettings;
 		ParticleGpuSimulationSettings mGpuSimulationSettings;
-		ParticleSystemEmitters mEmitters;
-		ParticleSystemEvolvers mEvolvers;
+		Vector<SPtr<ParticleEmitter>> mEmitters;
+		Vector<SPtr<ParticleEvolver>> mEvolvers;
+		UINT64 mLayer = 1;
+
+		bool mPreviewMode = false;
 
 		/************************************************************************/
 		/* 								RTTI		                     		*/

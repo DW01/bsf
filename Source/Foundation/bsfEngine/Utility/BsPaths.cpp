@@ -7,16 +7,13 @@
 
 namespace bs
 {
-#if BS_IS_BANSHEE3D
 	const Path Paths::RELEASE_ASSEMBLY_PATH = "bin/Assemblies/Release/";
 	const Path Paths::DEBUG_ASSEMBLY_PATH = "bin/Assemblies/Debug/";
-#endif
 
 	const Path Paths::FRAMEWORK_DATA_PATH = "Data/";
 
 	const Path& Paths::getDataPath()
 	{
-#if BS_IS_BANSHEE3D
 		static bool initialized = false;
 		static Path path;
 
@@ -25,14 +22,14 @@ namespace bs
 			if (FileSystem::exists(FRAMEWORK_DATA_PATH))
 				path = FileSystem::getWorkingDirectoryPath() + FRAMEWORK_DATA_PATH;
 			else
+#if BS_IS_BANSHEE3D
 				path = Path(RAW_APP_ROOT) + Path("Source/bsf") + FRAMEWORK_DATA_PATH;
+#else
+				path = Path(RAW_APP_ROOT) +  FRAMEWORK_DATA_PATH;
+#endif
 
 			initialized = true;
 		}
-
-#else
-		static Path path = findPath(FRAMEWORK_DATA_PATH);
-#endif
 
 		return path;
 	}
@@ -64,18 +61,6 @@ namespace bs
 	}
 
 #if BS_IS_BANSHEE3D
-	const Path& Paths::getReleaseAssemblyPath()
-	{
-		static Path path = findPath(RELEASE_ASSEMBLY_PATH);
-		return path;
-	}
-
-	const Path& Paths::getDebugAssemblyPath()
-	{
-		static Path path = findPath(DEBUG_ASSEMBLY_PATH);
-		return path;
-	}
-
 	const Path& Paths::getGameSettingsPath()
 	{
 		static Path path = findPath(GAME_SETTINGS_NAME);
@@ -101,15 +86,9 @@ namespace bs
 			return output;
 		}
 
-		// Then, check the source distribution itself, in case we're running directly from the build directory
-		output.makeAbsolute(RAW_APP_ROOT);
+		// Then, check the build directory itself, in case we're running directly from it (during development)
+		output.makeAbsolute(BUILD_APP_ROOT);
 		if (FileSystem::exists(output))
-			return output;
-
-		// Also, check the secondary root (useful if actual project using bsf is in a different folder)
-		output = path;
-		output.makeAbsolute(SECONDARY_APP_ROOT);
-		if(FileSystem::exists(output))
 			return output;
 
 		// No path found, but return the initial value by default

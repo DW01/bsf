@@ -13,7 +13,7 @@ namespace bs
 	 *  @{
 	 */
 
-	class BS_CORE_EXPORT VectorFieldRTTI : public RTTIType<VectorField, IReflectable, VectorFieldRTTI>
+	class BS_CORE_EXPORT VectorFieldRTTI : public RTTIType<VectorField, Resource, VectorFieldRTTI>
 	{
 	private:
 		BS_BEGIN_RTTI_MEMBERS
@@ -42,7 +42,7 @@ namespace bs
 		}
 
 	protected:
-		void onDeserializationEnded(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override
 		{
 			VectorField* vectorField = static_cast<VectorField*>(obj);
 			vectorField->initialize();

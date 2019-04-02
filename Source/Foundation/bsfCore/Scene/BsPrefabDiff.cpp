@@ -7,6 +7,7 @@
 #include "Serialization/BsBinarySerializer.h"
 #include "Serialization/BsBinaryDiff.h"
 #include "Scene/BsSceneManager.h"
+#include "Utility/BsUtility.h"
 
 namespace bs
 {
@@ -58,12 +59,17 @@ namespace bs
 		if (mRoot == nullptr)
 			return;
 
-		GameObjectManager::instance().startDeserialization();
-		applyDiff(mRoot, object);
-		GameObjectManager::instance().endDeserialization();
+		CoreSerializationContext serzContext;
+		serzContext.goState = bs_shared_ptr_new<GameObjectDeserializationState>(GODM_UseNewIds | GODM_RestoreExternal);
+		serzContext.goDeserializationActive = true;
+
+		applyDiff(mRoot, object, &serzContext);
+
+		serzContext.goState->resolve();
 	}
 
-	void PrefabDiff::applyDiff(const SPtr<PrefabObjectDiff>& diff, const HSceneObject& object)
+	void PrefabDiff::applyDiff(const SPtr<PrefabObjectDiff>& diff, const HSceneObject& object, 
+		SerializationContext* context)
 	{
 		if ((diff->soFlags & (UINT32)SceneObjectDiffFlags::Name) != 0)
 			object->setName(diff->name);
@@ -90,7 +96,7 @@ namespace bs
 			{
 				if (removedId == component->getLinkId())
 				{
-					component->destroy();
+					component->destroy(true);
 					break;
 				}
 			}
@@ -104,7 +110,7 @@ namespace bs
 				HSceneObject child = object->getChild(i);
 				if (removedId == child->getLinkId())
 				{
-					child->destroy();
+					child->destroy(true);
 					break;
 				}
 			}
@@ -112,16 +118,14 @@ namespace bs
 
 		for (auto& addedComponentData : diff->addedComponents)
 		{
-			BinarySerializer bs;
-			SPtr<Component> component = std::static_pointer_cast<Component>(bs._decodeFromIntermediate(addedComponentData));
+			SPtr<Component> component = std::static_pointer_cast<Component>(addedComponentData->decode(context));
 
 			object->addAndInitializeComponent(component);
 		}
 
 		for (auto& addedChildData : diff->addedChildren)
 		{
-			BinarySerializer bs;
-			SPtr<SceneObject> sceneObject = std::static_pointer_cast<SceneObject>(bs._decodeFromIntermediate(addedChildData));
+			SPtr<SceneObject> sceneObject = std::static_pointer_cast<SceneObject>(addedChildData->decode(context));
 			sceneObject->setParent(object);
 
 			if(object->isInstantiated())
@@ -135,7 +139,7 @@ namespace bs
 				if (componentDiff->id == (INT32)component->getLinkId())
 				{
 					IDiff& diffHandler = component->getRTTI()->getDiffHandler();
-					diffHandler.applyDiff(component.getInternalPtr(), componentDiff->data);
+					diffHandler.applyDiff(component.getInternalPtr(), componentDiff->data, context);
 					break;
 				}
 			}
@@ -149,7 +153,7 @@ namespace bs
 				HSceneObject child = object->getChild(i);
 				if (childDiff->id == child->getLinkId())
 				{
-					applyDiff(childDiff, child);
+					applyDiff(childDiff, child, context);
 					break;
 				}
 			}
@@ -275,8 +279,7 @@ namespace bs
 
 			if (!foundMatching)
 			{
-				BinarySerializer bs;
-				SPtr<SerializedObject> obj = bs._encodeToIntermediate(instanceChild.get());
+				SPtr<SerializedObject> obj = SerializedObject::create(*instanceChild);
 
 				if (output == nullptr)
 					output = bs_shared_ptr_new<PrefabObjectDiff>();
@@ -304,9 +307,8 @@ namespace bs
 
 				if (prefabComponent->getLinkId() == instanceComponent->getLinkId())
 				{
-					BinarySerializer bs;
-					SPtr<SerializedObject> encodedPrefab = bs._encodeToIntermediate(prefabComponent.get());
-					SPtr<SerializedObject> encodedInstance = bs._encodeToIntermediate(instanceComponent.get());
+					SPtr<SerializedObject> encodedPrefab = SerializedObject::create(*prefabComponent);
+					SPtr<SerializedObject> encodedInstance = SerializedObject::create(*instanceComponent);
 
 					IDiff& diffHandler = prefabComponent->getRTTI()->getDiffHandler();
 					SPtr<SerializedObject> diff = diffHandler.generateDiff(encodedPrefab, encodedInstance);
@@ -364,8 +366,7 @@ namespace bs
 
 			if (!foundMatching)
 			{
-				BinarySerializer bs;
-				SPtr<SerializedObject> obj = bs._encodeToIntermediate(instanceComponent.get());
+				SPtr<SerializedObject> obj = SerializedObject::create(*instanceComponent);
 
 				if (output == nullptr)
 					output = bs_shared_ptr_new<PrefabObjectDiff>();

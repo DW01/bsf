@@ -26,10 +26,25 @@
 #include "Threading/BsTaskScheduler.h"
 #include "Profiling/BsProfilerGPU.h"
 #include "Shading/BsGpuParticleSimulation.h"
+#include "Profiling/BsProfilerCPU.h"
 
 namespace bs { namespace ct
 {
 	UnorderedMap<StringID, RenderCompositor::NodeType*> RenderCompositor::mNodeTypes;
+
+	/** Renders all elements in a render queue. */
+	void renderQueueElements(const Vector<RenderQueueElement>& elements)
+	{
+		for(auto& entry : elements)
+		{
+			if (entry.applyPass)
+				gRendererUtility().setPass(entry.renderElem->material, entry.passIdx, entry.techniqueIdx);
+
+			gRendererUtility().setPassParams(entry.renderElem->params, entry.passIdx);
+
+			entry.renderElem->draw();
+		}
+	}
 
 	RenderCompositor::~RenderCompositor()
 	{
@@ -97,7 +112,7 @@ namespace bs { namespace ct
 						iterFind2 = processedNodes.find(depId);
 
 						NodeInfo& depNodeInfo = mNodeInfos[iterFind2->second];
-						nodeInfo.inputs.push_back(depNodeInfo.node);
+						nodeInfo.inputs.add(depNodeInfo.node);
 					}
 				}
 				else // Existing node
@@ -154,11 +169,13 @@ namespace bs { namespace ct
 #if BS_PROFILING_ENABLED
 				const ProfilerString sampleName = ProfilerString("RC: ") + entry.nodeType->id.c_str();
 				BS_GPU_PROFILE_BEGIN(sampleName);
+				gProfilerCPU().beginSample(sampleName.c_str());
 #endif
 
 				entry.node->render(inputs);
 
 #if BS_PROFILING_ENABLED
+				gProfilerCPU().endSample(sampleName.c_str());
 				BS_GPU_PROFILE_END(sampleName);
 #endif
 
@@ -199,9 +216,9 @@ namespace bs { namespace ct
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
-		UINT32 numSamples = viewProps.numSamples;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
+		UINT32 numSamples = viewProps.target.numSamples;
 
 		depthTex = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_D32_S8X24, width, height, TU_DEPTHSTENCIL,
 			numSamples, false));
@@ -218,15 +235,15 @@ namespace bs { namespace ct
 		return {};
 	}
 
-	void RCNodeGBuffer::render(const RenderCompositorNodeInputs& inputs)
+	void RCNodeBasePass::render(const RenderCompositorNodeInputs& inputs)
 	{
 		// Allocate necessary textures & targets
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
-		UINT32 numSamples = viewProps.numSamples;
+		const UINT32 width = viewProps.target.viewRect.width;
+		const UINT32 height = viewProps.target.viewRect.height;
+		const UINT32 numSamples = viewProps.target.numSamples;
 
 		// Note: Consider customizable formats. e.g. for testing if quality can be improved with higher precision normals.
 		albedoTex = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA8, width, height, TU_RENDERTARGET,
@@ -235,16 +252,22 @@ namespace bs { namespace ct
 			numSamples, false));
 		roughMetalTex = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RG16F, width, height, TU_RENDERTARGET,
 			numSamples, false)); // Note: Metal doesn't need 16-bit float
+		idTex = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_R8, width, height, TU_RENDERTARGET,
+			numSamples, false));
 
-		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[0]);
+		auto sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[0]);
+		auto sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[1]);
 		SPtr<PooledRenderTexture> sceneDepthTex = sceneDepthNode->depthTex;
+		SPtr<PooledRenderTexture> sceneColorTex = sceneColorNode->sceneColorTex;
 
 		bool rebuildRT = false;
 		if (renderTarget != nullptr)
 		{
-			rebuildRT |= renderTarget->getColorTexture(0) != albedoTex->texture;
-			rebuildRT |= renderTarget->getColorTexture(1) != normalTex->texture;
-			rebuildRT |= renderTarget->getColorTexture(2) != roughMetalTex->texture;
+			rebuildRT |= renderTarget->getColorTexture(0) != sceneColorTex->texture;
+			rebuildRT |= renderTarget->getColorTexture(1) != albedoTex->texture;
+			rebuildRT |= renderTarget->getColorTexture(2) != normalTex->texture;
+			rebuildRT |= renderTarget->getColorTexture(3) != roughMetalTex->texture;
+			rebuildRT |= renderTarget->getColorTexture(4) != idTex->texture;
 			rebuildRT |= renderTarget->getDepthStencilTexture() != sceneDepthTex->texture;
 		}
 		else
@@ -253,31 +276,44 @@ namespace bs { namespace ct
 		if (renderTarget == nullptr || rebuildRT)
 		{
 			RENDER_TEXTURE_DESC gbufferDesc;
-			gbufferDesc.colorSurfaces[0].texture = albedoTex->texture;
+			gbufferDesc.colorSurfaces[0].texture = sceneColorTex->texture;
 			gbufferDesc.colorSurfaces[0].face = 0;
 			gbufferDesc.colorSurfaces[0].numFaces = 1;
 			gbufferDesc.colorSurfaces[0].mipLevel = 0;
 
-			gbufferDesc.colorSurfaces[1].texture = normalTex->texture;
+			gbufferDesc.colorSurfaces[1].texture = albedoTex->texture;
 			gbufferDesc.colorSurfaces[1].face = 0;
 			gbufferDesc.colorSurfaces[1].numFaces = 1;
 			gbufferDesc.colorSurfaces[1].mipLevel = 0;
 
-			gbufferDesc.colorSurfaces[2].texture = roughMetalTex->texture;
+			gbufferDesc.colorSurfaces[2].texture = normalTex->texture;
 			gbufferDesc.colorSurfaces[2].face = 0;
 			gbufferDesc.colorSurfaces[2].numFaces = 1;
 			gbufferDesc.colorSurfaces[2].mipLevel = 0;
+
+			gbufferDesc.colorSurfaces[3].texture = roughMetalTex->texture;
+			gbufferDesc.colorSurfaces[3].face = 0;
+			gbufferDesc.colorSurfaces[3].numFaces = 1;
+			gbufferDesc.colorSurfaces[3].mipLevel = 0;
 
 			gbufferDesc.depthStencilSurface.texture = sceneDepthTex->texture;
 			gbufferDesc.depthStencilSurface.face = 0;
 			gbufferDesc.depthStencilSurface.mipLevel = 0;
 
+			renderTargetNoMask = RenderTexture::create(gbufferDesc);
+
+			gbufferDesc.colorSurfaces[4].texture = idTex->texture;
+			gbufferDesc.colorSurfaces[4].face = 0;
+			gbufferDesc.colorSurfaces[4].numFaces = 1;
+			gbufferDesc.colorSurfaces[4].mipLevel = 0;
+
 			renderTarget = RenderTexture::create(gbufferDesc);
 		}
 
 		// Prepare all visible objects. Note that this also prepares non-opaque objects.
+		//// Prepare normal renderables
 		const VisibilityInfo& visibility = inputs.view.getVisibilityMasks();
-		UINT32 numRenderables = (UINT32)inputs.scene.renderables.size();
+		const auto numRenderables = (UINT32)inputs.scene.renderables.size();
 		for (UINT32 i = 0; i < numRenderables; i++)
 		{
 			if (!visibility.renderables[i])
@@ -296,6 +332,63 @@ namespace bs { namespace ct
 						gpuParams->setParamBlockBuffer(binding.set, binding.slot, inputs.view.getPerViewBuffer());
 				}
 			}
+		}
+
+		//// Prepare particle systems
+		const ParticlePerFrameData* particleData = inputs.frameInfo.perFrameData.particles;
+		if(particleData)
+		{
+			const auto numParticleSystems = (UINT32)inputs.scene.particleSystems.size();
+
+			const GpuParticleResources& gpuSimResources = GpuParticleSimulation::instance().getResources();
+			for (UINT32 i = 0; i < numParticleSystems; i++)
+			{
+				if (!visibility.particleSystems[i])
+					continue;
+
+				const RendererParticles& rendererParticles = inputs.scene.particleSystems[i];
+				ParticlesRenderElement& renderElement = rendererParticles.renderElement;
+
+				if(!renderElement.isValid())
+					continue;
+
+				ParticleSystem* particleSystem = rendererParticles.particleSystem;
+
+				// Bind textures/buffers from CPU simulation
+				const auto iterFind = particleData->cpuData.find(particleSystem->getId());
+				if (iterFind != particleData->cpuData.end())
+				{
+					ParticleRenderData* renderData = iterFind->second;
+					rendererParticles.bindCPUSimulatedInputs(renderData, inputs.view);
+				}
+				// Bind textures/buffers from GPU simulation
+				else if(rendererParticles.gpuParticleSystem)
+					rendererParticles.bindGPUSimulatedInputs(gpuSimResources, inputs.view);
+			}
+		}
+
+		//// Prepare decals
+		const auto numDecals = (UINT32)inputs.scene.decals.size();
+		for (UINT32 i = 0; i < numDecals; i++)
+		{
+			if (!visibility.decals[i])
+				continue;
+
+			const RendererDecal& rendererDecal = inputs.scene.decals[i];
+			DecalRenderElement& renderElement = rendererDecal.renderElement;
+
+			rendererDecal.updatePerCallBuffer(viewProps.viewProjTransform);
+
+			SPtr<GpuParams> gpuParams = renderElement.params->getGpuParams();
+			for (UINT32 j = 0; j < GPT_COUNT; j++)
+			{
+				const GpuParamBinding& binding = renderElement.perCameraBindings[j];
+				if (binding.slot != (UINT32)-1)
+					gpuParams->setParamBlockBuffer(binding.set, binding.slot, inputs.view.getPerViewBuffer());
+			}
+
+			renderElement.depthInputTexture.set(sceneDepthTex->texture);
+			renderElement.maskInputTexture.set(idTex->texture);
 		}
 
 		Camera* sceneCamera = inputs.view.getSceneCamera();
@@ -332,23 +425,33 @@ namespace bs { namespace ct
 
 		// Render all visible opaque elements that use the deferred pipeline
 		const Vector<RenderQueueElement>& opaqueElements = inputs.view.getOpaqueQueue(false)->getSortedElements();
-		for (auto iter = opaqueElements.begin(); iter != opaqueElements.end(); ++iter)
+		renderQueueElements(opaqueElements);
+
+		// Determine MSAA coverage if required
+		if (viewProps.target.numSamples > 1)
 		{
-			const RenderableElement* renderElem = static_cast<const RenderableElement*>(iter->renderElem);
+			auto msaaCoverageNode = static_cast<RCNodeMSAACoverage*>(inputs.inputNodes[3]);
 
-			SPtr<Material> material = renderElem->material;
+			GBufferTextures gbuffer;
+			gbuffer.albedo = albedoTex->texture;
+			gbuffer.normals = normalTex->texture;
+			gbuffer.roughMetal = roughMetalTex->texture;
+			gbuffer.depth = sceneDepthNode->depthTex->texture;
 
-			if (iter->applyPass)
-				gRendererUtility().setPass(material, iter->passIdx, renderElem->techniqueIdx);
+			MSAACoverageMat* mat = MSAACoverageMat::getVariation(viewProps.target.numSamples);
+			rapi.setRenderTarget(msaaCoverageNode->output->renderTexture);
+			mat->execute(inputs.view, gbuffer);
 
-			gRendererUtility().setPassParams(renderElem->params, iter->passIdx);
-
-			if(renderElem->morphVertexDeclaration == nullptr)
-				gRendererUtility().draw(renderElem->mesh, renderElem->subMesh);
-			else
-				gRendererUtility().drawMorph(renderElem->mesh, renderElem->subMesh, renderElem->morphShapeBuffer, 
-					renderElem->morphVertexDeclaration);
+			MSAACoverageStencilMat* stencilMat = MSAACoverageStencilMat::get();
+			rapi.setRenderTarget(sceneDepthNode->depthTex->renderTexture);
+			stencilMat->execute(inputs.view, msaaCoverageNode->output->texture);
 		}
+
+		// Render decals after all normal objects, using a read-only depth buffer
+		rapi.setRenderTarget(renderTargetNoMask, FBT_DEPTH, RT_ALL);
+
+		const Vector<RenderQueueElement>& decalElements = inputs.view.getDecalQueue()->getSortedElements();
+		renderQueueElements(decalElements);
 
 		// Make sure that any compute shaders are able to read g-buffer by unbinding it
 		rapi.setRenderTarget(nullptr);
@@ -364,18 +467,21 @@ namespace bs { namespace ct
 		}
 	}
 
-	void RCNodeGBuffer::clear()
+	void RCNodeBasePass::clear()
 	{
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 
 		resPool.release(albedoTex);
 		resPool.release(normalTex);
 		resPool.release(roughMetalTex);
+		resPool.release(idTex);
 	}
 
-	SmallVector<StringID, 4> RCNodeGBuffer::getDependencies(const RendererView& view)
+	SmallVector<StringID, 4> RCNodeBasePass::getDependencies(const RendererView& view)
 	{
-		return { RCNodeSceneDepth::getNodeId() };
+		return { 
+			RCNodeSceneDepth::getNodeId(), RCNodeSceneColor::getNodeId(), RCNodeParticleSort::getNodeId(), 
+			RCNodeMSAACoverage::getNodeId() };
 	}
 
 	void RCNodeSceneColor::render(const RenderCompositorNodeInputs& inputs)
@@ -383,14 +489,14 @@ namespace bs { namespace ct
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
-		UINT32 numSamples = viewProps.numSamples;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
+		UINT32 numSamples = viewProps.target.numSamples;
 
 		UINT32 usageFlags = TU_RENDERTARGET;
 
 		bool tiledDeferredSupported = inputs.featureSet != RenderBeastFeatureSet::DesktopMacOS;
-		if(tiledDeferredSupported)
+		if(tiledDeferredSupported && numSamples == 1)
 			usageFlags |= TU_LOADSTORE;
 
 		// Note: Consider customizable HDR format via options? e.g. smaller PF_FLOAT_R11G11B10 or larger 32-bit format
@@ -400,10 +506,10 @@ namespace bs { namespace ct
 		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[0]);
 		SPtr<PooledRenderTexture> sceneDepthTex = sceneDepthNode->depthTex;
 
-		if (tiledDeferredSupported && viewProps.numSamples > 1)
+		if (tiledDeferredSupported && viewProps.target.numSamples > 1)
 		{
-			sceneColorTexArray = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA32F, width, height, 
-				TU_LOADSTORE, 1, false, viewProps.numSamples));
+			sceneColorTexArray = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, width, height, 
+				TU_LOADSTORE, 1, false, viewProps.target.numSamples));
 		}
 		else
 			sceneColorTexArray = nullptr;
@@ -463,7 +569,7 @@ namespace bs { namespace ct
 	void RCNodeMSAACoverage::render(const RenderCompositorNodeInputs& inputs)
 	{
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
-		if(viewProps.numSamples <= 1)
+		if(viewProps.target.numSamples <= 1)
 		{
 			// No need for MSAA coverage
 			output = nullptr;
@@ -472,31 +578,11 @@ namespace bs { namespace ct
 
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
 
+		// We just allocate the texture, while the base pass is responsible for filling it out
 		output = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_R8, width, height, TU_RENDERTARGET));
-
-		RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[0]);
-		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[1]);
-
-		GBufferTextures gbuffer;
-		gbuffer.albedo = gbufferNode->albedoTex->texture;
-		gbuffer.normals = gbufferNode->normalTex->texture;
-		gbuffer.roughMetal = gbufferNode->roughMetalTex->texture;
-		gbuffer.depth = sceneDepthNode->depthTex->texture;
-
-		MSAACoverageMat* mat = MSAACoverageMat::getVariation(viewProps.numSamples);
-
-		RenderAPI& rapi = RenderAPI::instance();
-		rapi.setRenderTarget(output->renderTexture);
-		mat->execute(inputs.view, gbuffer);
-
-		MSAACoverageStencilMat* stencilMat = MSAACoverageStencilMat::get();
-		rapi.setRenderTarget(sceneDepthNode->depthTex->renderTexture);
-		stencilMat->execute(inputs.view, output->texture);
-
-		rapi.setRenderTarget(nullptr);
 	}
 
 	void RCNodeMSAACoverage::clear()
@@ -510,7 +596,7 @@ namespace bs { namespace ct
 
 	SmallVector<StringID, 4> RCNodeMSAACoverage::getDependencies(const RendererView& view)
 	{
-		return { RCNodeGBuffer::getNodeId(), RCNodeSceneDepth::getNodeId() };
+		return { };
 	}
 
 	void RCNodeParticleSimulate::render(const RenderCompositorNodeInputs& inputs)
@@ -518,7 +604,7 @@ namespace bs { namespace ct
 		// Only simulate particles for the first view in the main render pass
 		if(inputs.viewGroup.isMainPass() && inputs.view.getViewIdx() == 0)
 		{
-			RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[0]);
+			RCNodeBasePass* gbufferNode = static_cast<RCNodeBasePass*>(inputs.inputNodes[0]);
 			RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[1]);
 
 			GBufferTextures gbuffer;
@@ -541,8 +627,89 @@ namespace bs { namespace ct
 
 	SmallVector<StringID, 4> RCNodeParticleSimulate::getDependencies(const RendererView& view)
 	{
-		return { RCNodeGBuffer::getNodeId(), RCNodeSceneDepth::getNodeId() };
+		return { RCNodeBasePass::getNodeId(), RCNodeSceneDepth::getNodeId() };
 	}
+
+	void RCNodeParticleSort::render(const RenderCompositorNodeInputs& inputs)
+	{
+		const ParticlePerFrameData* particleData = inputs.frameInfo.perFrameData.particles;
+		if(!particleData)
+			return;
+
+		const RendererViewProperties& viewProps = inputs.view.getProperties();
+		const VisibilityInfo& visibility = inputs.view.getVisibilityMasks();
+		const auto numParticleSystems = (UINT32)inputs.scene.particleSystems.size();
+
+		// Sort particles
+		bs_frame_mark();
+		{
+			struct SortData
+			{
+				ParticleSystem* system;
+				ParticleRenderData* renderData;
+			};
+
+			FrameVector<SortData> systemsToSort;
+			for (UINT32 i = 0; i < numParticleSystems; i++)
+			{
+				if (!visibility.particleSystems[i])
+					continue;
+
+				const RendererParticles& rendererParticles = inputs.scene.particleSystems[i];
+
+				ParticleSystem* particleSystem = rendererParticles.particleSystem;
+				const auto iterFind = particleData->cpuData.find(particleSystem->getId());
+				if (iterFind == particleData->cpuData.end())
+					continue;
+
+				ParticleRenderData* simulationData = iterFind->second;
+				if (particleSystem->getSettings().sortMode == ParticleSortMode::Distance)
+					systemsToSort.push_back({ particleSystem, simulationData });
+			}
+
+			const auto worker = [&systemsToSort, viewOrigin = viewProps.viewOrigin](UINT32 idx)
+			{
+				const SortData& data = systemsToSort[idx];
+
+				Vector3 refPoint = viewOrigin;
+
+				// Transform the view point into particle system's local space
+				const ParticleSystemSettings& settings = data.system->getSettings();
+				if (settings.simulationSpace == ParticleSimulationSpace::Local)
+					refPoint = data.system->getTransform().getInvMatrix().multiplyAffine(refPoint);
+
+				if (settings.renderMode == ParticleRenderMode::Billboard)
+				{
+					auto renderData = static_cast<ParticleBillboardRenderData*>(data.renderData);
+					ParticleRenderer::sortByDistance(refPoint, renderData->positionAndRotation,
+						renderData->numParticles, 4, renderData->indices);
+				}
+				else
+				{
+					auto renderData = static_cast<ParticleMeshRenderData*>(data.renderData);
+					ParticleRenderer::sortByDistance(refPoint, renderData->position, renderData->numParticles,
+						3, renderData->indices);
+				}
+			};
+
+			SPtr<TaskGroup> sortTask = TaskGroup::create("ParticleSort", worker, (UINT32)systemsToSort.size());
+
+			TaskScheduler::instance().addTaskGroup(sortTask);
+			sortTask->wait();
+		}
+		bs_frame_clear();
+	}
+
+	void RCNodeParticleSort::clear()
+	{
+		// Do nothing
+	}
+
+	SmallVector<StringID, 4> RCNodeParticleSort::getDependencies(const RendererView& view)
+	{
+		return { };
+	}
+
 	void RCNodeLightAccumulation::render(const RenderCompositorNodeInputs& inputs)
 	{
 		bool supportsTiledDeferred = gRenderBeast()->getFeatureSet() != RenderBeastFeatureSet::DesktopMacOS;
@@ -563,16 +730,20 @@ namespace bs { namespace ct
 
 		RCNodeSceneDepth* depthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[0]);
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
-		UINT32 numSamples = viewProps.numSamples;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
+		UINT32 numSamples = viewProps.target.numSamples;
 
+		UINT32 usage = TU_RENDERTARGET;
 		if (numSamples > 1)
 		{
 			lightAccumulationTexArray = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, width, height, 
 				TU_LOADSTORE, 1, false, numSamples));
 
-			for(UINT32 i = 0; i < numSamples ; i++)
+			ClearLoadStoreMat* clearMat = ClearLoadStoreMat::getVariation(ClearLoadStoreType::TextureArray,
+					ClearLoadStoreDataType::Float, 4);
+
+			for(UINT32 i = 0; i < numSamples; i++)
 			{
 				TextureSurface surface;
 				surface.face = i;
@@ -580,14 +751,17 @@ namespace bs { namespace ct
 				surface.mipLevel = 0;
 				surface.numMipLevels = 1;
 
-				ClearLoadStore::get()->execute(lightAccumulationTexArray->texture, surface);
+				clearMat->execute(lightAccumulationTexArray->texture, Color::ZERO, surface);
 			}
 		}
 		else
+		{
+			usage |= TU_LOADSTORE;
 			lightAccumulationTexArray = nullptr;
+		}
 
 		lightAccumulationTex = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, width,
-			height, TU_LOADSTORE | TU_RENDERTARGET, numSamples, false));
+			height, usage, numSamples, false));
 
 		bool rebuildRT;
 		if (renderTarget != nullptr)
@@ -645,11 +819,11 @@ namespace bs { namespace ct
 	{
 		SmallVector<StringID, 4> deps;
 
-		bool supportsTiledDeferred = gRenderBeast()->getFeatureSet() != RenderBeastFeatureSet::DesktopMacOS;
+		const bool supportsTiledDeferred = gRenderBeast()->getFeatureSet() != RenderBeastFeatureSet::DesktopMacOS;
 		if(!supportsTiledDeferred)
-			deps.push_back(RCNodeSceneColor::getNodeId());
+			deps.add(RCNodeSceneColor::getNodeId());
 		else
-			deps.push_back(RCNodeSceneDepth::getNodeId());
+			deps.add(RCNodeSceneDepth::getNodeId());
 
 		return deps;
 	}
@@ -658,8 +832,9 @@ namespace bs { namespace ct
 	{
 		output = static_cast<RCNodeLightAccumulation*>(inputs.inputNodes[0]);
 
-		RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[1]);
-		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[2]);
+		auto gbufferNode = static_cast<RCNodeBasePass*>(inputs.inputNodes[1]);
+		auto sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[2]);
+		auto sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[3]);
 
 		GBufferTextures gbuffer;
 		gbuffer.albedo = gbufferNode->albedoTex->texture;
@@ -676,13 +851,14 @@ namespace bs { namespace ct
 		if(tiledDeferredSupported)
 		{
 			SPtr<Texture> msaaCoverage;
-			if(viewProps.numSamples > 1)
+			if(viewProps.target.numSamples > 1)
 			{
-				RCNodeMSAACoverage* coverageNode = static_cast<RCNodeMSAACoverage*>(inputs.inputNodes[3]);
+				RCNodeMSAACoverage* coverageNode = static_cast<RCNodeMSAACoverage*>(inputs.inputNodes[4]);
 				msaaCoverage = coverageNode->output->texture;
 			}
 
-			TiledDeferredLightingMat* tiledDeferredMat = TiledDeferredLightingMat::getVariation(viewProps.numSamples);
+			TiledDeferredLightingMat* tiledDeferredMat = 
+				TiledDeferredLightingMat::getVariation(viewProps.target.numSamples);
 
 			const VisibleLightData& lightData = inputs.viewGroup.getVisibleLightData();
 
@@ -690,10 +866,10 @@ namespace bs { namespace ct
 			if(output->lightAccumulationTexArray)
 				lightAccumTexArray = output->lightAccumulationTexArray->texture;
 
-			tiledDeferredMat->execute(inputs.view, lightData, gbuffer, output->lightAccumulationTex->texture, 
-				lightAccumTexArray, msaaCoverage);
+			tiledDeferredMat->execute(inputs.view, lightData, gbuffer, sceneColorNode->sceneColorTex->texture,
+				output->lightAccumulationTex->texture, lightAccumTexArray, msaaCoverage);
 
-			if (viewProps.numSamples > 1)
+			if (viewProps.target.numSamples > 1)
 				output->resolveMSAA();
 
 			// If shadows are disabled we handle all lights through tiled deferred so we can exit immediately
@@ -704,9 +880,9 @@ namespace bs { namespace ct
 		// Standard deferred used for shadowed lights, or when tiled deferred isn't supported
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
-		UINT32 numSamples = viewProps.numSamples;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
+		UINT32 numSamples = viewProps.target.numSamples;
 
 		const VisibleLightData& lightData = inputs.viewGroup.getVisibleLightData();
 
@@ -718,7 +894,6 @@ namespace bs { namespace ct
 			ProfileGPUBlock sampleBlock("Standard deferred unshadowed lights");
 
 			rapi.setRenderTarget(output->renderTarget, FBT_DEPTH | FBT_STENCIL, RT_DEPTH_STENCIL);
-			rapi.clearRenderTarget(FBT_COLOR, Color::ZERO);
 
 			for (UINT32 i = 0; i < (UINT32)LightType::Count; i++)
 			{
@@ -813,10 +988,11 @@ namespace bs { namespace ct
 	SmallVector<StringID, 4> RCNodeDeferredDirectLighting::getDependencies(const RendererView& view)
 	{
 		SmallVector<StringID, 4> deps;
-		deps.push_back(RCNodeLightAccumulation::getNodeId());
-		deps.push_back(RCNodeGBuffer::getNodeId());
-		deps.push_back(RCNodeSceneDepth::getNodeId());
-		deps.push_back(RCNodeMSAACoverage::getNodeId());
+		deps.add(RCNodeLightAccumulation::getNodeId());
+		deps.add(RCNodeBasePass::getNodeId());
+		deps.add(RCNodeSceneDepth::getNodeId());
+		deps.add(RCNodeSceneColor::getNodeId());
+		deps.add(RCNodeMSAACoverage::getNodeId());
 
 		return deps;
 	}
@@ -826,7 +1002,7 @@ namespace bs { namespace ct
 		if (!inputs.view.getRenderSettings().enableIndirectLighting)
 			return;
 
-		RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[0]);
+		RCNodeBasePass* gbufferNode = static_cast<RCNodeBasePass*>(inputs.inputNodes[0]);
 		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[1]);
 		RCNodeLightAccumulation* lightAccumNode = static_cast <RCNodeLightAccumulation*>(inputs.inputNodes[2]);
 		RCNodeSSAO* ssaoNode = static_cast<RCNodeSSAO*>(inputs.inputNodes[3]);
@@ -859,17 +1035,18 @@ namespace bs { namespace ct
 			rapi.clearRenderTarget(FBT_DEPTH);
 			gRendererUtility().clear(-1);
 
-			TetrahedraRenderMat* renderTetrahedra = TetrahedraRenderMat::getVariation(viewProps.numSamples > 1, true);
+			TetrahedraRenderMat* renderTetrahedra = 
+				TetrahedraRenderMat::getVariation(viewProps.target.numSamples > 1, true);
 			renderTetrahedra->execute(inputs.view, sceneDepthNode->depthTex->texture, lpInfo.tetrahedraVolume, rt);
 
 			rt = nullptr;
 			resPool.release(depthTex);
 
-			evaluateMat = IrradianceEvaluateMat::getVariation(viewProps.numSamples > 1, true, false);
+			evaluateMat = IrradianceEvaluateMat::getVariation(viewProps.target.numSamples > 1, true, false);
 		}
 		else // Sky only
 		{
-			evaluateMat = IrradianceEvaluateMat::getVariation(viewProps.numSamples > 1, true, true);
+			evaluateMat = IrradianceEvaluateMat::getVariation(viewProps.target.numSamples > 1, true, true);
 		}
 
 		GBufferTextures gbuffer;
@@ -886,7 +1063,7 @@ namespace bs { namespace ct
 		if(inputs.view.getRenderSettings().enableSkybox)
 			skybox = inputs.scene.skybox;
 
-		evaluateMat->execute(inputs.view, gbuffer, volumeIndicesTex, lpInfo, skybox, ssaoNode->output, 
+		evaluateMat->execute(inputs.view, gbuffer, volumeIndicesTex, lpInfo, skybox, ssaoNode->output,
 			lightAccumNode->renderTarget);
 
 		if(volumeIndices)
@@ -901,12 +1078,11 @@ namespace bs { namespace ct
 	SmallVector<StringID, 4> RCNodeIndirectDiffuseLighting::getDependencies(const RendererView& view)
 	{
 		SmallVector<StringID, 4> deps;
-
-		deps.push_back(RCNodeGBuffer::getNodeId());
-		deps.push_back(RCNodeSceneDepth::getNodeId());
-		deps.push_back(RCNodeLightAccumulation::getNodeId());
-		deps.push_back(RCNodeSSAO::getNodeId());
-		deps.push_back(RCNodeDeferredDirectLighting::getNodeId());
+		deps.add(RCNodeBasePass::getNodeId());
+		deps.add(RCNodeSceneDepth::getNodeId());
+		deps.add(RCNodeLightAccumulation::getNodeId());
+		deps.add(RCNodeSSAO::getNodeId());
+		deps.add(RCNodeDeferredDirectLighting::getNodeId());
 
 		return deps;
 	}
@@ -914,7 +1090,7 @@ namespace bs { namespace ct
 	void RCNodeDeferredIndirectSpecularLighting::render(const RenderCompositorNodeInputs& inputs)
 	{
 		RCNodeSceneColor* sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[0]);
-		RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[1]);
+		RCNodeBasePass* gbufferNode = static_cast<RCNodeBasePass*>(inputs.inputNodes[1]);
 		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[2]);
 		RCNodeLightAccumulation* lightAccumNode = static_cast <RCNodeLightAccumulation*>(inputs.inputNodes[3]);
 		RCNodeSSR* ssrNode = static_cast<RCNodeSSR*>(inputs.inputNodes[4]);
@@ -932,13 +1108,14 @@ namespace bs { namespace ct
 		if(tiledDeferredSupported)
 		{
 			SPtr<Texture> msaaCoverage;
-			if (viewProps.numSamples > 1)
+			if (viewProps.target.numSamples > 1)
 			{
 				RCNodeMSAACoverage* coverageNode = static_cast<RCNodeMSAACoverage*>(inputs.inputNodes[6]);
 				msaaCoverage = coverageNode->output->texture;
 			}
 
-			TiledDeferredImageBasedLightingMat* material = TiledDeferredImageBasedLightingMat::getVariation(viewProps.numSamples);
+			TiledDeferredImageBasedLightingMat* material = 
+				TiledDeferredImageBasedLightingMat::getVariation(viewProps.target.numSamples);
 
 			TiledDeferredImageBasedLightingMat::Inputs iblInputs;
 			iblInputs.gbuffer = gbuffer;
@@ -954,7 +1131,7 @@ namespace bs { namespace ct
 
 			material->execute(inputs.view, inputs.scene, inputs.viewGroup.getVisibleReflProbeData(), iblInputs);
 
-			if(viewProps.numSamples > 1)
+			if(viewProps.target.numSamples > 1)
 				sceneColorNode->resolveMSAA();
 		}
 		else // Standard deferred
@@ -963,13 +1140,13 @@ namespace bs { namespace ct
 
 			GpuResourcePool& resPool = GpuResourcePool::instance();
 
-			UINT32 width = viewProps.viewRect.width;
-			UINT32 height = viewProps.viewRect.height;
-			UINT32 numSamples = viewProps.numSamples;
+			UINT32 width = viewProps.target.viewRect.width;
+			UINT32 height = viewProps.target.viewRect.height;
+			UINT32 numSamples = viewProps.target.numSamples;
 
 			RenderAPI& rapi = RenderAPI::instance();
 
-			bool isMSAA = viewProps.numSamples > 1;
+			bool isMSAA = viewProps.target.numSamples > 1;
 
 			SPtr<PooledRenderTexture> iblRadianceTex = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, width,
 				height, TU_RENDERTARGET, numSamples, false));
@@ -1079,21 +1256,17 @@ namespace bs { namespace ct
 	SmallVector<StringID, 4> RCNodeDeferredIndirectSpecularLighting::getDependencies(const RendererView& view)
 	{
 		SmallVector<StringID, 4> deps;
-
-		deps.push_back(RCNodeSceneColor::getNodeId());
-		deps.push_back(RCNodeGBuffer::getNodeId());
-		deps.push_back(RCNodeSceneDepth::getNodeId());
-		deps.push_back(RCNodeLightAccumulation::getNodeId());
-		deps.push_back(RCNodeSSR::getNodeId());
-		deps.push_back(RCNodeSSAO::getNodeId());
-		deps.push_back(RCNodeMSAACoverage::getNodeId());
-		deps.push_back(RCNodeIndirectDiffuseLighting::getNodeId());
+		deps.add(RCNodeSceneColor::getNodeId());
+		deps.add(RCNodeBasePass::getNodeId());
+		deps.add(RCNodeSceneDepth::getNodeId());
+		deps.add(RCNodeLightAccumulation::getNodeId());
+		deps.add(RCNodeSSR::getNodeId());
+		deps.add(RCNodeSSAO::getNodeId());
+		deps.add(RCNodeMSAACoverage::getNodeId());
+		deps.add(RCNodeIndirectDiffuseLighting::getNodeId());
 
 		return deps;
 	}
-
-	RCNodeClusteredForward::RCNodeClusteredForward()
-	{ }
 
 	void RCNodeClusteredForward::render(const RenderCompositorNodeInputs& inputs)
 	{
@@ -1103,30 +1276,27 @@ namespace bs { namespace ct
 		const VisibleLightData& visibleLightData = inputs.viewGroup.getVisibleLightData();
 		const VisibleReflProbeData& visibleReflProbeData = inputs.viewGroup.getVisibleReflProbeData();
 
-		// Buffers used when clustered forward is available
-		SPtr<GpuParamBlockBuffer> gridParams;
-		SPtr<GpuBuffer> gridLightOffsetsAndSize, gridLightIndices;
-		SPtr<GpuBuffer> gridProbeOffsetsAndSize, gridProbeIndices;
+		LightGridOutputs lightGridOutputs;
 
-		// Buffers used when clustered forward is unavailable
-		SPtr<GpuParamBlockBuffer> lightsParamBlock;
-		SPtr<GpuParamBlockBuffer> reflProbesParamBlock;
-		SPtr<GpuParamBlockBuffer> lightAndReflProbeParamsParamBlock;
+		struct StandardForwardBuffers
+		{
+			SPtr<GpuParamBlockBuffer> lightsParamBlock;
+			SPtr<GpuParamBlockBuffer> reflProbesParamBlock;
+			SPtr<GpuParamBlockBuffer> lightAndReflProbeParamsParamBlock;
+		} standardForwardBuffers;
 
-		bool supportsClusteredForward = gRenderBeast()->getFeatureSet() == RenderBeastFeatureSet::Desktop;
+		const bool supportsClusteredForward = gRenderBeast()->getFeatureSet() == RenderBeastFeatureSet::Desktop;
 		if(supportsClusteredForward)
 		{
 			const LightGrid& lightGrid = inputs.view.getLightGrid();
-
-			lightGrid.getOutputs(gridLightOffsetsAndSize, gridLightIndices, gridProbeOffsetsAndSize, gridProbeIndices,
-				gridParams);
+			lightGridOutputs = lightGrid.getOutputs();
 		}
 		else
 		{
 			// Note: Store these instead of creating them every time?
-			lightsParamBlock = gLightsParamDef.createBuffer();
-			reflProbesParamBlock = gReflProbesParamDef.createBuffer();
-			lightAndReflProbeParamsParamBlock = gLightAndReflProbeParamsParamDef.createBuffer();
+			standardForwardBuffers.lightsParamBlock = gLightsParamDef.createBuffer();
+			standardForwardBuffers.reflProbesParamBlock = gReflProbesParamDef.createBuffer();
+			standardForwardBuffers.lightAndReflProbeParamsParamBlock = gLightAndReflProbeParamsParamDef.createBuffer();
 		}
 
 		Skybox* skybox = nullptr;
@@ -1142,120 +1312,105 @@ namespace bs { namespace ct
 		if(skybox)
 			skyFilteredRadiance = skybox->getFilteredRadiance();
 
-		// Prepare objects for rendering
-		const VisibilityInfo& visibility = inputs.view.getVisibilityMasks();
-		UINT32 numRenderables = (UINT32)sceneInfo.renderables.size();
-		for (UINT32 i = 0; i < numRenderables; i++)
+		const auto bindParamsForClustered = [&lightGridOutputs, &visibleLightData, &visibleReflProbeData]
+			(GpuParams& gpuParams, const ForwardLightingParams& fwdParams, const ImageBasedLightingParams& iblParams)
 		{
-			if (!visibility.renderables[i])
-				continue;
-
-			for (auto& element : sceneInfo.renderables[i]->elements)
+			for (UINT32 j = 0; j < GPT_COUNT; j++)
 			{
-				ShaderFlags shaderFlags = element.material->getShader()->getFlags();
-
-				bool useForwardRendering = shaderFlags.isSet(ShaderFlag::Forward) || shaderFlags.isSet(ShaderFlag::Transparent);
-				if (!useForwardRendering)
-					continue;
-
-				// Note: It would be nice to be able to set this once and keep it, only updating if the buffers actually
-				// change (e.g. when growing). 
-				SPtr<GpuParams> gpuParams = element.params->getGpuParams();
-				ImageBasedLightingParams& iblParams = element.imageBasedParams;
-				if(supportsClusteredForward)
-				{ 
-					for (UINT32 j = 0; j < GPT_COUNT; j++)
-					{
-						const GpuParamBinding& binding = element.gridParamsBindings[j];
-						if (binding.slot != (UINT32)-1)
-							gpuParams->setParamBlockBuffer(binding.set, binding.slot, gridParams);
-					}
-
-					element.gridLightOffsetsAndSizeParam.set(gridLightOffsetsAndSize);
-					element.gridProbeOffsetsAndSizeParam.set(gridProbeOffsetsAndSize);
-
-					element.gridLightIndicesParam.set(gridLightIndices);
-					iblParams.reflectionProbeIndicesParam.set(gridProbeIndices);
-
-					element.lightsBufferParam.set(visibleLightData.getLightBuffer());
-					iblParams.reflectionProbesParam.set(visibleReflProbeData.getProbeBuffer());
-				}
-				else
-				{
-					// Populate light & probe buffers
-					const Bounds& bounds = sceneInfo.renderableCullInfos[i].bounds;
-
-					Vector3I lightCounts;
-					const LightData* lights[STANDARD_FORWARD_MAX_NUM_LIGHTS];
-					visibleLightData.gatherInfluencingLights(bounds, lights, lightCounts);
-
-					Vector4I lightOffsets;
-					lightOffsets.x = lightCounts.x;
-					lightOffsets.y = lightCounts.x;
-					lightOffsets.z = lightOffsets.y + lightCounts.y;
-					lightOffsets.w = lightOffsets.z + lightCounts.z;
-
-					for(INT32 j = 0; j < lightOffsets.w; j++)
-						gLightsParamDef.gLights.set(lightsParamBlock, *lights[j], j);
-
-					INT32 numReflProbes = std::min(visibleReflProbeData.getNumProbes(), STANDARD_FORWARD_MAX_NUM_PROBES);
-					for(INT32 j = 0; j < numReflProbes; j++)
-						gReflProbesParamDef.gReflectionProbes.set(reflProbesParamBlock, visibleReflProbeData.getProbeData(j), j);
-
-					gLightAndReflProbeParamsParamDef.gLightOffsets.set(lightAndReflProbeParamsParamBlock, lightOffsets);
-					gLightAndReflProbeParamsParamDef.gReflProbeCount.set(lightAndReflProbeParamsParamBlock, numReflProbes);
-
-					if(iblParams.reflProbesBinding.set != (UINT32)-1)
-					{
-						gpuParams->setParamBlockBuffer(
-							iblParams.reflProbesBinding.set,
-							iblParams.reflProbesBinding.slot,
-							reflProbesParamBlock);
-					}
-
-					if(element.lightsParamBlockBinding.set != (UINT32)-1)
-					{
-						gpuParams->setParamBlockBuffer(
-							element.lightsParamBlockBinding.set,
-							element.lightsParamBlockBinding.slot,
-							lightsParamBlock);
-					}
-
-					if(element.lightAndReflProbeParamsParamBlockBinding.set != (UINT32)-1)
-					{
-						gpuParams->setParamBlockBuffer(
-							element.lightAndReflProbeParamsParamBlockBinding.set,
-							element.lightAndReflProbeParamsParamBlockBinding.slot,
-							lightAndReflProbeParamsParamBlock);
-					}
-				}
-
-				// Image based lighting params
-				// Note: Ideally these should be bound once (they are the same for all renderables)
-				if (iblParams.reflProbeParamBindings.set != (UINT32)-1)
-				{
-					gpuParams->setParamBlockBuffer(
-						iblParams.reflProbeParamBindings.set,
-						iblParams.reflProbeParamBindings.slot,
-						reflProbeParamBuffer.buffer);
-				}
-
-				iblParams.skyReflectionsTexParam.set(skyFilteredRadiance);
-				iblParams.ambientOcclusionTexParam.set(Texture::WHITE); // Note: Add SSAO here?
-				iblParams.ssrTexParam.set(Texture::BLACK); // Note: Add SSR here?
-
-				iblParams.reflectionProbeCubemapsTexParam.set(sceneInfo.reflProbeCubemapsTex);
-				iblParams.preintegratedEnvBRDFParam.set(RendererTextures::preintegratedEnvGF);
+				const GpuParamBinding& binding = fwdParams.gridParamsBindings[j];
+				if (binding.slot != (UINT32)-1)
+					gpuParams.setParamBlockBuffer(binding.set, binding.slot, lightGridOutputs.gridParams);
 			}
-		}
 
-		// TODO: Forward pipeline rendering doesn't support shadows. In order to support this I'd have to render the light
-		// occlusion for all lights affecting this object into a single (or a few) textures. I can likely use texture 
-		// arrays for this, or to avoid sampling many textures, perhaps just jam it all in one or few texture channels. 
+			fwdParams.gridLightOffsetsAndSizeParam.set(lightGridOutputs.gridLightOffsetsAndSize);
+			fwdParams.gridProbeOffsetsAndSizeParam.set(lightGridOutputs.gridProbeOffsetsAndSize);
 
-		// Render base pass
-		RCNodeSceneColor* sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[0]);
-		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[2]);
+			fwdParams.gridLightIndicesParam.set(lightGridOutputs.gridLightIndices);
+			iblParams.reflectionProbeIndicesParam.set(lightGridOutputs.gridProbeIndices);
+
+			fwdParams.lightsBufferParam.set(visibleLightData.getLightBuffer());
+			iblParams.reflectionProbesParam.set(visibleReflProbeData.getProbeBuffer());
+		};
+
+		const auto bindParamsForStandardForward = [&standardForwardBuffers, &visibleLightData, &visibleReflProbeData]
+			(GpuParams& gpuParams, const Bounds& bounds, const ForwardLightingParams& fwdParams, 
+				const ImageBasedLightingParams& iblParams)
+		{
+			// Populate light & probe buffers
+			Vector3I lightCounts;
+			const LightData* lights[STANDARD_FORWARD_MAX_NUM_LIGHTS];
+			visibleLightData.gatherInfluencingLights(bounds, lights, lightCounts);
+
+			Vector4I lightOffsets;
+			lightOffsets.x = lightCounts.x;
+			lightOffsets.y = lightCounts.x;
+			lightOffsets.z = lightOffsets.y + lightCounts.y;
+			lightOffsets.w = lightOffsets.z + lightCounts.z;
+
+			for (INT32 j = 0; j < lightOffsets.w; j++)
+				gLightsParamDef.gLights.set(standardForwardBuffers.lightsParamBlock, *lights[j], j);
+
+			INT32 numReflProbes = std::min(visibleReflProbeData.getNumProbes(), STANDARD_FORWARD_MAX_NUM_PROBES);
+			for (INT32 j = 0; j < numReflProbes; j++)
+			{
+				gReflProbesParamDef.gReflectionProbes.set(standardForwardBuffers.reflProbesParamBlock, 
+					visibleReflProbeData.getProbeData(j), j);
+			}
+
+			gLightAndReflProbeParamsParamDef.gLightOffsets.set(standardForwardBuffers.lightAndReflProbeParamsParamBlock, 
+				lightOffsets);
+			gLightAndReflProbeParamsParamDef.gReflProbeCount.set(standardForwardBuffers.lightAndReflProbeParamsParamBlock, 
+				numReflProbes);
+
+			if (iblParams.reflProbesBinding.set != (UINT32)-1)
+			{
+				gpuParams.setParamBlockBuffer(
+					iblParams.reflProbesBinding.set,
+					iblParams.reflProbesBinding.slot,
+					standardForwardBuffers.reflProbesParamBlock);
+			}
+
+			if (fwdParams.lightsParamBlockBinding.set != (UINT32)-1)
+			{
+				gpuParams.setParamBlockBuffer(
+					fwdParams.lightsParamBlockBinding.set,
+					fwdParams.lightsParamBlockBinding.slot,
+					standardForwardBuffers.lightsParamBlock);
+			}
+
+			if (fwdParams.lightAndReflProbeParamsParamBlockBinding.set != (UINT32)-1)
+			{
+				gpuParams.setParamBlockBuffer(
+					fwdParams.lightAndReflProbeParamsParamBlockBinding.set,
+					fwdParams.lightAndReflProbeParamsParamBlockBinding.slot,
+					standardForwardBuffers.lightAndReflProbeParamsParamBlock);
+			}
+		};
+
+		const auto bindCommonIBLParams = [&reflProbeParamBuffer, &skyFilteredRadiance, &sceneInfo]
+			(GpuParams& gpuParams, ImageBasedLightingParams& iblParams)
+		{
+			// Note: Ideally these should be bound once (they are the same for all renderables)
+			if (iblParams.reflProbeParamBindings.set != (UINT32)-1)
+			{
+				gpuParams.setParamBlockBuffer(
+					iblParams.reflProbeParamBindings.set,
+					iblParams.reflProbeParamBindings.slot,
+					reflProbeParamBuffer.buffer);
+			}
+
+			iblParams.skyReflectionsTexParam.set(skyFilteredRadiance);
+			iblParams.ambientOcclusionTexParam.set(Texture::WHITE); // Note: Add SSAO here?
+			iblParams.ssrTexParam.set(Texture::BLACK); // Note: Add SSR here?
+
+			iblParams.reflectionProbeCubemapsTexParam.set(sceneInfo.reflProbeCubemapsTex);
+			iblParams.preintegratedEnvBRDFParam.set(RendererTextures::preintegratedEnvGF);
+		};
+
+		// Prepare render target
+		auto sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[0]);
+		auto sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[2]);
+		auto resolvedSceneDepthNode = static_cast<RCNodeResolvedSceneDepth*>(inputs.inputNodes[5]);
 
 		bool rebuildRT;
 		if (renderTarget != nullptr)
@@ -1282,86 +1437,45 @@ namespace bs { namespace ct
 			renderTarget = RenderTexture::create(rtDesc);
 		}
 
-		RenderAPI& rapi = RenderAPI::instance();
-		rapi.setRenderTarget(renderTarget, 0, RT_ALL);
-
-		RenderQueue* queues[] =
+		// Prepare objects for rendering by binding forward lighting data
+		//// Normal renderables
+		const VisibilityInfo& visibility = inputs.view.getVisibilityMasks();
+		const auto numRenderables = (UINT32)sceneInfo.renderables.size();
+		for (UINT32 i = 0; i < numRenderables; i++)
 		{
-			inputs.view.getOpaqueQueue(true).get(),
-			inputs.view.getTransparentQueue().get()
-		};
+			if (!visibility.renderables[i])
+				continue;
 
-		// Prepare all visible particle systems
+			for (auto& element : sceneInfo.renderables[i]->elements)
+			{
+				ShaderFlags shaderFlags = element.material->getShader()->getFlags();
+
+				const bool useForwardRendering = shaderFlags.isSet(ShaderFlag::Forward) || shaderFlags.isSet(ShaderFlag::Transparent);
+				if (!useForwardRendering)
+					continue;
+
+				// Note: It would be nice to be able to set this once and keep it, only updating if the buffers actually
+				// change (e.g. when growing). 
+				const SPtr<GpuParams> gpuParams = element.params->getGpuParams();
+				if(supportsClusteredForward)
+					bindParamsForClustered(*gpuParams, element.forwardLightingParams, element.imageBasedParams);
+				else
+				{
+					// Populate light & probe buffers
+					const Bounds& bounds = sceneInfo.renderableCullInfos[i].bounds;
+					bindParamsForStandardForward(*gpuParams, bounds, element.forwardLightingParams, element.imageBasedParams);
+				}
+
+				bindCommonIBLParams(*gpuParams, element.imageBasedParams);
+			}
+		}
+
+		//// Particle systems
 		const ParticlePerFrameData* particleData = inputs.frameInfo.perFrameData.particles;
-		ParticleTexturePool& particlesTexPool = ParticleRenderer::instance().getTexturePool();
 		if(particleData)
 		{
 			const auto numParticleSystems = (UINT32)inputs.scene.particleSystems.size();
 
-			// Sort particles
-			bs_frame_mark();
-			{
-				struct SortData
-				{
-					ParticleSystem* system;
-					ParticleRenderData* renderData;
-				};
-
-				FrameVector<SortData> systemsToSort;
-				for (UINT32 i = 0; i < numParticleSystems; i++)
-				{
-					if (!visibility.particleSystems[i])
-						continue;
-
-					const RendererParticles& rendererParticles = inputs.scene.particleSystems[i];
-
-					ParticleSystem* particleSystem = rendererParticles.particleSystem;
-					const auto iterFind = particleData->cpuData.find(particleSystem->getId());
-					if (iterFind == particleData->cpuData.end())
-						continue;
-
-					ParticleRenderData* simulationData = iterFind->second;
-					if (particleSystem->getSettings().sortMode == ParticleSortMode::Distance)
-						systemsToSort.push_back({ particleSystem, simulationData });
-				}
-
-				const auto worker = [&systemsToSort, viewOrigin = viewProps.viewOrigin](UINT32 idx)
-				{
-					const SortData& data = systemsToSort[idx];
-
-					Vector3 refPoint = viewOrigin;
-
-					// Transform the view point into particle system's local space
-					const ParticleSystemSettings& settings = data.system->getSettings();
-					if (settings.simulationSpace == ParticleSimulationSpace::Local)
-						refPoint = data.system->getTransform().getInvMatrix().multiplyAffine(refPoint);
-
-					if (settings.renderMode == ParticleRenderMode::Billboard)
-					{
-						auto renderData = static_cast<ParticleBillboardRenderData*>(data.renderData);
-						ParticleRenderer::sortByDistance(refPoint, renderData->positionAndRotation, 
-							renderData->numParticles, 4, renderData->indices);
-					}
-					else
-					{
-						auto renderData = static_cast<ParticleMeshRenderData*>(data.renderData);
-						ParticleRenderer::sortByDistance(refPoint, renderData->position, renderData->numParticles, 
-							3, renderData->indices);
-					}
-				};
-
-				SPtr<TaskGroup> sortTask = TaskGroup::create("ParticleSort", worker, (UINT32)systemsToSort.size());
-
-				TaskScheduler::instance().addTaskGroup(sortTask);
-				sortTask->wait();
-			}
-			bs_frame_clear();
-
-			GpuParticleResources& gpuSimResources = GpuParticleSimulation::instance().getResources();
-			GpuParticleStateTextures& gpuSimStateTextures = gpuSimResources.getCurrentState();
-			const GpuParticleStaticTextures& gpuSimStaticTextures = gpuSimResources.getStaticTextures();
-			const GpuParticleCurves& gpuCurves = gpuSimResources.getCurveTexture();
-			const SPtr<GpuBuffer>& sortedIndices = gpuSimResources.getSortedIndices();
 			for (UINT32 i = 0; i < numParticleSystems; i++)
 			{
 				if (!visibility.particleSystems[i])
@@ -1370,128 +1484,53 @@ namespace bs { namespace ct
 				const RendererParticles& rendererParticles = inputs.scene.particleSystems[i];
 				ParticlesRenderElement& renderElement = rendererParticles.renderElement;
 
+				ShaderFlags shaderFlags = renderElement.material->getShader()->getFlags();
+
+				if(shaderFlags.isSet(ShaderFlag::Transparent))
+					renderElement.depthInputTexture.set(resolvedSceneDepthNode->output->texture);
+
+				const bool requiresForwardLighting = shaderFlags.isSet(ShaderFlag::Forward);
+				if (!requiresForwardLighting)
+					continue;
+
 				if(!renderElement.isValid())
 					continue;
 
-				ParticleSystem* particleSystem = rendererParticles.particleSystem;
+				const SPtr<GpuParams> gpuParams = renderElement.params->getGpuParams();
 
-				// Bind textures/buffers from CPU simulation
-				const auto iterFind = particleData->cpuData.find(particleSystem->getId());
-				if (iterFind != particleData->cpuData.end())
+				// Note: It would be nice to be able to set this once and keep it, only updating if the buffers actually
+				// change (e.g. when growing). 
+				if(supportsClusteredForward)
+					bindParamsForClustered(*gpuParams, renderElement.forwardLightingParams, renderElement.imageBasedParams);
+				else
 				{
-					ParticleRenderData* renderData = iterFind->second;
-
-					const ParticleSystemSettings& settings = particleSystem->getSettings();
-					UINT32 texSize;
-					switch(settings.renderMode)
-					{
-					default:
-					case ParticleRenderMode::Billboard:
-					{
-						const auto billboardRenderData = static_cast<ParticleBillboardRenderData*>(renderData);
-						const ParticleBillboardTextures* textures = particlesTexPool.alloc(*billboardRenderData);
-
-						renderElement.paramsCPUBillboard.positionAndRotTexture.set(textures->positionAndRotation);
-						renderElement.paramsCPUBillboard.colorTexture.set(textures->color);
-						renderElement.paramsCPUBillboard.sizeAndFrameIdxTexture.set(textures->sizeAndFrameIdx);
-
-						renderElement.indicesBuffer.set(textures->indices);
-						texSize = textures->positionAndRotation->getProperties().getWidth();
-					}
-					break;
-					case ParticleRenderMode::Mesh:
-					{
-						const auto meshRenderData = static_cast<ParticleMeshRenderData*>(renderData);
-						const ParticleMeshTextures* textures = particlesTexPool.alloc(*meshRenderData);
-
-						renderElement.paramsCPUMesh.positionTexture.set(textures->position);
-						renderElement.paramsCPUMesh.colorTexture.set(textures->color);
-						renderElement.paramsCPUMesh.rotationTexture.set(textures->rotation);
-						renderElement.paramsCPUMesh.sizeTexture.set(textures->size);
-
-						renderElement.indicesBuffer.set(textures->indices);
-						texSize = textures->position->getProperties().getWidth();
-					}
-					break;
-					}
-
-					renderElement.numParticles = renderData->numParticles;
-
-					gParticlesParamDef.gTexSize.set(rendererParticles.particlesParamBuffer, texSize);
-					gParticlesParamDef.gBufferOffset.set(rendererParticles.particlesParamBuffer, 0);
-				}
-				// Bind textures/buffers from GPU simulation
-				else if(rendererParticles.gpuParticleSystem)
-				{
-					GpuParticleSystem* gpuParticleSystem = rendererParticles.gpuParticleSystem;
-
-					renderElement.paramsGPU.positionTimeTexture.set(gpuSimStateTextures.positionAndTimeTex);
-					renderElement.paramsGPU.sizeRotationTexture.set(gpuSimStaticTextures.sizeAndRotationTex);
-					renderElement.paramsGPU.curvesTexture.set(gpuCurves.getTexture());
-					renderElement.numParticles = gpuParticleSystem->getNumTiles() * GpuParticleResources::PARTICLES_PER_TILE;
-
-					if(gpuParticleSystem->hasSortInfo())
-					{
-						renderElement.indicesBuffer.set(sortedIndices);
-						gParticlesParamDef.gBufferOffset.set(rendererParticles.particlesParamBuffer, 
-							gpuParticleSystem->getSortOffset());
-					}
-					else
-					{
-						renderElement.indicesBuffer.set(gpuParticleSystem->getParticleIndices());
-						gParticlesParamDef.gBufferOffset.set(rendererParticles.particlesParamBuffer, 0);
-					}
-
-					const UINT32 texSize = GpuParticleResources::TEX_SIZE;
-					gParticlesParamDef.gTexSize.set(rendererParticles.particlesParamBuffer, texSize);
+					// Populate light & probe buffers
+					const Bounds& bounds = sceneInfo.particleSystemCullInfos[i].bounds;
+					bindParamsForStandardForward(*gpuParams, bounds, renderElement.forwardLightingParams, renderElement.imageBasedParams);
 				}
 
-				SPtr<GpuParams> gpuParams = renderElement.params->getGpuParams();
-				for (UINT32 j = 0; j < GPT_COUNT; j++)
-				{
-					const GpuParamBinding& binding = renderElement.perCameraBindings[j];
-					if (binding.slot != (UINT32)-1)
-						gpuParams->setParamBlockBuffer(binding.set, binding.slot, inputs.view.getPerViewBuffer());
-				}
+				bindCommonIBLParams(*gpuParams, renderElement.imageBasedParams);
 			}
 		}
 
-		for(UINT32 i = 0; i < bs_size(queues); i++)
-		{
-			const Vector<RenderQueueElement>& elements = queues[i]->getSortedElements();
-			for (auto iter = elements.begin(); iter != elements.end(); ++iter)
-			{
-				if (iter->applyPass)
-					gRendererUtility().setPass(iter->renderElem->material, iter->passIdx, iter->renderElem->techniqueIdx);
+		// TODO: Forward pipeline rendering doesn't support shadows. In order to support this I'd have to render the light
+		// occlusion for all lights affecting this object into a single (or a few) textures. I can likely use texture 
+		// arrays for this, or to avoid sampling many textures, perhaps just jam it all in one or few texture channels. 
 
-				gRendererUtility().setPassParams(iter->renderElem->params, iter->passIdx);
+		// Render everything
+		RenderAPI& rapi = RenderAPI::instance();
 
-				if(iter->renderElem->type == (UINT32)RenderElementType::Particle)
-				{
-					const auto& renderElem = static_cast<const ParticlesRenderElement*>(iter->renderElem);
+		RenderQueue* opaqueQueue = inputs.view.getOpaqueQueue(true).get();
+		RenderQueue* transparentQueue = inputs.view.getTransparentQueue().get();
 
-					if(renderElem->numParticles > 0)
-					{
-						if(renderElem->is3D)
-							gRendererUtility().draw(renderElem->mesh, renderElem->numParticles);
-						else
-							ParticleRenderer::instance().drawBillboards(renderElem->numParticles);
-					}
-				}
-				else // Renderable
-				{
-					const auto& renderElem = static_cast<const RenderableElement*>(iter->renderElem);
-					if (renderElem->morphVertexDeclaration == nullptr)
-						gRendererUtility().draw(renderElem->mesh, renderElem->subMesh);
-					else
-						gRendererUtility().drawMorph(renderElem->mesh, renderElem->subMesh, renderElem->morphShapeBuffer,
-							renderElem->morphVertexDeclaration);
-				}
-			}
-		}
+		rapi.setRenderTarget(renderTarget, 0, RT_ALL);
+		renderQueueElements(opaqueQueue->getSortedElements());
+
+		rapi.setRenderTarget(renderTarget, FBT_DEPTH, RT_ALL);
+		renderQueueElements(transparentQueue->getSortedElements());
 
 		// Note: Perhaps delay clearing this one frame, so previous frame textures have a better chance of being done
-		particlesTexPool.clear();
+		ParticleRenderer::instance().getTexturePool().clear();
 
 		// Trigger post-lighting callbacks
 		Camera* sceneCamera = inputs.view.getSceneCamera();
@@ -1512,8 +1551,14 @@ namespace bs { namespace ct
 
 	SmallVector<StringID, 4> RCNodeClusteredForward::getDependencies(const RendererView& view)
 	{
-		return { RCNodeSceneColor::getNodeId(), RCNodeSkybox::getNodeId(), RCNodeSceneDepth::getNodeId(),
-			RCNodeParticleSimulate::getNodeId() };
+		return { 
+			RCNodeSceneColor::getNodeId(), 
+			RCNodeSkybox::getNodeId(),
+			RCNodeSceneDepth::getNodeId(),
+			RCNodeParticleSimulate::getNodeId(),
+			RCNodeParticleSort::getNodeId(),
+			RCNodeResolvedSceneDepth::getNodeId()
+		};
 	}
 
 	void RCNodeSkybox::render(const RenderCompositorNodeInputs& inputs)
@@ -1531,7 +1576,8 @@ namespace bs { namespace ct
 		}
 		else
 		{
-			Color clearColor = inputs.view.getProperties().clearColor;
+			// Cancel out the linear->SRGB conversion
+			Color clearColor = PixelUtil::SRGBToLinear(inputs.view.getProperties().target.clearColor);
 
 			SkyboxMat* material = SkyboxMat::getVariation(true);
 			material->bind(inputs.view.getPerViewBuffer(), nullptr, clearColor);
@@ -1556,8 +1602,8 @@ namespace bs { namespace ct
 	SmallVector<StringID, 4> RCNodeSkybox::getDependencies(const RendererView& view)
 	{
 		SmallVector<StringID, 4> deps;
-		deps.push_back(RCNodeSceneColor::getNodeId());
-		deps.push_back(RCNodeDeferredIndirectSpecularLighting::getNodeId());
+		deps.add(RCNodeSceneColor::getNodeId());
+		deps.add(RCNodeDeferredIndirectSpecularLighting::getNodeId());
 
 		return deps;
 	}
@@ -1580,11 +1626,11 @@ namespace bs { namespace ct
 			input = sceneColorNode->sceneColorTex->texture;
 		}
 
-		SPtr<RenderTarget> target = viewProps.target;
+		SPtr<RenderTarget> target = viewProps.target.target;
 
 		RenderAPI& rapi = RenderAPI::instance();
 		rapi.setRenderTarget(target);
-		rapi.setViewport(viewProps.nrmViewRect);
+		rapi.setViewport(viewProps.target.nrmViewRect);
 
 		gRendererUtility().blit(input, Rect2I::EMPTY, viewProps.flipView);
 
@@ -1593,7 +1639,7 @@ namespace bs { namespace ct
 			RCNodeResolvedSceneDepth* resolvedSceneDepthNode = static_cast<RCNodeResolvedSceneDepth*>(inputs.inputNodes[0]);
 
 			EncodeDepthMat* encodeDepthMat = EncodeDepthMat::get();
-			encodeDepthMat->execute(resolvedSceneDepthNode->output->texture, viewProps.depthEncodeNear, 
+			encodeDepthMat->execute(resolvedSceneDepthNode->output->texture, viewProps.depthEncodeNear,
 				viewProps.depthEncodeFar, target);
 		}
 
@@ -1619,17 +1665,17 @@ namespace bs { namespace ct
 		SmallVector<StringID, 4> deps;
 		if(viewProps.runPostProcessing)
 		{
-			deps.push_back(RCNodePostProcess::getNodeId());
-			deps.push_back(RCNodeFXAA::getNodeId());
+			deps.add(RCNodePostProcess::getNodeId());
+			deps.add(RCNodeFXAA::getNodeId());
 		}
 		else
 		{
-			deps.push_back(RCNodeSceneColor::getNodeId());
-			deps.push_back(RCNodeClusteredForward::getNodeId());
+			deps.add(RCNodeSceneColor::getNodeId());
+			deps.add(RCNodeClusteredForward::getNodeId());
 		}
 
 		if(viewProps.encodeDepth)
-			deps.push_back(RCNodeResolvedSceneDepth::getNodeId());
+			deps.add(RCNodeResolvedSceneDepth::getNodeId());
 
 		return deps;
 	}
@@ -1643,8 +1689,8 @@ namespace bs { namespace ct
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 
 		const RendererViewProperties& viewProps = view.getProperties();
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
 
 		if(!mAllocated[mCurrentIdx])
 		{
@@ -1697,38 +1743,27 @@ namespace bs { namespace ct
 		return {};
 	}
 
-	RCNodeTonemapping::~RCNodeTonemapping()
+	RCNodeEyeAdaptation::~RCNodeEyeAdaptation()
 	{
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 
-		if (mTonemapLUT)
-			resPool.release(mTonemapLUT);
-
-		if (prevEyeAdaptation)
-			resPool.release(prevEyeAdaptation);
+		if (previous)
+			resPool.release(previous);
 	}
 
-	void RCNodeTonemapping::render(const RenderCompositorNodeInputs& inputs)
+	void RCNodeEyeAdaptation::render(const RenderCompositorNodeInputs& inputs)
 	{
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 
-		const RendererViewProperties& viewProps = inputs.view.getProperties();
 		const RenderSettings& settings = inputs.view.getRenderSettings();
 
-		RCNodeSceneColor* sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[0]);
-		RCNodePostProcess* postProcessNode = static_cast<RCNodePostProcess*>(inputs.inputNodes[2]);
-		SPtr<Texture> sceneColor = sceneColorNode->sceneColorTex->texture;
-
-		bool hdr = settings.enableHDR;
-		bool msaa = viewProps.numSamples > 1;
+		const bool hdr = settings.enableHDR;
 
 		if(hdr && settings.enableAutoExposure)
 		{
-			// Downsample scene
-			DownsampleMat* downsampleMat = DownsampleMat::getVariation(1, msaa);
-			SPtr<PooledRenderTexture> downsampledScene = resPool.get(DownsampleMat::getOutputDesc(sceneColor));
-
-			downsampleMat->execute(sceneColor, downsampledScene->renderTexture);
+			// Get downsample scene
+			auto* halfSceneColorNode = static_cast<RCNodeHalfSceneColor*>(inputs.inputNodes[1]);
+			const SPtr<PooledRenderTexture>& downsampledScene = halfSceneColorNode->output;
 
 			if(useHistogramEyeAdapatation(inputs))
 			{
@@ -1742,8 +1777,8 @@ namespace bs { namespace ct
 				SPtr<PooledRenderTexture> reducedHistogram = resPool.get(EyeAdaptHistogramReduceMat::getOutputDesc());
 
 				SPtr<Texture> prevFrameEyeAdaptation;
-				if (prevEyeAdaptation != nullptr)
-					prevFrameEyeAdaptation = prevEyeAdaptation->texture;
+				if (previous != nullptr)
+					prevFrameEyeAdaptation = previous->texture;
 
 				EyeAdaptHistogramReduceMat* eyeAdaptHistogramReduce = EyeAdaptHistogramReduceMat::get();
 				eyeAdaptHistogramReduce->execute(
@@ -1752,18 +1787,15 @@ namespace bs { namespace ct
 					prevFrameEyeAdaptation,
 					reducedHistogram->renderTexture);
 
-				resPool.release(downsampledScene);
-				downsampledScene = nullptr;
-
 				resPool.release(eyeAdaptHistogram);
 				eyeAdaptHistogram = nullptr;
 
 				// Generate eye adaptation value
-				eyeAdaptation = resPool.get(EyeAdaptationMat::getOutputDesc());
+				output = resPool.get(EyeAdaptationMat::getOutputDesc());
 				EyeAdaptationMat* eyeAdaptationMat = EyeAdaptationMat::get();
 				eyeAdaptationMat->execute(
 					reducedHistogram->texture,
-					eyeAdaptation->renderTexture,
+					output->renderTexture,
 					inputs.frameInfo.timeDelta,
 					settings.autoExposure,
 					settings.exposureScale);
@@ -1790,7 +1822,7 @@ namespace bs { namespace ct
 				// Downsample some more
 				for(UINT32 i = 0; i < 5; i++)
 				{
-					downsampleMat = DownsampleMat::getVariation(1, false);
+					DownsampleMat* downsampleMat = DownsampleMat::getVariation(1, false);
 					SPtr<PooledRenderTexture> downsampledLuminance = 
 						resPool.get(DownsampleMat::getOutputDesc(downsampleInput));
 
@@ -1802,14 +1834,14 @@ namespace bs { namespace ct
 				EyeAdaptationBasicMat* eyeAdaptationMat = EyeAdaptationBasicMat::get();
 
 				SPtr<Texture> prevFrameEyeAdaptation;
-				if (prevEyeAdaptation != nullptr)
-					prevFrameEyeAdaptation = prevEyeAdaptation->texture;
+				if (previous != nullptr)
+					prevFrameEyeAdaptation = previous->texture;
 
-				eyeAdaptation = resPool.get(EyeAdaptationBasicMat::getOutputDesc());
+				output = resPool.get(EyeAdaptationBasicMat::getOutputDesc());
 				eyeAdaptationMat->execute(
 					downsampleInput,
 					prevFrameEyeAdaptation,
-					eyeAdaptation->renderTexture,
+					output->renderTexture,
 					inputs.frameInfo.timeDelta,
 					settings.autoExposure,
 					settings.exposureScale);
@@ -1817,22 +1849,74 @@ namespace bs { namespace ct
 		}
 		else
 		{
-			if(prevEyeAdaptation)
-				resPool.release(prevEyeAdaptation);
+			if(previous)
+				resPool.release(previous);
 
-			prevEyeAdaptation = nullptr;
-			eyeAdaptation = nullptr;
+			previous = nullptr;
+			output = nullptr;
 		}
+	}
 
-		bool volumeLUT = inputs.featureSet == RenderBeastFeatureSet::Desktop;
+	void RCNodeEyeAdaptation::clear()
+	{
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+
+		// Save eye adaptation for next frame
+		if(previous)
+			resPool.release(previous);
+
+		std::swap(output, previous);
+	}
+	
+	bool RCNodeEyeAdaptation::useHistogramEyeAdapatation(const RenderCompositorNodeInputs& inputs)
+	{
+		return inputs.featureSet == RenderBeastFeatureSet::Desktop;
+	}
+
+	SmallVector<StringID, 4> RCNodeEyeAdaptation::getDependencies(const RendererView& view)
+	{
+		SmallVector<StringID, 4> deps;
+		deps.add(RCNodeClusteredForward::getNodeId());
+
+		const RenderSettings& settings = view.getRenderSettings();
+		if(settings.enableHDR && settings.enableAutoExposure)
+			deps.add(RCNodeHalfSceneColor::getNodeId());
+
+		return deps;
+	}
+
+	RCNodeTonemapping::~RCNodeTonemapping()
+	{
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+
+		if (mTonemapLUT)
+			resPool.release(mTonemapLUT);
+	}
+
+	void RCNodeTonemapping::render(const RenderCompositorNodeInputs& inputs)
+	{
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+
+		const RendererViewProperties& viewProps = inputs.view.getProperties();
+		const RenderSettings& settings = inputs.view.getRenderSettings();
+
+		auto* eyeAdaptationNode = static_cast<RCNodeEyeAdaptation*>(inputs.inputNodes[0]);
+		auto* sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[1]);
+		auto* postProcessNode = static_cast<RCNodePostProcess*>(inputs.inputNodes[3]);
+		const SPtr<Texture>& sceneColor = sceneColorNode->sceneColorTex->texture;
+
+		const bool hdr = settings.enableHDR;
+		const bool msaa = viewProps.target.numSamples > 1;
+
+		const bool volumeLUT = inputs.featureSet == RenderBeastFeatureSet::Desktop;
 		bool gammaOnly;
 		bool autoExposure;
 		if (hdr)
 		{
 			if (settings.enableTonemapping)
 			{
-				UINT64 latestHash = inputs.view.getRenderSettingsHash();
-				bool tonemapLUTDirty = mTonemapLastUpdateHash != latestHash;
+				const UINT64 latestHash = inputs.view.getRenderSettingsHash();
+				const bool tonemapLUTDirty = mTonemapLastUpdateHash != latestHash;
 
 				if (tonemapLUTDirty) // Rebuild LUT if PP settings changed
 				{
@@ -1877,35 +1961,42 @@ namespace bs { namespace ct
 		postProcessNode->getAndSwitch(inputs.view, ppOutput, ppLastFrame);
 
 		SPtr<Texture> eyeAdaptationTex;
-		if (eyeAdaptation)
-			eyeAdaptationTex = eyeAdaptation->texture;
+		if (eyeAdaptationNode->output)
+			eyeAdaptationTex = eyeAdaptationNode->output->texture;
 
 		SPtr<Texture> tonemapLUTTex;
 		if (mTonemapLUT)
 			tonemapLUTTex = mTonemapLUT->texture;
 
-		tonemapping->execute(sceneColor, eyeAdaptationTex, tonemapLUTTex, ppOutput, settings);
+		SPtr<Texture> bloomTex;
+		if(settings.bloom.enabled)
+		{
+			auto* bloomNode = static_cast<RCNodeBloom*>(inputs.inputNodes[5]);
+			bloomTex = bloomNode->output;
+		}
+
+		tonemapping->execute(sceneColor, eyeAdaptationTex, bloomTex, tonemapLUTTex, ppOutput, settings);
 	}
 
 	void RCNodeTonemapping::clear()
 	{
-		GpuResourcePool& resPool = GpuResourcePool::instance();
-
-		// Save eye adaptation for next frame
-		if(prevEyeAdaptation)
-			resPool.release(prevEyeAdaptation);
-
-		std::swap(eyeAdaptation, prevEyeAdaptation);
+		// Do nothing
 	}
 	
-	bool RCNodeTonemapping::useHistogramEyeAdapatation(const RenderCompositorNodeInputs& inputs)
-	{
-		return inputs.featureSet == RenderBeastFeatureSet::Desktop;
-	}
-
 	SmallVector<StringID, 4> RCNodeTonemapping::getDependencies(const RendererView& view)
 	{
-		return{ RCNodeSceneColor::getNodeId(), RCNodeClusteredForward::getNodeId(), RCNodePostProcess::getNodeId() };
+		SmallVector<StringID, 4> deps = {
+			RCNodeEyeAdaptation::getNodeId(),
+			RCNodeSceneColor::getNodeId(), 
+			RCNodeClusteredForward::getNodeId(), 
+			RCNodePostProcess::getNodeId(), 
+			RCNodeHalfSceneColor::getNodeId()
+		};
+
+		if(view.getRenderSettings().bloom.enabled)
+			deps.add(RCNodeBloom::getNodeId());
+
+		return deps;
 	}
 
 	void RCNodeGaussianDOF::render(const RenderCompositorNodeInputs& inputs)
@@ -2019,16 +2110,44 @@ namespace bs { namespace ct
 		return { RCNodeGaussianDOF::getNodeId(), RCNodePostProcess::getNodeId() };
 	}
 
+	void RCNodeHalfSceneColor::render(const RenderCompositorNodeInputs& inputs)
+	{
+		const RendererViewProperties& viewProps = inputs.view.getProperties();
+
+		auto* sceneColorNode = static_cast<RCNodeSceneColor*>(inputs.inputNodes[0]);
+		const SPtr<Texture>& input = sceneColorNode->sceneColorTex->texture;
+
+		// Downsample scene
+		const bool msaa = viewProps.target.numSamples > 1;
+		DownsampleMat* downsampleMat = DownsampleMat::getVariation(1, msaa);
+
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+		output = resPool.get(DownsampleMat::getOutputDesc(input));
+
+		downsampleMat->execute(input, output->renderTexture);
+	}
+
+	void RCNodeHalfSceneColor::clear()
+	{
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+		resPool.release(output);
+	}
+
+	SmallVector<StringID, 4> RCNodeHalfSceneColor::getDependencies(const RendererView& view)
+	{
+		return { RCNodeSceneColor::getNodeId() };
+	}
+
 	void RCNodeResolvedSceneDepth::render(const RenderCompositorNodeInputs& inputs)
 	{
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
 		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[0]);
 
-		if (viewProps.numSamples > 1)
+		if (viewProps.target.numSamples > 1)
 		{
-			UINT32 width = viewProps.viewRect.width;
-			UINT32 height = viewProps.viewRect.height;
+			UINT32 width = viewProps.target.viewRect.width;
+			UINT32 height = viewProps.target.viewRect.height;
 
 			output = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_D32_S8X24, width, height, 
 				TU_DEPTHSTENCIL, 1, false)); 
@@ -2062,7 +2181,7 @@ namespace bs { namespace ct
 	SmallVector<StringID, 4> RCNodeResolvedSceneDepth::getDependencies(const RendererView& view)
 	{
 		// GBuffer require because it renders the base pass (populates the depth buffer)
-		return { RCNodeSceneDepth::getNodeId(), RCNodeGBuffer::getNodeId() };
+		return { RCNodeSceneDepth::getNodeId(), RCNodeBasePass::getNodeId() };
 	}
 
 	void RCNodeHiZ::render(const RenderCompositorNodeInputs& inputs)
@@ -2072,8 +2191,8 @@ namespace bs { namespace ct
 
 		RCNodeResolvedSceneDepth* resolvedSceneDepth = static_cast<RCNodeResolvedSceneDepth*>(inputs.inputNodes[0]);
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
 
 		UINT32 size = Bitwise::nextPow2(std::max(width, height));
 		UINT32 numMips = PixelUtil::getMaxMipmaps(size, size, 1, PF_R32F);
@@ -2085,14 +2204,13 @@ namespace bs { namespace ct
 		output = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_R32F, size, size, TU_RENDERTARGET, 1, false, 1, 
 			numMips));
 
-		Rect2 srcRect = viewProps.nrmViewRect;
+		Rect2 srcRect = viewProps.target.nrmViewRect;
 
 		// If viewport size is odd, adjust UV
-		srcRect.width += (viewProps.viewRect.width % 2) * (1.0f / viewProps.viewRect.width);
-		srcRect.height += (viewProps.viewRect.height % 2) * (1.0f / viewProps.viewRect.height);
+		srcRect.width += (viewProps.target.viewRect.width % 2) * (1.0f / viewProps.target.viewRect.width);
+		srcRect.height += (viewProps.target.viewRect.height % 2) * (1.0f / viewProps.target.viewRect.height);
 
-		const RenderAPIInfo& rapiInfo = RenderAPI::instance().getAPIInfo();
-		bool noTextureViews = !rapiInfo.isFlagSet(RenderAPIFeatureFlag::TextureViews);
+		bool noTextureViews = !gCaps().hasCapability(RSC_TEXTURE_VIEWS);
 
 		BuildHiZMat* material = BuildHiZMat::getVariation(noTextureViews);
 
@@ -2109,26 +2227,26 @@ namespace bs { namespace ct
 		{
 			// Make sure that 1 pixel in HiZ maps to a 2x2 block in source
 			destRect = Rect2(0, 0,
-				Math::ceilToInt(viewProps.viewRect.width / 2.0f) / (float)size,
-				Math::ceilToInt(viewProps.viewRect.height / 2.0f) / (float)size);
+				Math::ceilToInt(viewProps.target.viewRect.width / 2.0f) / (float)size,
+				Math::ceilToInt(viewProps.target.viewRect.height / 2.0f) / (float)size);
 
 			material->execute(resolvedSceneDepth->output->texture, 0, srcRect, destRect, rt);
 		}
 		else // First level is just a copy of the depth buffer
 		{
 			destRect = Rect2(0, 0,
-				viewProps.viewRect.width / (float)size,
-				viewProps.viewRect.height / (float)size);
+				viewProps.target.viewRect.width / (float)size,
+				viewProps.target.viewRect.height / (float)size);
 
 			RenderAPI& rapi = RenderAPI::instance();
 			rapi.setRenderTarget(rt);
 			rapi.setViewport(destRect);
 
 			Rect2I srcAreaInt;
-			srcAreaInt.x = (INT32)(srcRect.x * viewProps.viewRect.width);
-			srcAreaInt.y = (INT32)(srcRect.y * viewProps.viewRect.height);
-			srcAreaInt.width = (UINT32)(srcRect.width * viewProps.viewRect.width);
-			srcAreaInt.height = (UINT32)(srcRect.height * viewProps.viewRect.height);
+			srcAreaInt.x = (INT32)(srcRect.x * viewProps.target.viewRect.width);
+			srcAreaInt.y = (INT32)(srcRect.y * viewProps.target.viewRect.height);
+			srcAreaInt.width = (UINT32)(srcRect.width * viewProps.target.viewRect.width);
+			srcAreaInt.height = (UINT32)(srcRect.height * viewProps.target.viewRect.height);
 
 			gRendererUtility().blit(resolvedSceneDepth->output->texture, srcAreaInt);
 			rapi.setViewport(Rect2(0, 0, 1, 1));
@@ -2155,7 +2273,7 @@ namespace bs { namespace ct
 		// Note: This doesn't actually use any gbuffer textures, but node is a dependency because it renders to the depth
 		// buffer. In order to avoid keeping gbuffer textures alive I could separate out the base pass into its own node
 		// perhaps. But at the moment it doesn't matter, as anything using HiZ also needs gbuffer.
-		return { RCNodeResolvedSceneDepth::getNodeId(), RCNodeGBuffer::getNodeId() };
+		return { RCNodeResolvedSceneDepth::getNodeId(), RCNodeBasePass::getNodeId() };
 	}
 
 	void RCNodeSSAO::render(const RenderCompositorNodeInputs& inputs)
@@ -2175,7 +2293,7 @@ namespace bs { namespace ct
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
 
 		RCNodeResolvedSceneDepth* resolvedDepthNode = static_cast<RCNodeResolvedSceneDepth*>(inputs.inputNodes[0]);
-		RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[1]);
+		RCNodeBasePass* gbufferNode = static_cast<RCNodeBasePass*>(inputs.inputNodes[1]);
 
 		SPtr<Texture> sceneDepth = resolvedDepthNode->output->texture;
 		SPtr<Texture> sceneNormals = gbufferNode->normalTex->texture;
@@ -2211,8 +2329,8 @@ namespace bs { namespace ct
 		if(numDownsampleLevels > 0)
 		{
 			Vector2I downsampledSize(
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.width, 2)),
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.height, 2))
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.width, 2)),
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.height, 2))
 			);
 
 			POOLED_RENDER_TEXTURE_DESC desc = POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, downsampledSize.x, 
@@ -2226,8 +2344,8 @@ namespace bs { namespace ct
 		if(numDownsampleLevels > 1)
 		{
 			Vector2I downsampledSize(
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.width, 4)),
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.height, 4))
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.width, 4)),
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.height, 4))
 			);
 
 			POOLED_RENDER_TEXTURE_DESC desc = POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, downsampledSize.x, 
@@ -2248,8 +2366,8 @@ namespace bs { namespace ct
 			textures.aoSetup = setupTex1->texture;
 
 			Vector2I downsampledSize(
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.width, 4)),
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.height, 4))
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.width, 4)),
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.height, 4))
 			);
 
 			POOLED_RENDER_TEXTURE_DESC desc = POOLED_RENDER_TEXTURE_DESC::create2D(PF_R8, downsampledSize.x, 
@@ -2272,8 +2390,8 @@ namespace bs { namespace ct
 				textures.aoDownsampled = downAOTex1->texture;
 
 			Vector2I downsampledSize(
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.width, 2)),
-				std::max(1, Math::divideAndRoundUp((INT32)viewProps.viewRect.height, 2))
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.width, 2)),
+				std::max(1, Math::divideAndRoundUp((INT32)viewProps.target.viewRect.height, 2))
 			);
 
 			POOLED_RENDER_TEXTURE_DESC desc = POOLED_RENDER_TEXTURE_DESC::create2D(PF_R8, downsampledSize.x, 
@@ -2291,8 +2409,8 @@ namespace bs { namespace ct
 			}
 		}
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
 		mPooledOutput = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_R8, width, height, TU_RENDERTARGET));
 
 		{
@@ -2356,7 +2474,7 @@ namespace bs { namespace ct
 
 	SmallVector<StringID, 4> RCNodeSSAO::getDependencies(const RendererView& view)
 	{
-		return { RCNodeResolvedSceneDepth::getNodeId(), RCNodeGBuffer::getNodeId() };
+		return { RCNodeResolvedSceneDepth::getNodeId(), RCNodeBasePass::getNodeId() };
 	}
 
 	RCNodeSSR::~RCNodeSSR()
@@ -2380,15 +2498,15 @@ namespace bs { namespace ct
 
 		RCNodeSceneDepth* sceneDepthNode = static_cast<RCNodeSceneDepth*>(inputs.inputNodes[0]);
 		RCNodeLightAccumulation* lightAccumNode = static_cast<RCNodeLightAccumulation*>(inputs.inputNodes[1]);
-		RCNodeGBuffer* gbufferNode = static_cast<RCNodeGBuffer*>(inputs.inputNodes[2]);
+		RCNodeBasePass* gbufferNode = static_cast<RCNodeBasePass*>(inputs.inputNodes[2]);
 		RCNodeHiZ* hiZNode = static_cast<RCNodeHiZ*>(inputs.inputNodes[3]);
 		RCNodeResolvedSceneDepth* resolvedSceneDepthNode = static_cast<RCNodeResolvedSceneDepth*>(inputs.inputNodes[4]);
 
 		GpuResourcePool& resPool = GpuResourcePool::instance();
 		const RendererViewProperties& viewProps = inputs.view.getProperties();
 
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
 
 		SPtr<Texture> hiZ = hiZNode->output->texture;
 
@@ -2397,7 +2515,7 @@ namespace bs { namespace ct
 
 		// Resolve multiple samples if MSAA is used
 		SPtr<PooledRenderTexture> resolvedSceneColor;
-		if (viewProps.numSamples > 1)
+		if (viewProps.target.numSamples > 1)
 		{
 			resolvedSceneColor = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(PF_RGBA16F, width, height,
 				TU_RENDERTARGET));
@@ -2414,7 +2532,7 @@ namespace bs { namespace ct
 		gbuffer.roughMetal = gbufferNode->roughMetalTex->texture;
 		gbuffer.depth = sceneDepthNode->depthTex->texture;
 
-		SSRStencilMat* stencilMat = SSRStencilMat::getVariation(viewProps.numSamples > 1, true);
+		SSRStencilMat* stencilMat = SSRStencilMat::getVariation(viewProps.target.numSamples > 1, true);
 
 		// Note: Making the assumption that the stencil buffer is clear at this point
 		rapi.setRenderTarget(resolvedSceneDepthNode->output->renderTexture, FBT_DEPTH, RT_DEPTH_STENCIL);
@@ -2432,7 +2550,7 @@ namespace bs { namespace ct
 		rapi.setRenderTarget(traceRt, FBT_DEPTH | FBT_STENCIL, RT_DEPTH_STENCIL);
 		rapi.clearRenderTarget(FBT_COLOR, Color::ZERO);
 
-		SSRTraceMat* traceMat = SSRTraceMat::getVariation(settings.quality, viewProps.numSamples > 1, true);
+		SSRTraceMat* traceMat = SSRTraceMat::getVariation(settings.quality, viewProps.target.numSamples > 1, true);
 		traceMat->execute(inputs.view, gbuffer, sceneColor, hiZ, settings, traceRt);
 
 		if (resolvedSceneColor)
@@ -2448,7 +2566,7 @@ namespace bs { namespace ct
 			rapi.setRenderTarget(mPooledOutput->renderTexture);
 			rapi.clearRenderTarget(FBT_COLOR);
 
-			SSRResolveMat* resolveMat = SSRResolveMat::getVariation(viewProps.numSamples > 1);
+			SSRResolveMat* resolveMat = SSRResolveMat::getVariation(viewProps.target.numSamples > 1);
 			resolveMat->execute(inputs.view, mPrevFrame->texture, traceOutput->texture, sceneDepthNode->depthTex->texture,
 				mPooledOutput->renderTexture);
 
@@ -2491,14 +2609,113 @@ namespace bs { namespace ct
 		SmallVector<StringID, 4> deps;
 		if (view.getRenderSettings().screenSpaceReflections.enabled)
 		{
-			deps.push_back(RCNodeSceneDepth::getNodeId());
-			deps.push_back(RCNodeLightAccumulation::getNodeId());
-			deps.push_back(RCNodeGBuffer::getNodeId());
-			deps.push_back(RCNodeHiZ::getNodeId());
-			deps.push_back(RCNodeResolvedSceneDepth::getNodeId());
-			deps.push_back(RCNodeIndirectDiffuseLighting::getNodeId());
+			deps.add(RCNodeSceneDepth::getNodeId());
+			deps.add(RCNodeLightAccumulation::getNodeId());
+			deps.add(RCNodeBasePass::getNodeId());
+			deps.add(RCNodeHiZ::getNodeId());
+			deps.add(RCNodeResolvedSceneDepth::getNodeId());
+			deps.add(RCNodeIndirectDiffuseLighting::getNodeId());
 		}
 
 		return deps;
 	}
+
+	void RCNodeBloom::render(const RenderCompositorNodeInputs& inputs)
+	{
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+		const RenderSettings& settings = inputs.view.getRenderSettings();
+
+		// Grab 1/2 scene color to use as input
+		auto* halfSceneColorNode = static_cast<RCNodeHalfSceneColor*>(inputs.inputNodes[1]);
+		const SPtr<Texture>& halfSceneColor = halfSceneColorNode->output->texture;
+
+		// Clip color values based on intensity (if enabled)
+		SPtr<PooledRenderTexture> clipOutput;
+		SPtr<PooledRenderTexture> downsampleInput;
+		if(settings.bloom.threshold > 0.0f)
+		{
+			const bool autoExposure = settings.enableHDR && settings.enableAutoExposure;
+			BloomClipMat* clipMat = BloomClipMat::getVariation(autoExposure);
+
+			SPtr<Texture> eyeAdaptationTex = nullptr;
+
+			if(autoExposure)
+			{
+				auto* eyeAdapatationNode = static_cast<RCNodeEyeAdaptation*>(inputs.inputNodes[2]);
+
+				if(eyeAdapatationNode->output)
+					eyeAdaptationTex = eyeAdapatationNode->output->texture;
+			}
+
+			const TextureProperties& halfSceneColorProps = halfSceneColor->getProperties();
+			clipOutput = resPool.get(POOLED_RENDER_TEXTURE_DESC::create2D(
+				halfSceneColorProps.getFormat(),
+				halfSceneColorProps.getWidth(),
+				halfSceneColorProps.getHeight(),
+				TU_RENDERTARGET));
+
+			clipMat->execute(halfSceneColor, settings.bloom.threshold, eyeAdaptationTex, settings, 
+				clipOutput->renderTexture);
+
+			downsampleInput = clipOutput;
+		}
+		else
+			downsampleInput = halfSceneColorNode->output;
+
+		// Generate the downsample pyramid
+		constexpr UINT32 NUM_DOWNSAMPLE_LEVELS = 6;
+		SPtr<PooledRenderTexture> downsamplePyramid[NUM_DOWNSAMPLE_LEVELS];
+		downsamplePyramid[0] = downsampleInput;
+
+		DownsampleMat* downsampleMat = DownsampleMat::getVariation(1, false);
+		for(UINT32 i = 1; i < NUM_DOWNSAMPLE_LEVELS; i++)
+		{
+			downsamplePyramid[i] = resPool.get(DownsampleMat::getOutputDesc(downsamplePyramid[i - 1]->texture));
+			downsampleMat->execute(downsamplePyramid[i - 1]->texture, downsamplePyramid[i]->renderTexture);
+		}
+
+		// Blur the downsampled entries and add them together
+		const UINT32 quality = Math::clamp(settings.bloom.quality, 0U, 3U);
+		constexpr UINT32 NUM_STEPS_PER_QUALITY[] = { 3, 4, 5, 6  };
+		constexpr float FILTER_SIZE_PER_STEP[] = { 4.0f, 16.0f, 64.0f, 128.0f, 256.0f, 256.0f };
+		
+		GaussianBlurMat* filterMat = GaussianBlurMat::getVariation(true);
+		const UINT32 numSteps = NUM_STEPS_PER_QUALITY[quality];
+		SPtr<PooledRenderTexture> prevOutput;
+		for(UINT32 i = 0; i < numSteps; i++)
+		{
+			const UINT32 srcIdx = NUM_DOWNSAMPLE_LEVELS - i - 1;
+			const TextureProperties& inputProps = downsamplePyramid[srcIdx]->texture->getProperties();
+
+			SPtr<PooledRenderTexture> filterOutput = resPool.get(
+				POOLED_RENDER_TEXTURE_DESC::create2D(inputProps.getFormat(), inputProps.getWidth(), 
+				inputProps.getHeight(), TU_RENDERTARGET));
+
+			SPtr<Texture> additiveInput;
+			if(prevOutput)
+				additiveInput = prevOutput->texture;
+
+			const Color tint = Color::White * (settings.bloom.intensity / (float)numSteps);
+			filterMat->execute(downsamplePyramid[srcIdx]->texture, FILTER_SIZE_PER_STEP[i], filterOutput->renderTexture, 
+				tint, additiveInput);
+			prevOutput = filterOutput;
+		}
+
+		mPooledOutput = prevOutput;
+		output = mPooledOutput->texture;
+	}
+
+	void RCNodeBloom::clear()
+	{
+		GpuResourcePool& resPool = GpuResourcePool::instance();
+		resPool.release(mPooledOutput);
+
+		output = nullptr;
+	}
+
+	SmallVector<StringID, 4> RCNodeBloom::getDependencies(const RendererView& view)
+	{
+		return { RCNodeClusteredForward::getNodeId(), RCNodeHalfSceneColor::getNodeId(), RCNodeEyeAdaptation::getNodeId() };
+	}
+
 }}

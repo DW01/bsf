@@ -5,7 +5,7 @@
 #include "Mesh/BsMeshUtility.h"
 #include "RenderAPI/BsVertexDataDesc.h"
 #include "Math/BsRandom.h"
-#include "Renderer/BsRenderable.h"
+#include "Components/BsCRenderable.h"
 #include "Private/Particles/BsParticleSet.h"
 #include "Private/RTTI/BsParticleSystemRTTI.h"
 #include "Animation/BsAnimation.h"
@@ -107,74 +107,185 @@ namespace bs
 			bs_zero_out(indices);
 	}
 
-	template <class T>
-	UINT32 spawnMultiple(T* spawner, const Random& random, ParticleSet& particles, UINT32 count)
+	template <class Pr>
+	UINT32 spawnMultiple(ParticleSet& particles, UINT32 count, Pr predicate)
 	{
 		const UINT32 index = particles.allocParticles(count);
 		ParticleSetData& particleData = particles.getParticles();
 
 		const UINT32 end = index + count;
 		for (UINT32 i = index; i < end; i++)
-			spawner->spawn(random, particleData.position[i], particleData.velocity[i]);
+			predicate(i - index, particleData.position[i], particleData.velocity[i]);
 
 		return index;
+	}
+
+	template <class T>
+	UINT32 spawnMultipleRandom(T* spawner, const Random& random, ParticleSet& particles, UINT32 count)
+	{
+		const UINT32 index = particles.allocParticles(count);
+		ParticleSetData& particleData = particles.getParticles();
+
+		const UINT32 end = index + count;
+		for (UINT32 i = index; i < end; i++)
+			spawner->_spawn(random, particleData.position[i], particleData.velocity[i]);
+
+		return index;
+	}
+
+	template <class T>
+	UINT32 spawnMultipleSpread(T* spawner, float length, float interval, ParticleSet& particles, UINT32 count)
+	{
+		const UINT32 index = particles.allocParticles(count);
+		ParticleSetData& particleData = particles.getParticles();
+
+		const float dt = length / (float)count;
+
+		float accum = 0.0f;
+		for (UINT32 i = 0; i < count; i++)
+		{
+			float t = accum;
+			if(interval > 0)
+				t = Math::roundToMultiple(accum, interval);
+
+			const UINT32 particleIdx = index + i;
+			spawner->_spawn(t, particleData.position[particleIdx], particleData.velocity[particleIdx]);
+
+			accum += dt;
+		}
+
+		return index;
+	}
+
+	template <class T>
+	UINT32 spawnMultipleLoop(T* spawner, float length, float speed, float interval, ParticleSet& particles, 
+		UINT32 count, const ParticleSystemState& state)
+	{
+		const UINT32 index = particles.allocParticles(count);
+		ParticleSetData& particleData = particles.getParticles();
+
+		const float dt = state.timeStep / (float)count;
+
+		for (UINT32 i = 0; i < count; i++)
+		{
+			float t = (state.timeStart + dt * i) * speed;
+			t = fmod(t, length);
+
+			if(interval > 0.0f)
+				t = Math::roundToMultiple(t, interval);
+
+			const UINT32 particleIdx = index + i;
+			spawner->_spawn(t, particleData.position[particleIdx], particleData.velocity[particleIdx]);
+		}
+
+		return index;
+	}
+
+	template <class T>
+	UINT32 spawnMultiplePingPong(T* spawner, float length, float speed, float interval, ParticleSet& particles, 
+		UINT32 count, const ParticleSystemState& state)
+	{
+		const UINT32 index = particles.allocParticles(count);
+		ParticleSetData& particleData = particles.getParticles();
+
+		const float dt = state.timeStep / (float)count;
+
+		for (UINT32 i = 0; i < count; i++)
+		{
+			float t = (state.timeStart + dt * i) * speed;
+
+			const auto loop = (UINT32)(t / length);
+			if (loop % 2 == 1)
+				t = length - fmod(t, length);
+			else
+				t = fmod(t, length);
+
+			if(interval > 0.0f)
+				t = Math::roundToMultiple(t, interval);
+
+			const UINT32 particleIdx = index + i;
+			spawner->_spawn(t, particleData.position[particleIdx], particleData.velocity[particleIdx]);
+		}
+
+		return index;
+	}
+
+	template <class T>
+	UINT32 spawnMultipleMode(T* spawner, ParticleEmissionModeType type, float length, float speed, float interval, 
+		const Random& random, ParticleSet& particles, UINT32 count, const ParticleSystemState& state)
+	{
+		if(count > 0)
+		{
+			switch (type)
+			{
+			case ParticleEmissionModeType::Random:
+				return spawnMultipleRandom(spawner, random, particles, count);
+			case ParticleEmissionModeType::Loop:
+				return spawnMultipleLoop(spawner, length, speed, interval, particles,
+					count, state);
+			case ParticleEmissionModeType::PingPong:
+				return spawnMultiplePingPong(spawner, length, speed, interval, particles,
+					count, state);
+			case ParticleEmissionModeType::Spread:
+				return spawnMultipleSpread(spawner, length, interval, particles, count);
+			default:
+				break;
+			}
+		}
+
+		return particles.getParticleCount();
 	}
 
 	ParticleEmitterConeShape::ParticleEmitterConeShape(const PARTICLE_CONE_SHAPE_DESC& desc)
 		:mInfo(desc)
 	{ }
 
-	UINT32 ParticleEmitterConeShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterConeShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleMode(this, mInfo.mode.type, mInfo.arc.valueRadians(), mInfo.mode.speed * Math::DEG2RAD, 
+			mInfo.mode.interval * Math::DEG2RAD, random, particles, count, state);
 	}
 
-	void ParticleEmitterConeShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterConeShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
-		if(mInfo.type == ParticleEmitterConeType::Base)
-		{
-			if(Math::approxEquals(mInfo.arc.valueDegrees(), 360.0f))
-			{
-				const Vector2 pos2D = random.getPointInCircleShell(mInfo.thickness);
+		Vector2 pos2D;
+		if (Math::approxEquals(mInfo.arc.valueDegrees(), 360.0f))
+			pos2D = random.getPointInCircleShell(mInfo.thickness);
+		else
+			pos2D = random.getPointInArcShell(mInfo.arc, mInfo.thickness);
 
-				const float angleSin = Math::sin(mInfo.angle);
-				normal = Vector3(pos2D.x * angleSin, pos2D.y * angleSin, Math::cos(mInfo.angle));
-				normal.normalize();
+		getPointInCone(pos2D, random.getUNorm() * mInfo.length, position, normal);
+	}
 
-				position = Vector3(pos2D.x * mInfo.radius, pos2D.y * mInfo.radius, 0.0f);
-			}
-			else
-			{
-				const Vector2 pos2D = random.getPointInArcShell(mInfo.arc, mInfo.thickness);
+	void ParticleEmitterConeShape::_spawn(float t, Vector3& position, Vector3& normal) const
+	{
+		const Vector2 pos2D(Math::cos(t), Math::sin(t));
 
-				const float angleSin = Math::sin(mInfo.angle);
-				normal = Vector3(pos2D.x * angleSin, pos2D.y * angleSin, Math::cos(mInfo.angle));
-				normal.normalize();
+		getPointInCone(pos2D, 0.0f, position, normal);
+	}
 
-				position = Vector3(pos2D.x * mInfo.radius, pos2D.y * mInfo.radius, 0.0f);
-			}
-		}
-		else // Volume
-		{
-			if(Math::approxEquals(mInfo.arc.valueDegrees(), 360.0f))
-			{
-				const Vector2 pos2D = random.getPointInCircleShell(mInfo.thickness);
+	void ParticleEmitterConeShape::getPointInCone(const Vector2& pos2D, float distance, Vector3& position, 
+		Vector3& normal) const
+	{
+		const float angleSin = Math::sin(mInfo.angle);
+		normal = Vector3(pos2D.x * angleSin, pos2D.y * angleSin, Math::cos(mInfo.angle));
+		normal.normalize();
 
-				const float angleSin = Math::sin(mInfo.angle);
-				normal = Vector3(pos2D.x * angleSin, pos2D.y * angleSin, Math::cos(mInfo.angle));
-				normal.normalize();
+		position = Vector3(pos2D.x * mInfo.radius, pos2D.y * mInfo.radius, 0.0f);
 
-				position = Vector3(pos2D.x * mInfo.radius, pos2D.y * mInfo.radius, 0.0f);
-				position += normal * mInfo.length * random.getUNorm();
-			}
-		}
+		if(mInfo.type == ParticleEmitterConeType::Volume)
+			position += normal * distance;
 	}
 
 	SPtr<ParticleEmitterConeShape> ParticleEmitterConeShape::create(const PARTICLE_CONE_SHAPE_DESC& desc)
 	{
-		ParticleEmitterConeShape* output = bs_new<ParticleEmitterConeShape>(desc);
-		return bs_shared_ptr(output);
+		return bs_shared_ptr_new<ParticleEmitterConeShape>(desc);
+	}
+
+	SPtr<ParticleEmitterConeShape> ParticleEmitterConeShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterConeShape>();
 	}
 
 	void ParticleEmitterConeShape::calcBounds(AABox& shape, AABox& velocity) const
@@ -214,13 +325,13 @@ namespace bs
 		:mInfo(desc)
 	{ }
 
-	UINT32 ParticleEmitterSphereShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterSphereShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleRandom(this, random, particles, count);
 	}
 
-	void ParticleEmitterSphereShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterSphereShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
 		position = random.getPointInSphereShell(mInfo.thickness);
 		normal = Vector3::normalize(position);
@@ -237,9 +348,14 @@ namespace bs
 		velocity.setMax(Vector3::ONE);
 	}
 	
-	SPtr<ParticleEmitterShape> ParticleEmitterSphereShape::create(const PARTICLE_SPHERE_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterSphereShape> ParticleEmitterSphereShape::create(const PARTICLE_SPHERE_SHAPE_DESC& desc)
 	{
-		return bs_shared_ptr<ParticleEmitterShape>(bs_new<ParticleEmitterSphereShape>(desc));
+		return bs_shared_ptr_new<ParticleEmitterSphereShape>(desc);
+	}
+
+	SPtr<ParticleEmitterSphereShape> ParticleEmitterSphereShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterSphereShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterSphereShape::getRTTIStatic()
@@ -256,16 +372,16 @@ namespace bs
 		:mInfo(desc)
 	{ }
 
-	UINT32 ParticleEmitterHemisphereShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterHemisphereShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleRandom(this, random, particles, count);
 	}
 
-	void ParticleEmitterHemisphereShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterHemisphereShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
 		position = random.getPointInSphereShell(mInfo.thickness);
-		if (position.z < 0.0f)
+		if (position.z > 0.0f)
 			position.z *= -1.0f;
 
 		normal = Vector3::normalize(position);
@@ -281,9 +397,14 @@ namespace bs
 		velocity.setMax(Vector3::ONE);
 	}
 	
-	SPtr<ParticleEmitterShape> ParticleEmitterHemisphereShape::create(const PARTICLE_HEMISPHERE_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterHemisphereShape> ParticleEmitterHemisphereShape::create(const PARTICLE_HEMISPHERE_SHAPE_DESC& desc)
 	{
-		return bs_shared_ptr<ParticleEmitterShape>(bs_new<ParticleEmitterHemisphereShape>(desc));
+		return bs_shared_ptr_new<ParticleEmitterHemisphereShape>(desc);
+	}
+
+	SPtr<ParticleEmitterHemisphereShape> ParticleEmitterHemisphereShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterHemisphereShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterHemisphereShape::getRTTIStatic()
@@ -346,13 +467,13 @@ namespace bs
 		}
 	}
 
-	UINT32 ParticleEmitterBoxShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterBoxShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleRandom(this, random, particles, count);
 	}
 
-	void ParticleEmitterBoxShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterBoxShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
 		switch(mInfo.type)
 		{
@@ -450,10 +571,14 @@ namespace bs
 		velocity.setMax(Vector3::UNIT_Z);
 	}
 
-	SPtr<ParticleEmitterShape> ParticleEmitterBoxShape::create(const PARTICLE_BOX_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterBoxShape> ParticleEmitterBoxShape::create(const PARTICLE_BOX_SHAPE_DESC& desc)
 	{
-		ParticleEmitterBoxShape* output = bs_new<ParticleEmitterBoxShape>(desc);
-		return bs_shared_ptr<ParticleEmitterShape>(output);
+		return bs_shared_ptr_new<ParticleEmitterBoxShape>(desc);
+	}
+
+	SPtr<ParticleEmitterBoxShape> ParticleEmitterBoxShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterBoxShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterBoxShape::getRTTIStatic()
@@ -470,15 +595,22 @@ namespace bs
 		:mInfo(desc)
 	{ }
 
-	UINT32 ParticleEmitterLineShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterLineShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleMode(this, mInfo.mode.type, mInfo.length, mInfo.mode.speed, 
+			mInfo.mode.interval, random, particles, count, state);
 	}
 
-	void ParticleEmitterLineShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterLineShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
 		position = Vector3(random.getSNorm() * mInfo.length * 0.5f, 0.0f, 0.0f);
+		normal = Vector3::UNIT_Z;
+	}
+
+	void ParticleEmitterLineShape::_spawn(float t, Vector3& position, Vector3& normal) const
+	{
+		position = Vector3(t * mInfo.length - mInfo.length * 0.5f, 0.0f, 0.0f);
 		normal = Vector3::UNIT_Z;
 	}
 
@@ -491,9 +623,14 @@ namespace bs
 		velocity.setMax(Vector3::UNIT_Z);
 	}
 
-	SPtr<ParticleEmitterShape> ParticleEmitterLineShape::create(const PARTICLE_LINE_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterLineShape> ParticleEmitterLineShape::create(const PARTICLE_LINE_SHAPE_DESC& desc)
 	{
-		return bs_shared_ptr<ParticleEmitterShape>(bs_new<ParticleEmitterLineShape>(desc));
+		return bs_shared_ptr_new<ParticleEmitterLineShape>(desc);
+	}
+
+	SPtr<ParticleEmitterLineShape> ParticleEmitterLineShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterLineShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterLineShape::getRTTIStatic()
@@ -510,19 +647,28 @@ namespace bs
 		:mInfo(desc)
 	{ }
 
-	UINT32 ParticleEmitterCircleShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterCircleShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleMode(this, mInfo.mode.type, mInfo.arc.valueRadians(), mInfo.mode.speed * Math::DEG2RAD, 
+			mInfo.mode.interval * Math::DEG2RAD, random, particles, count, state);
 	}
 
-	void ParticleEmitterCircleShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterCircleShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
 		Vector2 pos2D;
 		if (Math::approxEquals(mInfo.arc.valueDegrees(), 360.0f))
 			pos2D = random.getPointInCircleShell(mInfo.thickness);
 		else
 			pos2D = random.getPointInArcShell(mInfo.arc, mInfo.thickness);
+
+		position = Vector3(pos2D.x * mInfo.radius, pos2D.y * mInfo.radius, 0.0f);
+		normal = Vector3::UNIT_Z;
+	}
+
+	void ParticleEmitterCircleShape::_spawn(float t, Vector3& position, Vector3& normal) const
+	{
+		const Vector2 pos2D(Math::cos(t), Math::sin(t));
 
 		position = Vector3(pos2D.x * mInfo.radius, pos2D.y * mInfo.radius, 0.0f);
 		normal = Vector3::UNIT_Z;
@@ -537,10 +683,14 @@ namespace bs
 		velocity.setMax(Vector3::UNIT_Z);
 	}
 
-	SPtr<ParticleEmitterShape> ParticleEmitterCircleShape::create(const PARTICLE_CIRCLE_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterCircleShape> ParticleEmitterCircleShape::create(const PARTICLE_CIRCLE_SHAPE_DESC& desc)
 	{
-		ParticleEmitterCircleShape* output = bs_new<ParticleEmitterCircleShape>(desc);
-		return bs_shared_ptr<ParticleEmitterShape>(output);
+		return bs_shared_ptr_new<ParticleEmitterCircleShape>(desc);
+	}
+
+	SPtr<ParticleEmitterCircleShape> ParticleEmitterCircleShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterCircleShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterCircleShape::getRTTIStatic()
@@ -557,13 +707,13 @@ namespace bs
 		:mInfo(desc)
 	{ }
 
-	UINT32 ParticleEmitterRectShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	UINT32 ParticleEmitterRectShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
-		return spawnMultiple(this, random, particles, count);
+		return spawnMultipleRandom(this, random, particles, count);
 	}
 
-	void ParticleEmitterRectShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterRectShape::_spawn(const Random& random, Vector3& position, Vector3& normal) const
 	{
 		position.x = random.getSNorm() * mInfo.extents.x;
 		position.y = random.getSNorm() * mInfo.extents.y;
@@ -581,9 +731,14 @@ namespace bs
 		velocity.setMax(Vector3::UNIT_Z);
 	}
 
-	SPtr<ParticleEmitterShape> ParticleEmitterRectShape::create(const PARTICLE_RECT_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterRectShape> ParticleEmitterRectShape::create(const PARTICLE_RECT_SHAPE_DESC& desc)
 	{
-		return bs_shared_ptr<ParticleEmitterShape>(bs_new<ParticleEmitterRectShape>(desc));
+		return bs_shared_ptr_new<ParticleEmitterRectShape>(desc);
+	}
+
+	SPtr<ParticleEmitterRectShape> ParticleEmitterRectShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterRectShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterRectShape::getRTTIStatic()
@@ -700,6 +855,24 @@ namespace bs
 		return true;
 	}
 
+	void MeshEmissionHelper::getSequentialVertex(class Vector3& position, class Vector3& normal, UINT32& idx) const
+	{
+		idx = mNextSequentialIdx;
+		position = *(Vector3*)(mVertices + mVertexStride * idx);
+
+		if (mNormals)
+		{
+			if (m32BitNormals)
+				normal = MeshUtility::unpackNormal(mNormals + mVertexStride * idx);
+			else
+				normal = *(Vector3*)(mNormals + mVertexStride * idx);
+		}
+		else
+			normal = Vector3::UNIT_Z;
+
+		mNextSequentialIdx = (mNextSequentialIdx + 1) % mNumVertices;
+	}
+
 	void MeshEmissionHelper::getRandomVertex(const Random& random, Vector3& position, Vector3& normal, 
 		UINT32& idx) const
 	{
@@ -810,23 +983,44 @@ namespace bs
 		mIsValid = mMeshEmissionHelper.initialize(desc.mesh, desc.type == ParticleEmitterMeshType::Vertex, false);
 	}
 
-	UINT32 ParticleEmitterStaticMeshShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
-		const ParticleSystemState& state) const
+	ParticleEmitterStaticMeshShape::ParticleEmitterStaticMeshShape()
 	{
-		return spawnMultiple(this, random, particles, count);
+		mIsValid = false;
 	}
 
-	void ParticleEmitterStaticMeshShape::spawn(const Random& random, Vector3& position, Vector3& normal) const
+	void ParticleEmitterStaticMeshShape::setOptions(const PARTICLE_STATIC_MESH_SHAPE_DESC& options)
 	{
+		mInfo = options;
+		mIsValid = mMeshEmissionHelper.initialize(options.mesh, options.type == ParticleEmitterMeshType::Vertex, false);
+	}
+
+	UINT32 ParticleEmitterStaticMeshShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
+		const ParticleSystemState& state) const
+	{
+		if(count == 0)
+			return particles.getParticleCount();
+
 		switch(mInfo.type)
 		{
 		case ParticleEmitterMeshType::Vertex: 
-		{
-			UINT32 vertexIdx;
-			mMeshEmissionHelper.getRandomVertex(random, position, normal, vertexIdx);
-		}
-			break;
+			if(mInfo.sequential)
+			{
+				return spawnMultiple(particles, count, [this](UINT32 idx, Vector3& position, Vector3& normal)
+				{
+					UINT32 vertexIdx;
+					mMeshEmissionHelper.getSequentialVertex(position, normal, vertexIdx);
+				});
+			}
+			else
+			{
+				return spawnMultiple(particles, count, [this, &random](UINT32 idx, Vector3& position, Vector3& normal)
+				{
+					UINT32 vertexIdx;
+					mMeshEmissionHelper.getRandomVertex(random, position, normal, vertexIdx);
+				});
+			}
 		case ParticleEmitterMeshType::Edge:
+			return spawnMultiple(particles, count, [this, &random](UINT32 idx, Vector3& position, Vector3& normal)
 			{
 				std::array<Vector3, 2> edgePositions, edgeNormals;
 				std::array<UINT32, 2> edgeIndices;
@@ -836,10 +1030,10 @@ namespace bs
 				const float rnd = random.getUNorm();
 				position = Math::lerp(rnd, edgePositions[0], edgePositions[1]);
 				normal = Math::lerp(rnd, edgeNormals[0], edgeNormals[1]);
-			}
-			break;
+			});
 		default:
 		case ParticleEmitterMeshType::Triangle:
+			return spawnMultiple(particles, count, [this, &random](UINT32 idx, Vector3& position, Vector3& normal)
 			{
 				std::array<Vector3, 3> triPositions, triNormals;
 				std::array<UINT32, 3> triIndices;
@@ -855,8 +1049,7 @@ namespace bs
 					position += triPositions[i] * barycenter[i];
 					normal += triNormals[i] * barycenter[i];
 				}
-			}
-			break;
+			});
 		}
 	}
 
@@ -871,10 +1064,14 @@ namespace bs
 		velocity.setMax(Vector3::ONE);
 	}
 
-	SPtr<ParticleEmitterShape> ParticleEmitterStaticMeshShape::create(const PARTICLE_STATIC_MESH_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterStaticMeshShape> ParticleEmitterStaticMeshShape::create(const PARTICLE_STATIC_MESH_SHAPE_DESC& desc)
 	{
-		ParticleEmitterStaticMeshShape* output = bs_new<ParticleEmitterStaticMeshShape>(desc);
-		return bs_shared_ptr<ParticleEmitterShape>(output);
+		return bs_shared_ptr_new<ParticleEmitterStaticMeshShape>(desc);
+	}
+
+	SPtr<ParticleEmitterStaticMeshShape> ParticleEmitterStaticMeshShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterStaticMeshShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterStaticMeshShape::getRTTIStatic()
@@ -887,24 +1084,44 @@ namespace bs
 		return getRTTIStatic();
 	}
 
+	ParticleEmitterSkinnedMeshShape::ParticleEmitterSkinnedMeshShape()
+	{
+		mIsValid = false;
+	}
+
 	ParticleEmitterSkinnedMeshShape::ParticleEmitterSkinnedMeshShape(const PARTICLE_SKINNED_MESH_SHAPE_DESC& desc)
 		:mInfo(desc)
 	{
 		HMesh mesh;
-		if(desc.renderable)
-			mesh = desc.renderable->getMesh();
+		if(!desc.renderable.empty())
+			mesh = desc.renderable.getActor()->getMesh();
 
 		mIsValid = mMeshEmissionHelper.initialize(mesh, desc.type == ParticleEmitterMeshType::Vertex, false);
 	}
 
-	UINT32 ParticleEmitterSkinnedMeshShape::spawn(const Random& random, ParticleSet& particles, UINT32 count,
+	void ParticleEmitterSkinnedMeshShape::setOptions(const PARTICLE_SKINNED_MESH_SHAPE_DESC& options)
+	{
+		mInfo = options;
+
+		HMesh mesh;
+		if(!options.renderable.empty())
+			mesh = options.renderable.getActor()->getMesh();
+
+		mIsValid = mMeshEmissionHelper.initialize(mesh, options.type == ParticleEmitterMeshType::Vertex, false);
+	}
+
+	UINT32 ParticleEmitterSkinnedMeshShape::_spawn(const Random& random, ParticleSet& particles, UINT32 count,
 		const ParticleSystemState& state) const
 	{
+		if(count == 0)
+			return particles.getParticleCount();
+
 		const Matrix4* bones = nullptr;
 
-		if(mInfo.renderable)
+		if(!mInfo.renderable.empty())
 		{
-			const SPtr<Animation>& animation = mInfo.renderable->getAnimation();
+			const SPtr<Renderable>& renderable = mInfo.renderable.getActor();
+			const SPtr<Animation>& animation = renderable->getAnimation();;
 			if(animation)
 			{
 				const UINT64 animId = animation->_getId();
@@ -918,32 +1135,38 @@ namespace bs
 			}
 		}
 
-		const UINT32 index = particles.allocParticles(count);
-		ParticleSetData& particleData = particles.getParticles();
-
-		const UINT32 end = index + count;
-		for (UINT32 i = index; i < end; i++)
-			spawn(random, bones, particleData.position[i], particleData.velocity[i]);
-
-		return index;
-	}
-
-	void ParticleEmitterSkinnedMeshShape::spawn(const Random& random, const Matrix4* bones, Vector3& position,
-		Vector3& normal) const
-	{
 		switch(mInfo.type)
 		{
 		case ParticleEmitterMeshType::Vertex: 
-		{
-			UINT32 vertexIdx;
-			mMeshEmissionHelper.getRandomVertex(random, position, normal, vertexIdx);
+			if(mInfo.sequential)
+			{
+				return spawnMultiple(particles, count, [this, bones]
+				(UINT32 idx, Vector3& position, Vector3& normal)
+				{
+					UINT32 vertexIdx;
+					mMeshEmissionHelper.getSequentialVertex(position, normal, vertexIdx);
 
-			Matrix4 blendMatrix = mMeshEmissionHelper.getBlendMatrix(bones, vertexIdx);
-			position = blendMatrix.multiplyAffine(position);
-			normal = blendMatrix.multiplyDirection(normal);
-		}
-			break;
+					Matrix4 blendMatrix = mMeshEmissionHelper.getBlendMatrix(bones, vertexIdx);
+					position = blendMatrix.multiplyAffine(position);
+					normal = blendMatrix.multiplyDirection(normal);
+				});
+			}
+			else
+			{
+				return spawnMultiple(particles, count, [this, &random, bones]
+				(UINT32 idx, Vector3& position, Vector3& normal)
+				{
+					UINT32 vertexIdx;
+					mMeshEmissionHelper.getRandomVertex(random, position, normal, vertexIdx);
+
+					Matrix4 blendMatrix = mMeshEmissionHelper.getBlendMatrix(bones, vertexIdx);
+					position = blendMatrix.multiplyAffine(position);
+					normal = blendMatrix.multiplyDirection(normal);
+				});
+			}
 		case ParticleEmitterMeshType::Edge:
+			return spawnMultiple(particles, count, [this, &random, bones]
+			(UINT32 idx, Vector3& position, Vector3& normal)
 			{
 				std::array<Vector3, 2> edgePositions, edgeNormals;
 				std::array<UINT32, 2> edgeIndices;
@@ -960,10 +1183,11 @@ namespace bs
 				const float rnd = random.getUNorm();
 				position = Math::lerp(rnd, edgePositions[0], edgePositions[1]);
 				normal = Math::lerp(rnd, edgeNormals[0], edgeNormals[1]);
-			}
-			break;
+			});
 		default:
 		case ParticleEmitterMeshType::Triangle:
+			return spawnMultiple(particles, count, [this, &random, bones]
+			(UINT32 idx, Vector3& position, Vector3& normal)
 			{
 				std::array<Vector3, 3> triPositions, triNormals;
 				std::array<UINT32, 3> triIndices;
@@ -986,16 +1210,16 @@ namespace bs
 					position += triPositions[i] * barycenter[i];
 					normal += triNormals[i] * barycenter[i];
 				}
-			}
-			break;
-		}
+			});
+		};
 	}
 
 	void ParticleEmitterSkinnedMeshShape::calcBounds(AABox& shape, AABox& velocity) const
 	{
-		if(mInfo.renderable)
+		if(!mInfo.renderable.empty())
 		{
-			const SPtr<Animation>& anim = mInfo.renderable->getAnimation();
+			const SPtr<Renderable>& renderable = mInfo.renderable.getActor();
+			const SPtr<Animation>& anim = renderable->getAnimation();
 			if(anim)
 			{
 				// No culling, make the box infinite
@@ -1006,7 +1230,7 @@ namespace bs
 			}
 			else
 			{
-				const HMesh& mesh = mInfo.renderable->getMesh();
+				const HMesh& mesh = renderable->getMesh();
 				if (mesh.isLoaded(false))
 					shape = mesh->getProperties().getBounds().getBox();
 				else
@@ -1020,10 +1244,14 @@ namespace bs
 		velocity.setMax(Vector3::ONE);
 	}
 
-	SPtr<ParticleEmitterShape> ParticleEmitterSkinnedMeshShape::create(const PARTICLE_SKINNED_MESH_SHAPE_DESC& desc)
+	SPtr<ParticleEmitterSkinnedMeshShape> ParticleEmitterSkinnedMeshShape::create(const PARTICLE_SKINNED_MESH_SHAPE_DESC& desc)
 	{
-		ParticleEmitterSkinnedMeshShape* output = bs_new<ParticleEmitterSkinnedMeshShape>(desc);
-		return bs_shared_ptr<ParticleEmitterShape>(output);
+		return bs_shared_ptr_new<ParticleEmitterSkinnedMeshShape>(desc);
+	}
+
+	SPtr<ParticleEmitterSkinnedMeshShape> ParticleEmitterSkinnedMeshShape::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitterSkinnedMeshShape>();
 	}
 
 	RTTITypeBase* ParticleEmitterSkinnedMeshShape::getRTTIStatic()
@@ -1034,6 +1262,15 @@ namespace bs
 	RTTITypeBase* ParticleEmitterSkinnedMeshShape::getRTTI() const
 	{
 		return getRTTIStatic();
+	} 
+
+	void ParticleEmitter::setEmissionBursts(Vector<ParticleBurst> bursts)
+	{
+		mBursts = std::move(bursts);
+		mBurstAccumulator.resize(mBursts.size());
+
+		for(auto& entry : mBurstAccumulator)
+			entry = 0.0f;
 	}
 
 	void ParticleEmitter::spawn(Random& random, const ParticleSystemState& state, ParticleSet& set) const
@@ -1041,41 +1278,121 @@ namespace bs
 		if(!mShape || !mShape->isValid())
 			return;
 
-		const float t = state.nrmTime;
-		const float rate = mEmissionRate.evaluate(t, random);
+		const float emitterT = state.nrmTimeEnd;
+
+		// Continous emission rate
+		const float rate = mEmissionRate.evaluate(emitterT, random);
 
 		mEmitAccumulator += rate * state.timeStep;
-		auto numToSpawn = (UINT32)mEmitAccumulator;
-		mEmitAccumulator -= (float)numToSpawn;
+		auto numContinous = (UINT32)mEmitAccumulator;
+		mEmitAccumulator -= (float)numContinous;
 
-		const UINT32 numPartices = set.getParticleCount() + numToSpawn;
+		// Bursts
+		UINT32 numBurst = 0;
+		const auto emitBursts = [this, &emitterT, &random](float start, float end)
+		{
+			constexpr float MIN_BURST_INTERVAL = 0.01f;
+
+			UINT32 numBurst = 0;
+			for (UINT32 i = 0; i < (UINT32)mBursts.size(); i++)
+			{
+				const ParticleBurst& burst = mBursts[i];
+
+				const float relT0 = std::max(0.0f, start - burst.time);
+				const float relT1 = end - burst.time;
+				if (relT1 <= 0.0f)
+					continue;
+
+				// Handle initial burst cycle
+				if (relT0 == 0.0f)
+					numBurst += (UINT32)burst.count.evaluate(emitterT, random);
+
+				// Handle remaining cycles
+				const float dt = relT1 - relT0;
+				const float interval = std::max(burst.interval, MIN_BURST_INTERVAL);
+
+				const float emitDuration = dt + mBurstAccumulator[i];
+				const UINT32 emitCycles = Math::floorToPosInt(emitDuration / interval);
+				mBurstAccumulator[i] = emitDuration - emitCycles * interval;
+
+				for (UINT32 j = 0; j < emitCycles; j++)
+					numBurst += (UINT32)burst.count.evaluate(emitterT, random);
+			}
+
+			return numBurst;
+		};
+
+		// Handle loop
+		if(state.timeEnd < state.timeStart)
+		{
+			numBurst += emitBursts(state.timeStart, state.length);
+
+			// Reset accumulator
+			for(auto& entry : mBurstAccumulator)
+				entry = 0.0f;
+
+			numBurst += emitBursts(0.0f, state.timeEnd);
+		}
+		else
+			numBurst += emitBursts(state.timeStart, state.timeEnd);
+
+		const UINT32 startIdx = set.getParticleCount();
+		numContinous = spawn(numContinous, random, state, set, true);
+
+		state.system->preSimulate(state, startIdx, numContinous, true, mEmitAccumulator);
+		state.system->simulate(state, startIdx, numContinous, true, mEmitAccumulator);
+
+		spawn(numBurst, random, state, set, false);
+	}	
+	
+	UINT32 ParticleEmitter::spawn(UINT32 count, Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		bool spacing) const
+	{
+		const float subFrameSpacing = count > 0 ? 1.0f / count : 1.0f;
+
+		const UINT32 numPartices = set.getParticleCount() + count;
 		if(!state.gpuSimulated)
 		{
 			if (numPartices > state.maxParticles)
-				numToSpawn = state.maxParticles - set.getParticleCount();
+				count = state.maxParticles - set.getParticleCount();
 		}
 
-		const UINT32 firstIdx = mShape->spawn(random, set, numToSpawn, state);
-		const UINT32 endIdx = firstIdx + numToSpawn;
+		const UINT32 firstIdx = mShape->_spawn(random, set, count, state);
+		const UINT32 endIdx = firstIdx + count;
 
 		ParticleSetData& particles = set.getParticles();
+		float* emitterT = bs_stack_alloc<float>(sizeof(float) * count);
+
+		if(spacing)
+		{
+			for (UINT32 i = 0; i < count; i++)
+			{
+				const float subFrameOffset = (i + mEmitAccumulator) * subFrameSpacing;
+				emitterT[i] = state.nrmTimeStart + state.timeStep * subFrameOffset;
+			}
+		}
+		else
+		{
+			for (UINT32 i = 0; i < count; i++)
+				emitterT[i] = state.nrmTimeEnd;
+		}
 
 		for(UINT32 i = firstIdx; i < endIdx; i++)
 		{
-			const float lifetime = mInitialLifetime.evaluate(t, random);
+			const float lifetime = mInitialLifetime.evaluate(emitterT[i - firstIdx], random);
 
 			particles.initialLifetime[i] = lifetime;
 			particles.lifetime[i] = lifetime;
 		}
 
 		for(UINT32 i = firstIdx; i < endIdx; i++)
-			particles.velocity[i] *= mInitialSpeed.evaluate(t, random);
+			particles.velocity[i] *= mInitialSpeed.evaluate(emitterT[i - firstIdx], random);
 
 		if(!mUse3DSize)
 		{
 			for (UINT32 i = firstIdx; i < endIdx; i++)
 			{
-				const float size = mInitialSize.evaluate(t, random);
+				const float size = mInitialSize.evaluate(emitterT[i - firstIdx], random);
 
 				// Encode UV flip in size XY as sign
 				const float flipU = random.getUNorm() < mFlipU ? -1.0f : 1.0f;
@@ -1088,7 +1405,7 @@ namespace bs
 		{
 			for (UINT32 i = firstIdx; i < endIdx; i++)
 			{
-				Vector3 size = mInitialSize3D.evaluate(t, random);
+				Vector3 size = mInitialSize3D.evaluate(emitterT[i - firstIdx], random);
 
 				// Encode UV flip in size XY as sign
 				size.x *= random.getUNorm() < mFlipU ? -1.0f : 1.0f;
@@ -1108,7 +1425,7 @@ namespace bs
 		{
 			for (UINT32 i = firstIdx; i < endIdx; i++)
 			{
-				const float rotation = mInitialRotation.evaluate(t, random);
+				const float rotation = mInitialRotation.evaluate(emitterT[i - firstIdx], random);
 				particles.rotation[i] = Vector3(rotation, 0.0f, 0.0f);
 			}
 		}
@@ -1116,13 +1433,13 @@ namespace bs
 		{
 			for (UINT32 i = firstIdx; i < endIdx; i++)
 			{
-				const Vector3 rotation = mInitialRotation3D.evaluate(t, random);
+				const Vector3 rotation = mInitialRotation3D.evaluate(emitterT[i - firstIdx], random);
 				particles.rotation[i] = rotation;
 			}
 		}
 
 		for(UINT32 i = firstIdx; i < endIdx; i++)
-			particles.color[i] = mInitialColor.evaluate(t, random);
+			particles.color[i] = mInitialColor.evaluate(emitterT[i - firstIdx], random);
 
 		for(UINT32 i = firstIdx; i < endIdx; i++)
 			particles.seed[i] = random.get();
@@ -1139,8 +1456,17 @@ namespace bs
 			for (UINT32 i = firstIdx; i < endIdx; i++)
 				particles.velocity[i] = state.localToWorld.multiplyDirection(particles.velocity[i]);
 		}
+
+		bs_stack_free(emitterT);
+
+		return count;
 	}	
 	
+	SPtr<ParticleEmitter> ParticleEmitter::create()
+	{
+		return bs_shared_ptr_new<ParticleEmitter>();
+	}
+
 	RTTITypeBase* ParticleEmitter::getRTTIStatic()
 	{
 		return ParticleEmitterRTTI::instance();

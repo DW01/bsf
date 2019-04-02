@@ -1,4 +1,5 @@
 ﻿{
+    "AnimatedSprites": null,
     "Cursors": [
         {
             "Path": "Arrow.psd",
@@ -41,10 +42,29 @@
             "UUID": "7ad1fc24-5e08-489c-8cd4-02b4e452a412"
         }
     ],
+    "Fonts": [
+        {
+            "Antialiasing": false,
+            "Name": "arial.ttf",
+            "Path": "arial.ttf",
+            "Sizes": [
+                8
+            ],
+            "UUID": "c9f08cab-f9c9-47c4-96e0-1066a8d4455b"
+        }
+    ],
+    "GUISkin": {
+        "Path": "GUISkin.json",
+        "UUID": "c1bf9a9d-4355-4841-a538-25e67730ec4b"
+    },
     "Icons": [
         {
             "Path": "bsfIcon.png",
             "UUID": "fc1a1c8f-4242-c2e9-728b-42429f5b7cd2"
+        },
+        {
+            "Path": "BansheeIcon.png",
+            "UUID": "d32ab6ab-4bd5-4f54-0b9f-4bd55f371ce3"
         }
     ],
     "Includes": [
@@ -71,10 +91,6 @@
         {
             "Path": "ReflectionCubemapCommon.bslinc",
             "UUID": "eef92578-b8ed-45d6-8eed-d85697ade3c5"
-        },
-        {
-            "Path": "SpriteImage.bslinc",
-            "UUID": "0114b1da-9899-45ca-8486-a9791482d3c5"
         },
         {
             "Path": "VolumeRenderBase.bslinc",
@@ -179,6 +195,22 @@
         {
             "Path": "GpuParticleTileVertex.bslinc",
             "UUID": "a6943ff6-4123-4bbc-d397-4123245a6cae"
+        },
+        {
+            "Path": "VertexCommon.bslinc",
+            "UUID": "7f6cf98d-48da-efc9-c1a2-48da18703e92"
+        },
+        {
+            "Path": "DepthInput.bslinc",
+            "UUID": "06b077c9-432d-43b1-8884-432d5ddfe878"
+        },
+        {
+            "Path": "MaskInput.bslinc",
+            "UUID": "e69b8e15-4301-f0fb-11ad-430140d3a7d6"
+        },
+        {
+            "Path": "ShapingCommon.bslinc",
+            "UUID": "3d40728a-454c-0618-cb8d-454c0d8b9d07"
         }
     ],
     "Shaders": [
@@ -233,14 +265,6 @@
         {
             "Path": "Skybox.bsl",
             "UUID": "b1c191fa-0c24-4987-8d3b-72b17511621d"
-        },
-        {
-            "Path": "SpriteImageAlpha.bsl",
-            "UUID": "4c00537f-9d3e-4cb7-8a30-b4ee9f278006"
-        },
-        {
-            "Path": "SpriteImageNoAlpha.bsl",
-            "UUID": "2db979ff-386a-492e-8f6d-675ed5133e31"
         },
         {
             "Path": "SpriteLine.bsl",
@@ -485,6 +509,26 @@
         {
             "Path": "RadixSortClear.bsl",
             "UUID": "26e580ba-4b0c-5872-dcb6-4b0c47c5eda8"
+        },
+        {
+            "Path": "ParticlesLit.bsl",
+            "UUID": "dca4932c-472b-bf22-ecbe-472bb581143d"
+        },
+        {
+            "Path": "ParticlesLitOpaque.bsl",
+            "UUID": "520813e4-4e15-b067-72ae-4e15d603d443"
+        },
+        {
+            "Path": "PPBloomClip.bsl",
+            "UUID": "0a832da9-47df-8c7d-268a-47dfcd36cc48"
+        },
+        {
+            "Path": "Decal.bsl",
+            "UUID": "8d448d61-463b-84fe-d0a1-463b897090a3"
+        },
+        {
+            "Path": "SpriteImage.bsl",
+            "UUID": "430d9f0c-491b-d499-a994-491bfb3a1907"
         }
     ],
     "Skin": [
@@ -853,5 +897,8 @@
             "SpriteUUID": "6ff54b8e-4f01-bc8c-fd8d-4f01a316065b",
             "TextureUUID": "138dc6d2-497e-8376-bc87-497e0cafc1d1"
         }
-    ]
+    ],
+    "SplashScreen": null,
+    "SpriteIcons": null,
+    "SpriteIcons3D": null
 }

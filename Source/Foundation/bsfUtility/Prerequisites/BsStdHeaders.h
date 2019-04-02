@@ -172,10 +172,6 @@ namespace bs
 	template <typename K, typename V, typename H = HashType<K>, typename C = std::equal_to<K>, typename A = StdAlloc<std::pair<const K, V>>>
 	using UnorderedMultimap = std::unordered_multimap<K, V, H, C, A>;
 
-	/** Equivalent to Vector, except it avoids any dynamic allocations until the number of elements exceeds @p Count. */
-	template <typename T, int Count, typename Alloc = StdAlloc<T>>
-	using SmallVector = std::vector<T, Alloc>; // TODO: Currently equivalent to Vector, need to implement the allocator
-
 	/** @} */
 
 	/** @addtogroup Memory
@@ -188,6 +184,18 @@ namespace bs
 	 */
 	template <typename T>
 	using SPtr = std::shared_ptr<T>;
+
+	/** Smart pointer that does not support usage across multiple threads. Cheaper to use than SPtr. @see SPtr. */
+	template <typename T>
+	using USPtr = std::shared_ptr<T>; // Note: Currently not implemented, just using normal shared_ptr
+
+	/** Holds a reference to an object whose lifetime is managed by a SPtr, but doesn't increment the reference count. */
+	template <typename T>
+	using WeakSPtr = std::weak_ptr<T>;
+
+	/** Holds a reference to an object whose lifetime is managed by a SPtr, but doesn't increment the reference count. */
+	template <typename T>
+	using WeakUSPtr = std::weak_ptr<T>;
 
 	/**
 	 * Smart pointer that retains shared ownership of an project through a pointer. Reference to the object must be unique.

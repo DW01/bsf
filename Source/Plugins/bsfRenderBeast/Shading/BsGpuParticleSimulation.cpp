@@ -99,11 +99,11 @@ namespace bs { namespace ct
 		RMAT_DEF_CUSTOMIZED("GpuParticleSimulate.bsl");
 
 		/** Helper method used for initializing variations of this material. */
-		template<bool DEPTH_COLLISIONS>
+		template<UINT32 DEPTH_COLLISIONS>
 		static const ShaderVariation& getVariation()
 		{
 			static ShaderVariation variation = ShaderVariation(
-			Vector<ShaderVariation::Param>{
+			{
 				ShaderVariation::Param("DEPTH_COLLISIONS", DEPTH_COLLISIONS)
 			});
 
@@ -121,16 +121,18 @@ namespace bs { namespace ct
 		 *
 		 * @param[in]	tileUVs					Sets the UV offsets of individual tiles for a particular particle system 
 		 *										that's being rendered.
+		 * @param[in]	perObjectParams			General purpose particle system parameters.
 		 * @param[in]	vectorFieldParams		Information about the currently bound vector field, if any.
 		 * @param[in]	vectorFieldTexture		3D texture representing the vector field, or null if none.
 		 * @param[in]	depthCollisionParams	Parameter buffer for controlling depth buffer collisions, if enabled.
 		 * 
 		 */
-		void bindPerCallParams(const SPtr<GpuBuffer>& tileUVs, const SPtr<GpuParamBlockBuffer>& vectorFieldParams,
-			const SPtr<Texture>& vectorFieldTexture, const SPtr<GpuParamBlockBuffer>& depthCollisionParams);
+		void bindPerCallParams(const SPtr<GpuBuffer>& tileUVs, const SPtr<GpuParamBlockBuffer>& perObjectParams, 
+			const SPtr<GpuParamBlockBuffer>& vectorFieldParams, const SPtr<Texture>& vectorFieldTexture, 
+			const SPtr<GpuParamBlockBuffer>& depthCollisionParams);
 
 		/** Returns the material variation matching the provided parameters. */
-		static GpuParticleSimulateMat* getVariation(bool depthCollisions);
+		static GpuParticleSimulateMat* getVariation(bool depthCollisions, bool localSpace);
 	private:
 		GpuParamBuffer mTileUVParam;
 		GpuParamTexture mPosAndTimeTexParam;
@@ -141,6 +143,7 @@ namespace bs { namespace ct
 		GpuParamTexture mNormalsTexParam;
 		GpuParamBinding mParamsBinding;
 		GpuParamBinding mPerCameraBinding;
+		GpuParamBinding mPerObjectBinding;
 
 		GpuParamBinding mVectorFieldBinding;
 		GpuParamTexture mVectorFieldTexParam;
@@ -449,10 +452,22 @@ namespace bs { namespace ct
 		spriteIndices = IndexBuffer::create(spriteIndexBufferDesc);
 
 		auto* const indices = (UINT16*)spriteIndices->lock(GBL_WRITE_ONLY_DISCARD);
+
+		const Conventions& rapiConventions = gCaps().conventions;
 		for (UINT32 i = 0; i < PARTICLES_PER_INSTANCE; i++)
 		{
-			indices[i * 6 + 0] = i * 4 + 0; indices[i * 6 + 1] = i * 4 + 1; indices[i * 6 + 2] = i * 4 + 2;
-			indices[i * 6 + 3] = i * 4 + 0; indices[i * 6 + 4] = i * 4 + 2; indices[i * 6 + 5] = i * 4 + 3;
+			// If UV is flipped, then our tile will be upside down so we need to change index order so it doesn't
+			// get culled.
+			if (rapiConventions.uvYAxis == Conventions::Axis::Up)
+			{
+				indices[i * 6 + 0] = i * 4 + 2; indices[i * 6 + 1] = i * 4 + 1; indices[i * 6 + 2] = i * 4 + 0;
+				indices[i * 6 + 3] = i * 4 + 3; indices[i * 6 + 4] = i * 4 + 2; indices[i * 6 + 5] = i * 4 + 0;
+			}
+			else
+			{
+				indices[i * 6 + 0] = i * 4 + 0; indices[i * 6 + 1] = i * 4 + 1; indices[i * 6 + 2] = i * 4 + 2;
+				indices[i * 6 + 3] = i * 4 + 0; indices[i * 6 + 4] = i * 4 + 2; indices[i * 6 + 5] = i * 4 + 3;
+			}
 		}
 
 		spriteIndices->unlock();
@@ -754,14 +769,16 @@ namespace bs { namespace ct
 		rapi.setIndexBuffer(m->helperBuffers.spriteIndices);
 		rapi.setDrawOperation(DOT_TRIANGLE_LIST);
 
-		enum class SimType { Normal, DepthCollisions, Count };
+		enum class SimType { Normal, DepthCollisionsWorld, DepthCollisionsLocal, Count };
 
 		for(UINT32 i = 0; i < (UINT32)SimType::Count; i++)
 		{
 			const SimType type = (SimType)i;
-			const bool simulateDepthCollisions = type == SimType::DepthCollisions;
+			const bool simulateDepthCollisions = type == SimType::DepthCollisionsWorld ||
+				type == SimType::DepthCollisionsLocal;
+			const bool localSpace = type == SimType::DepthCollisionsLocal;
 
-			GpuParticleSimulateMat* simulateMat = GpuParticleSimulateMat::getVariation(simulateDepthCollisions);
+			GpuParticleSimulateMat* simulateMat = GpuParticleSimulateMat::getVariation(simulateDepthCollisions, localSpace);
 			simulateMat->bindGlobal(m->resources, viewParams, gbuffer.depth, gbuffer.normals, m->simulationParams);
 
 			for (auto& entry : m->systems)
@@ -775,6 +792,14 @@ namespace bs { namespace ct
 				if(simSettings.depthCollision.enabled != simulateDepthCollisions)
 					continue;
 
+				if(simulateDepthCollisions)
+				{
+					const ParticleSystemSettings& settings = parentSystem->getSettings();
+					bool isLocal = settings.simulationSpace == ParticleSimulationSpace::Local;
+					if(isLocal != localSpace)
+						continue;
+				}
+
 				const RendererParticles& rendererParticles = sceneInfo.particleSystems[parentSystem->getRendererId()];
 
 				prepareBuffers(entry, rendererParticles);
@@ -783,7 +808,8 @@ namespace bs { namespace ct
 				if (simSettings.vectorField.vectorField)
 					vfTexture = simSettings.vectorField.vectorField->getTexture();
 
-				simulateMat->bindPerCallParams(entry->getTileUVs(), m->vectorFieldParams, vfTexture, m->depthCollisionParams);
+				simulateMat->bindPerCallParams(entry->getTileUVs(), rendererParticles.perObjectParamBuffer, 
+					m->vectorFieldParams, vfTexture, m->depthCollisionParams);
 
 				const UINT32 tileCount = entry->getNumTiles();
 				const UINT32 numInstances = Math::divideAndRoundUp(tileCount, TILES_PER_INSTANCE);
@@ -903,9 +929,12 @@ namespace bs { namespace ct
 		const ParticleDepthCollisionSettings& depthCollisionSettings = simSettings.depthCollision;
 		if(depthCollisionSettings.enabled)
 		{
+			Vector3 scale3D = rendererInfo.particleSystem->getTransform().getScale();
+			float uniformScale = std::max(std::max(scale3D.x, scale3D.y), scale3D.z);
+
 			gGpuParticleDepthCollisionParamsDef.gCollisionRange.set(m->depthCollisionParams, 2.0f);
 			gGpuParticleDepthCollisionParamsDef.gCollisionRadiusScale.set(m->depthCollisionParams, 
-				depthCollisionSettings.radiusScale);
+				depthCollisionSettings.radiusScale * uniformScale);
 			gGpuParticleDepthCollisionParamsDef.gDampening.set(m->depthCollisionParams, 
 				depthCollisionSettings.dampening);
 			gGpuParticleDepthCollisionParamsDef.gRestitution.set(m->depthCollisionParams, 
@@ -1009,11 +1038,10 @@ namespace bs { namespace ct
 		// [0, 1] -> [-1, 1] and flip Y
 		Vector4 uvToNdc(2.0f, -2.0f, -1.0f, 1.0f);
 
-		RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
+		const Conventions& rapiConventions = gCaps().conventions;
 
 		// Either of these flips the Y axis, but if they're both true they cancel out
-		if (rapiInfo.isFlagSet(RenderAPIFeatureFlag::UVYAxisUp) ^ rapiInfo.isFlagSet(RenderAPIFeatureFlag::NDCYAxisDown))
+		if ((rapiConventions.uvYAxis == Conventions::Axis::Up) ^ (rapiConventions.ndcYAxis == Conventions::Axis::Down))
 		{
 			uvToNdc.y = -uvToNdc.y;
 			uvToNdc.w = -uvToNdc.w;
@@ -1080,7 +1108,7 @@ namespace bs { namespace ct
 		mParams->getTextureParam(GPT_FRAGMENT_PROGRAM, "gVelocityTex", mVelocityTexParam);
 		mParams->getTextureParam(GPT_FRAGMENT_PROGRAM, "gVectorFieldTex", mVectorFieldTexParam);
 
-		mSupportsDepthCollisions = mVariation.getBool("DEPTH_COLLISIONS");
+		mSupportsDepthCollisions = mVariation.getUInt("DEPTH_COLLISIONS") > 0;
 		if(mSupportsDepthCollisions)
 		{
 			mParams->getParamInfo()->getBinding(
@@ -1088,6 +1116,13 @@ namespace bs { namespace ct
 				GpuPipelineParamInfoBase::ParamType::ParamBlock,
 				"PerCamera",
 				mPerCameraBinding
+			);
+
+			mParams->getParamInfo()->getBinding(
+				GPT_FRAGMENT_PROGRAM,
+				GpuPipelineParamInfoBase::ParamType::ParamBlock,
+				"PerObject",
+				mPerObjectBinding
 			);
 
 			mParams->getParamInfo()->getBinding(
@@ -1135,25 +1170,33 @@ namespace bs { namespace ct
 	}
 
 	void GpuParticleSimulateMat::bindPerCallParams(const SPtr<GpuBuffer>& tileUVs, 
-		const SPtr<GpuParamBlockBuffer>& vectorFieldParams, const SPtr<Texture>& vectorFieldTexture, 
-		const SPtr<GpuParamBlockBuffer>& depthCollisionParams)
+		const SPtr<GpuParamBlockBuffer>& perObjectParams, const SPtr<GpuParamBlockBuffer>& vectorFieldParams, 
+		const SPtr<Texture>& vectorFieldTexture, const SPtr<GpuParamBlockBuffer>& depthCollisionParams)
 	{
 		mTileUVParam.set(tileUVs);
 		mParams->setParamBlockBuffer(mVectorFieldBinding.set, mVectorFieldBinding.slot, vectorFieldParams);
 		mVectorFieldTexParam.set(vectorFieldTexture);
 
 		if(mSupportsDepthCollisions)
+		{
+			mParams->setParamBlockBuffer(mPerObjectBinding.set, mPerObjectBinding.slot, perObjectParams);
 			mParams->setParamBlockBuffer(mDepthCollisionBinding.set, mDepthCollisionBinding.slot, depthCollisionParams);
+		}
 
 		bindParams();
 	}
 
-	GpuParticleSimulateMat* GpuParticleSimulateMat::getVariation(bool depthCollisions)
+	GpuParticleSimulateMat* GpuParticleSimulateMat::getVariation(bool depthCollisions, bool localSpace)
 	{
 		if(depthCollisions)
-			return get(getVariation<true>());
+		{
+			if(localSpace)
+				return get(getVariation<2>());
 
-		return get(getVariation<false>());
+			return get(getVariation<1>());
+		}
+
+		return get(getVariation<0>());
 	}
 
 	GpuParticleBoundsMat::GpuParticleBoundsMat()
@@ -1336,9 +1379,22 @@ namespace bs { namespace ct
 
 		mInjectIndices = IndexBuffer::create(injectIndexBufferDesc);
 
+		const Conventions& rapiConventions = gCaps().conventions;
+
 		auto* const indices = (UINT16*)mInjectIndices->lock(GBL_WRITE_ONLY_DISCARD);
-		indices[0] = 0; indices[1] = 1; indices[2] = 2;
-		indices[3] = 0; indices[4] = 2; indices[5] = 3;
+
+		// If UV is flipped, then our tile will be upside down so we need to change index order so it doesn't
+		// get culled.
+		if (rapiConventions.uvYAxis == Conventions::Axis::Up)
+		{
+			indices[0] = 2; indices[1] = 1; indices[2] = 0;
+			indices[3] = 3; indices[4] = 2; indices[5] = 0;
+		}
+		else
+		{
+			indices[0] = 0; indices[1] = 1; indices[2] = 2;
+			indices[3] = 0; indices[4] = 2; indices[5] = 3;
+		}
 
 		mInjectIndices->unlock();
 

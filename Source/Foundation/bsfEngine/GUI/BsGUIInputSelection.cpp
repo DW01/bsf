@@ -8,10 +8,6 @@
 
 namespace bs
 {
-	GUIInputSelection::GUIInputSelection()
-		:mSelectionStart(0), mSelectionEnd(0), mSelectionAnchor(0), mSelectionDragAnchor(0)
-	{ }
-
 	GUIInputSelection::~GUIInputSelection()
 	{
 		for(auto& sprite : mSprites)
@@ -50,7 +46,7 @@ namespace bs
 			IMAGE_SPRITE_DESC desc;
 			desc.width = mSelectionRects[idx].width;
 			desc.height = mSelectionRects[idx].height;
-			desc.texture = GUIManager::instance().getTextSelectionTexture().getInternalPtr();
+			desc.texture = GUIManager::instance().getTextSelectionTexture();
 
 			sprite->update(desc, (UINT64)widget);
 			idx++;

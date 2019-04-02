@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Prerequisites/BsPrerequisitesUtil.h"
+#include "Math/BsVector2.h"
 
 namespace bs
 {
@@ -16,8 +17,12 @@ namespace bs
 	public:
 		Rect2() = default;
 
-		Rect2(float _x, float _y, float _width, float _height)
-			:x(_x), y(_y), width(_width), height(_height)
+		Rect2(float x, float y, float width, float height)
+			:x(x), y(y), width(width), height(height)
+		{ }
+
+		Rect2(const Vector2& topLeft, const Vector2& size)
+			:x(topLeft.x), y(topLeft.y), width(size.x), height(size.y)
 		{ }
 
 		float x = 0.0f;
@@ -48,6 +53,12 @@ namespace bs
 		 * 			will be larger than needed. Oriented rectangle would provide a much tighter fit.
 		 */
 		void transform(const Matrix4& matrix);
+
+		/** Center of the rectangle. */
+		Vector2 getCenter() const;
+
+		/** Extents of the rectangle (distance from center to one of the corners) */
+		Vector2 getHalfSize() const;
 
 		bool operator== (const Rect2& rhs) const
 		{

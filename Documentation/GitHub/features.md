@@ -27,9 +27,11 @@
 		* Shadows
 			* Percentage closer shadows
 			* Cascaded shadow maps
+		* Deferred decals
 	* Post processing effects
 		* Screen space ambient occlusion (SSAO)
 		* Depth of field
+		* Bloom
 		* Fast approximate anti-aliasing (FXAA)
 	* Extensive material & shader system
 		* Custom high level shading language (BSL)
@@ -93,9 +95,6 @@
 		* Animation sockets for animating in-game objects
 		* Post-processing hooks for IK support
 	* Blend shape animation
-	* Generic property animation
-		* Animate any script property
-		* Built-in animation curve editor
 	* Multi-threaded and GPU accelerated
 * __Input__
 	* Mouse/keyboard/gamepad support
@@ -115,6 +114,36 @@
 		* Scene queries
 		* Collision filtering
 		* Discrete or continuous collision detection
+* __Particles__
+	* Dual system
+		* Multi-threaded CPU simulation
+		* Hardware accelerated GPU simulation
+	* Distribution based properties
+		* Constant
+		* Random range
+		* Curve
+		* Random curve range
+	* In-depth emission rules
+		* Primitive emitters 
+			* Box, Sphere, Cone, Rectangle, Circle, Line
+			* With customizable properties and emission modes
+		* Static mesh emitter
+		* Animated (skinned) mesh emitter
+		* Continous or burst emission
+		* Variety of tweakable initial particle properties
+	* Customizable CPU evolver design
+		* Modify particle properties over their lifetime
+		* Variety of built-in evolvers provided
+		* Extensible design to create your own
+	* Particle collisions
+		* World collisions with physics objects
+		* Plane collisions with user defined planes
+		* Depth buffer based GPU-only collisions
+	* Texture animation
+	* Particle sorting
+	* Billboard or 3D particles
+	* Soft particle rendering
+	* Vector field import and simulation
 * __Scripting__
 	* C# 7.0
 	* Separate high level engine API

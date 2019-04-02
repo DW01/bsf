@@ -3,9 +3,12 @@
 #pragma once
 
 #include "BsCorePrerequisites.h"
+#include "Reflection/BsRTTIType.h"
 
 namespace bs
 {
+	class GameObjectDeserializationState;
+	
 	/** @addtogroup Utility-Core-Internal
 	 *  @{
 	 */
@@ -13,12 +16,10 @@ namespace bs
 	/** Contains information about a resource dependency, including the dependant resource and number of references to it. */
 	struct ResourceDependency
 	{
-		ResourceDependency()
-			:numReferences(0)
-		{ }
+		ResourceDependency() = default;
 
 		HResource resource;
-		UINT32 numReferences;
+		UINT32 numReferences = 0;
 	};
 
 	/** Static class containing various utility methods that do not fit anywhere else. */
@@ -46,8 +47,16 @@ namespace bs
 
 		/** Calculates how deep in the scene object hierarchy is the provided object. Zero means root. */
 		static UINT32 getSceneObjectDepth(const HSceneObject& so);
+	};
 
-	private:
+	/** Provides extra information and maintains state during serialization of various RTTI types in the core. */
+	struct BS_CORE_EXPORT CoreSerializationContext : SerializationContext
+	{
+		SPtr<GameObjectDeserializationState> goState;
+		bool goDeserializationActive = false;
+
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
 	};
 
 	/** @} */

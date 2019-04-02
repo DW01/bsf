@@ -14,17 +14,18 @@
 #include "Serialization/BsMemorySerializer.h"
 #include "FileSystem/BsDataStream.h"
 
-#include <unordered_set>
+namespace bs
+{
 
-/**
- * A macro that represents a block of code that gets used a lot inside encodeInternal. It checks if the buffer has enough
- * space, and if it does it copies the data from the specified location and increments the needed pointers and counters. If
- * there is not enough space the buffer is flushed (hopefully to make some space). If there is still not enough space the
- * entire encoding process ends.
- *
- * @param	dataPtr	Pointer to data which to copy.
- * @param	size   	Size of the data to copy
- */
+	/**
+	 * A macro that represents a block of code that gets used a lot inside encodeInternal. It checks if the buffer has enough
+	 * space, and if it does it copies the data from the specified location and increments the needed pointers and counters. If
+	 * there is not enough space the buffer is flushed (hopefully to make some space). If there is still not enough space the
+	 * entire encoding process ends.
+	 *
+	 * @param	dataPtr	Pointer to data which to copy.
+	 * @param	size   	Size of the data to copy
+	 */
 #define COPY_TO_BUFFER(dataIter, size)									\
 if((*bytesWritten + size) > bufferLength)								\
 {																		\
@@ -38,22 +39,56 @@ memcpy(buffer, dataIter, size);											\
 buffer += size;															\
 *bytesWritten += size;
 
-namespace bs
-{
+/** Reports that @p size bytes were read from the data buffer */
+#define REPORT_READ(size)												\
+{																		\
+	mTotalBytesRead += size;											\
+	if(mReportProgress && (mTotalBytesRead >= mNextProgressReport))		\
+	{																	\
+		UINT32 lastReport = (mTotalBytesRead / REPORT_AFTER_BYTES) * REPORT_AFTER_BYTES;	\
+		mNextProgressReport = lastReport + REPORT_AFTER_BYTES;			\
+																		\
+		mReportProgress(mTotalBytesRead / (float)mTotalBytesToRead);	\
+	}																	\
+}
+/** Reads from the data buffer into the provided output and advances the read position. */
+#define READ_FROM_BUFFER(output, size)									\
+{																		\
+	if(data->read(output, size) != size)								\
+	{																	\
+		BS_EXCEPT(InternalErrorException, "Error decoding data.");		\
+	}																	\
+																		\
+	REPORT_READ(size)													\
+}
+
+/** Skips the next @p size bytes data buffer and advances the read position. */
+#define SKIP_READ(size)													\
+{																		\
+	data->skip(size);													\
+	REPORT_READ(size)													\
+}
+
+/** Moves the current read buffer read position back @p size bytes. */
+#define SEEK_BACK(size)													\
+data->seek(data->tell() - size);										\
+mTotalBytesRead -= size;												\
+
+	constexpr UINT32 BinarySerializer::REPORT_AFTER_BYTES;
+
 	BinarySerializer::BinarySerializer()
 		:mAlloc(&gFrameAlloc())
 	{ }
 
 	void BinarySerializer::encode(IReflectable* object, UINT8* buffer, UINT32 bufferLength, UINT32* bytesWritten, 
-		std::function<UINT8*(UINT8*, UINT32, UINT32&)> flushBufferCallback, bool shallow, 
-		const UnorderedMap<String, UINT64>& params)
+		std::function<UINT8*(UINT8*, UINT32, UINT32&)> flushBufferCallback, bool shallow, SerializationContext* context)
 	{
 		mObjectsToEncode.clear();
 		mObjectAddrToId.clear();
 		mLastUsedObjectId = 1;
 		*bytesWritten = 0;
 		mTotalBytesWritten = 0;
-		mParams = params;
+		mContext = context;
 
 		mAlloc->markFrame();
 
@@ -125,100 +160,91 @@ namespace bs
 	}
 
 	SPtr<IReflectable> BinarySerializer::decode(const SPtr<DataStream>& data, UINT32 dataLength, 
-		const UnorderedMap<String, UINT64>& params)
+		SerializationContext* context, std::function<void(float)> progress)
 	{
-		mParams = params;
+		mContext = context;
+		mReportProgress = nullptr;
+		mTotalBytesToRead = dataLength;
+		mTotalBytesRead = 0;
 
 		if (dataLength == 0)
-			return nullptr;
-
-		SPtr<SerializedObject> intermediateObject = _decodeToIntermediate(data, dataLength);
-		if (intermediateObject == nullptr)
-			return nullptr;
-
-		return _decodeFromIntermediate(intermediateObject);
-	}
-
-	SPtr<IReflectable> BinarySerializer::_decodeFromIntermediate(const SPtr<SerializedObject>& serializedObject)
-	{
-		mAlloc->markFrame();
-		mObjectMap.clear();
-
-		SPtr<IReflectable> output;
-		RTTITypeBase* type = IReflectable::_getRTTIfromTypeId(serializedObject->getRootTypeId());
-		if (type != nullptr)
 		{
-			output = type->newRTTIObject();
-			auto iterNewObj = mObjectMap.insert(std::make_pair(serializedObject, ObjectToDecode(output, serializedObject)));
+			if(mReportProgress)
+				mReportProgress(1.0f);
 
-			iterNewObj.first->second.decodeInProgress = true;
-			decodeEntry(output, serializedObject);
-			iterNewObj.first->second.decodeInProgress = false;
-			iterNewObj.first->second.isDecoded = true;
+			return nullptr;
 		}
 
-		// Go through the remaining objects (should be only ones with weak refs)
-		for (auto iter = mObjectMap.begin(); iter != mObjectMap.end(); ++iter)
+		const size_t start = data->tell();
+		const size_t end = start + dataLength;
+		mDecodeObjectMap.clear();
+
+		// Note: Ideally we can avoid iterating twice over the stream data
+		// Create empty instances of all ptr objects
+		SPtr<IReflectable> rootObject = nullptr;
+		do 
+		{
+			ObjectMetaData objectMetaData;
+			objectMetaData.objectMeta = 0;
+			objectMetaData.typeId = 0;
+
+			if(data->read(&objectMetaData, sizeof(ObjectMetaData)) != sizeof(ObjectMetaData))
+			{
+				BS_EXCEPT(InternalErrorException, "Error decoding data.");
+			}
+
+			data->seek(data->tell() - sizeof(ObjectMetaData));
+
+			UINT32 objectId = 0;
+			UINT32 objectTypeId = 0;
+			bool objectIsBaseClass = false;
+			decodeObjectMetaData(objectMetaData, objectId, objectTypeId, objectIsBaseClass);
+
+			if (objectIsBaseClass)
+			{
+				BS_EXCEPT(InternalErrorException, "Encountered a base-class object while looking for a new object. " \
+					"Base class objects are only supposed to be parts of a larger object.");
+			}
+
+			SPtr<IReflectable> object = IReflectable::createInstanceFromTypeId(objectTypeId);
+			mDecodeObjectMap.insert(std::make_pair(objectId, ObjectToDecode(object, data->tell())));
+
+			if(rootObject == nullptr)
+				rootObject = object;
+
+		} while (decodeEntry(data, end, nullptr));
+
+		assert(mTotalBytesRead == mTotalBytesToRead);
+
+		// Don't set report callback until we actually do the reads
+		mReportProgress = std::move(progress);
+		mTotalBytesRead = 0;
+
+		// Now go through all of the objects and actually decode them
+		for(auto iter = mDecodeObjectMap.begin(); iter != mDecodeObjectMap.end(); ++iter)
 		{
 			ObjectToDecode& objToDecode = iter->second;
 
-			if (objToDecode.isDecoded)
+			if(objToDecode.isDecoded)
 				continue;
 
+			data->seek(objToDecode.offset);
+
 			objToDecode.decodeInProgress = true;
-			decodeEntry(objToDecode.object, objToDecode.serializedObject);
+			decodeEntry(data, end, objToDecode.object);
 			objToDecode.decodeInProgress = false;
 			objToDecode.isDecoded = true;
 		}
 
-		mObjectMap.clear();
-		mAlloc->clear();
+		mDecodeObjectMap.clear();
+		data->seek(end);
 
-		return output;
-	}
+		assert(mTotalBytesRead == mTotalBytesToRead);
 
-	SPtr<SerializedObject> BinarySerializer::_encodeToIntermediate(IReflectable* object, bool shallow)
-	{
-		// TODO: This is a hacky way of generating an intermediate format to save development time and complexity.
-		// It is hacky because it requires a full on encode to binary and then decode into intermediate. It should 
-		// be better to modify encoding process so it outputs the intermediate format directly (similar to how decoding works). 
-		// This also means that once you have an intermediate format you cannot use it to encode to binary. 
+		if(mReportProgress)
+			mReportProgress(1.0f);
 
-		std::function<void*(UINT32)> allocator = &MemoryAllocator<GenAlloc>::allocate;
-
-		MemorySerializer ms;
-		UINT32 dataLength = 0;
-		UINT8* data = ms.encode(object, dataLength, allocator, shallow);
-
-		SPtr<MemoryDataStream> stream = bs_shared_ptr_new<MemoryDataStream>(data, dataLength);
-
-		BinarySerializer bs;
-		SPtr<SerializedObject> obj = bs._decodeToIntermediate(stream, dataLength, true);
-
-		return obj;
-	}
-
-	SPtr<SerializedObject> BinarySerializer::_decodeToIntermediate(const SPtr<DataStream>& data, UINT32 dataLength, bool copyData)
-	{
-		bool streamDataBlock = false;
-		if (!copyData && data->isFile())
-		{
-			copyData = true;
-			streamDataBlock = true;
-		}
-
-		UINT32 bytesRead = 0;
-		mInterimObjectMap.clear();
-
-		SPtr<SerializedObject> rootObj;
-		bool hasMore = decodeEntry(data, dataLength, bytesRead, rootObj, copyData, streamDataBlock);
-		while (hasMore)
-		{
-			SPtr<SerializedObject> dummyObj;
-			hasMore = decodeEntry(data, dataLength, bytesRead, dummyObj, copyData, streamDataBlock);
-		}
-
-		return rootObj;
+		return rootObject;
 	}
 
 	UINT8* BinarySerializer::encodeEntry(IReflectable* object, UINT32 objectId, UINT8* buffer, UINT32& bufferLength, 
@@ -234,7 +260,7 @@ namespace bs
 			while (!rttiInstances.empty())
 			{
 				RTTITypeBase* rttiInstance = rttiInstances.top();
-				rttiInstance->onSerializationEnded(object, mParams);
+				rttiInstance->onSerializationEnded(object, mContext);
 				mAlloc->destruct(rttiInstance);
 
 				rttiInstances.pop();
@@ -247,7 +273,7 @@ namespace bs
 			RTTITypeBase* rttiInstance = rtti->_clone(*mAlloc);
 			rttiInstances.push(rttiInstance);
 
-			rttiInstance->onSerializationStarted(object, mParams);
+			rttiInstance->onSerializationStarted(object, mContext);
 
 			// Encode object ID & type
 			ObjectMetaData objectMetaData = encodeObjectMetaData(objectId, rtti->getRTTIId(), isBaseClass);
@@ -458,19 +484,13 @@ namespace bs
 		return buffer;
 	}
 
-	bool BinarySerializer::decodeEntry(const SPtr<DataStream>& data, UINT32 dataLength, UINT32& bytesRead,
-		SPtr<SerializedObject>& output, bool copyData, bool streamDataBlock)
+	bool BinarySerializer::decodeEntry(const SPtr<DataStream>& data, size_t dataEnd, const SPtr<IReflectable>& output)
 	{
 		ObjectMetaData objectMetaData;
 		objectMetaData.objectMeta = 0;
 		objectMetaData.typeId = 0;
 
-		if(data->read(&objectMetaData, sizeof(ObjectMetaData)) != sizeof(ObjectMetaData))
-		{
-			BS_EXCEPT(InternalErrorException, "Error decoding data.");
-		}
-
-		bytesRead += sizeof(ObjectMetaData);
+		READ_FROM_BUFFER(&objectMetaData, sizeof(ObjectMetaData))
 
 		UINT32 objectId = 0;
 		UINT32 objectTypeId = 0;
@@ -483,38 +503,49 @@ namespace bs
 				"Base class objects are only supposed to be parts of a larger object.");
 		}
 
-		RTTITypeBase* rtti = IReflectable::_getRTTIfromTypeId(objectTypeId);
-		SerializedSubObject* serializedSubObject = nullptr;
-		
-		if (rtti != nullptr)
+		RTTITypeBase* rtti = nullptr;
+		if(output)
+			rtti = output->getRTTI();
+
+		FrameVector<RTTITypeBase*> rttiInstances;
+
+		auto finalizeObject = [&rttiInstances, this](IReflectable* object)
 		{
-			if (objectId > 0)
+			// Note: It would make sense to finish deserializing derived classes before base classes, but some code
+			// depends on the old functionality, so we'll keep it this way
+			for (auto iter = rttiInstances.rbegin(); iter != rttiInstances.rend(); ++iter)
 			{
-				auto iterFind = mInterimObjectMap.find(objectId);
-				if (iterFind == mInterimObjectMap.end())
-				{
-					output = bs_shared_ptr_new<SerializedObject>();
-					mInterimObjectMap.insert(std::make_pair(objectId, output));
-				}
-				else
-					output = iterFind->second;
+				RTTITypeBase* curRTTI = *iter;
+
+				curRTTI->onDeserializationEnded(object, mContext);
+				mAlloc->destruct(curRTTI);
 			}
-			else // Not a reflectable ptr referenced object
-				output = bs_shared_ptr_new<SerializedObject>();
 
-			output->subObjects.push_back(SerializedSubObject());
-			serializedSubObject = &output->subObjects.back();
+			rttiInstances.clear();
+		};
 
-			serializedSubObject->typeId = objectTypeId;
+		RTTITypeBase* curRTTI = rtti;
+		while (curRTTI)
+		{
+			RTTITypeBase* rttiInstance = curRTTI->_clone(*mAlloc);
+			rttiInstances.push_back(rttiInstance);
+
+			curRTTI = curRTTI->getBaseClass();
 		}
 
-		while (bytesRead < dataLength)
+		// Iterate in reverse to notify base classes before derived classes
+		for(auto iter = rttiInstances.rbegin(); iter != rttiInstances.rend(); ++iter)
+			(*iter)->onDeserializationStarted(output.get(), mContext);
+
+		RTTITypeBase* rttiInstance = nullptr;
+		UINT32 rttiInstanceIdx = 0;
+		if(!rttiInstances.empty())
+			rttiInstance = rttiInstances[0];
+
+		while (data->tell() < dataEnd)
 		{
 			int metaData = -1;
-			if(data->read(&metaData, META_SIZE) != META_SIZE)
-			{
-				BS_EXCEPT(InternalErrorException, "Error decoding data.");
-			}
+			READ_FROM_BUFFER(&metaData, META_SIZE)
 
 			if (isObjectMetaData(metaData)) // We've reached a new object or a base class of the current one
 			{
@@ -522,11 +553,8 @@ namespace bs
 				objMetaData.objectMeta = 0;
 				objMetaData.typeId = 0;
 
-				data->seek(data->tell() - META_SIZE);
-				if (data->read(&objMetaData, sizeof(ObjectMetaData)) != sizeof(ObjectMetaData))
-				{
-					BS_EXCEPT(InternalErrorException, "Error decoding data.");
-				}
+				SEEK_BACK(META_SIZE)
+				READ_FROM_BUFFER(&objMetaData, sizeof(ObjectMetaData))
 
 				UINT32 objId = 0;
 				UINT32 objTypeId = 0;
@@ -541,30 +569,27 @@ namespace bs
 
 					// Saved and current base classes don't match, so just skip over all that data
 					if (rtti == nullptr || rtti->getRTTIId() != objTypeId)
-					{
 						rtti = nullptr;
-					}
 
-					if (rtti != nullptr)
+					rttiInstance = nullptr;
+
+					if (rtti)
 					{
-						output->subObjects.push_back(SerializedSubObject());
-						serializedSubObject = &output->subObjects.back();
-
-						serializedSubObject->typeId = objTypeId;
+						rttiInstance = rttiInstances[rttiInstanceIdx + 1];
+						rttiInstanceIdx++;
 					}
 
-					bytesRead += sizeof(ObjectMetaData);
 					continue;
 				}
 				else
 				{
 					// Found new object, we're done
-					data->seek(data->tell() - sizeof(ObjectMetaData));
+					SEEK_BACK(sizeof(ObjectMetaData))
+
+					finalizeObject(output.get());
 					return true;
 				}
 			}
-
-			bytesRead += META_SIZE;
 
 			bool isArray;
 			SerializableFieldType fieldType;
@@ -579,6 +604,7 @@ namespace bs
 				// We've processed the last field in this object, so return. Although we return false we don't actually know
 				// if there is an object following this one. However it doesn't matter since terminator fields are only used 
 				// for embedded objects that are all processed within this method so we can compensate.
+				finalizeObject(output.get());
 				return false;
 			}
 
@@ -609,28 +635,13 @@ namespace bs
 				}
 			}
 
-			SPtr<SerializedInstance> serializedEntry;
-			bool hasModification = false;
-
 			int arrayNumElems = 1;
 			if (isArray)
 			{
-				if(data->read(&arrayNumElems, NUM_ELEM_FIELD_SIZE) != NUM_ELEM_FIELD_SIZE)
-				{
-					BS_EXCEPT(InternalErrorException, "Error decoding data.");
-				}
+				READ_FROM_BUFFER(&arrayNumElems, NUM_ELEM_FIELD_SIZE)
 
-				bytesRead += NUM_ELEM_FIELD_SIZE;
-
-				SPtr<SerializedArray> serializedArray;
-				if (curGenericField != nullptr)
-				{
-					serializedArray = bs_shared_ptr_new<SerializedArray>();
-					serializedArray->numElements = arrayNumElems;
-
-					serializedEntry = serializedArray;
-					hasModification = true;
-				}
+				if(curGenericField != nullptr)
+					curGenericField->setArraySize(rttiInstance, output.get(), arrayNumElems);
 
 				switch (fieldType)
 				{
@@ -641,34 +652,53 @@ namespace bs
 					for (int i = 0; i < arrayNumElems; i++)
 					{
 						int childObjectId = 0;
-						if(data->read(&childObjectId, COMPLEX_TYPE_FIELD_SIZE) != COMPLEX_TYPE_FIELD_SIZE)
-						{
-							BS_EXCEPT(InternalErrorException, "Error decoding data.");
-						}
-
-						bytesRead += COMPLEX_TYPE_FIELD_SIZE;
+						READ_FROM_BUFFER(&childObjectId, COMPLEX_TYPE_FIELD_SIZE)
 
 						if (curField != nullptr)
 						{
-							SPtr<SerializedObject> serializedArrayEntry = nullptr;
-							
-							if (childObjectId > 0)
+							auto findObj = mDecodeObjectMap.find(childObjectId);
+
+							if(findObj == mDecodeObjectMap.end())
 							{
-								auto findObj = mInterimObjectMap.find(childObjectId);
-								if (findObj == mInterimObjectMap.end())
+								if(childObjectId != 0)
 								{
-									serializedArrayEntry = bs_shared_ptr_new<SerializedObject>();
-									mInterimObjectMap.insert(std::make_pair(childObjectId, serializedArrayEntry));
+									LOGWRN("When deserializing, object ID: " + toString(childObjectId) + 
+										" was found but no such object was contained in the file.");
 								}
-								else
-									serializedArrayEntry = findObj->second;
+
+								curField->setArrayValue(rttiInstance, output.get(), i, nullptr);
 							}
+							else
+							{
+								ObjectToDecode& objToDecode = findObj->second;
 
-							SerializedArrayEntry arrayEntry;
-							arrayEntry.serialized = serializedArrayEntry;
-							arrayEntry.index = i;
+								const bool needsDecoding = (curField->getFlags() & RTTI_Flag_WeakRef) == 0 && !objToDecode.isDecoded;
+								if (needsDecoding)
+								{
+									if (objToDecode.decodeInProgress)
+									{
+										LOGWRN("Detected a circular reference when decoding. Referenced object's fields " \
+											"will be resolved in an undefined order (i.e. one of the objects will not " \
+											"be fully deserialized when assigned to its field). Use RTTI_Flag_WeakRef to " \
+											"get rid of this warning and tell the system which of the objects is allowed " \
+											"to be deserialized after it is assigned to its field.");
+									}
+									else
+									{
+										objToDecode.decodeInProgress = true;
 
-							serializedArray->entries[i] = arrayEntry;
+										const size_t curOffset = data->tell();
+										data->seek(objToDecode.offset);
+										decodeEntry(data, dataEnd, objToDecode.object);
+										data->seek(curOffset);
+
+										objToDecode.decodeInProgress = false;
+										objToDecode.isDecoded = true;
+									}
+								}
+
+								curField->setArrayValue(rttiInstance, output.get(), i, objToDecode.object);
+							}
 						}
 					}
 
@@ -680,16 +710,16 @@ namespace bs
 
 					for (int i = 0; i < arrayNumElems; i++)
 					{
-						SPtr<SerializedObject> serializedArrayEntry;
-						decodeEntry(data, dataLength, bytesRead, serializedArrayEntry, copyData, streamDataBlock);
+						SPtr<IReflectable> childObj;
+						if(curField)
+							childObj = curField->newObject();
+
+						decodeEntry(data, dataEnd, childObj);
 
 						if (curField != nullptr)
 						{
-							SerializedArrayEntry arrayEntry;
-							arrayEntry.serialized = serializedArrayEntry;
-							arrayEntry.index = i;
-
-							serializedArray->entries[i] = arrayEntry;
+							// Note: Would be nice to avoid this copy by value and decode directly into the field
+							curField->setArrayValue(rttiInstance, output.get(), i, *childObj);
 						}
 					}
 					break;
@@ -709,35 +739,17 @@ namespace bs
 
 						if (curField != nullptr)
 						{
-							SPtr<SerializedField> serializedField = bs_shared_ptr_new<SerializedField>();
+							// Note: Two data copies that can potentially be avoided:
+							//  - Copy from stream into a temporary buffer (use stream directly for decoding)
+							//  - Internally the field will do a value copy of the decoded object (ideally we decode directly into the destination)
+							void* fieldValue = bs_stack_alloc(typeSize);
+							READ_FROM_BUFFER(fieldValue, typeSize)
 
-							if (copyData)
-							{
-								serializedField->value = (UINT8*)bs_alloc(typeSize);
-								data->read(serializedField->value, typeSize);
-
-								serializedField->ownsMemory = true;
-							}
-							else // Guaranteed not to be a file stream, as we check earlier
-							{
-								SPtr<MemoryDataStream> memStream = std::static_pointer_cast<MemoryDataStream>(data);
-								serializedField->value = memStream->getCurrentPtr();
-
-								data->skip(typeSize);
-							}
-
-							serializedField->size = typeSize;
-
-							SerializedArrayEntry arrayEntry;
-							arrayEntry.serialized = serializedField;
-							arrayEntry.index = i;
-
-							serializedArray->entries[i] = arrayEntry;
+							curField->arrayElemFromBuffer(rttiInstance, output.get(), i, fieldValue);
+							bs_stack_free(fieldValue);
 						}
 						else
-							data->skip(typeSize);
-
-						bytesRead += typeSize;
+							SKIP_READ(typeSize);
 					}
 					break;
 				}
@@ -756,31 +768,53 @@ namespace bs
 					RTTIReflectablePtrFieldBase* curField = static_cast<RTTIReflectablePtrFieldBase*>(curGenericField);
 
 					int childObjectId = 0;
-					if(data->read(&childObjectId, COMPLEX_TYPE_FIELD_SIZE) != COMPLEX_TYPE_FIELD_SIZE)
-					{
-						BS_EXCEPT(InternalErrorException, "Error decoding data.");
-					}
-
-					bytesRead += COMPLEX_TYPE_FIELD_SIZE;
+					READ_FROM_BUFFER(&childObjectId, COMPLEX_TYPE_FIELD_SIZE)
 
 					if (curField != nullptr)
 					{
-						SPtr<SerializedObject> serializedField = nullptr;
+						auto findObj = mDecodeObjectMap.find(childObjectId);
 
-						if (childObjectId > 0)
+						if(findObj == mDecodeObjectMap.end())
 						{
-							auto findObj = mInterimObjectMap.find(childObjectId);
-							if (findObj == mInterimObjectMap.end())
+							if(childObjectId != 0)
 							{
-								serializedField = bs_shared_ptr_new<SerializedObject>();
-								mInterimObjectMap.insert(std::make_pair(childObjectId, serializedField));
+								LOGWRN("When deserializing, object ID: " + toString(childObjectId) + 
+									" was found but no such object was contained in the file.");
 							}
-							else
-								serializedField = findObj->second;
-						}
 
-						serializedEntry = serializedField;
-						hasModification = true;
+							curField->setValue(rttiInstance, output.get(), nullptr);
+						}
+						else
+						{
+							ObjectToDecode& objToDecode = findObj->second;
+
+							const bool needsDecoding = (curField->getFlags() & RTTI_Flag_WeakRef) == 0 && !objToDecode.isDecoded;
+							if (needsDecoding)
+							{
+								if (objToDecode.decodeInProgress)
+								{
+									LOGWRN("Detected a circular reference when decoding. Referenced object's fields " \
+										"will be resolved in an undefined order (i.e. one of the objects will not " \
+										"be fully deserialized when assigned to its field). Use RTTI_Flag_WeakRef to " \
+										"get rid of this warning and tell the system which of the objects is allowed " \
+										"to be deserialized after it is assigned to its field.");
+								}
+								else
+								{
+									objToDecode.decodeInProgress = true;
+
+									const size_t curOffset = data->tell();
+									data->seek(objToDecode.offset);
+									decodeEntry(data, dataEnd, objToDecode.object);
+									data->seek(curOffset);
+
+									objToDecode.decodeInProgress = false;
+									objToDecode.isDecoded = true;
+								}
+							}
+
+							curField->setValue(rttiInstance, output.get(), objToDecode.object);
+						}
 					}
 
 					break;
@@ -788,13 +822,18 @@ namespace bs
 				case SerializableFT_Reflectable:
 				{
 					RTTIReflectableFieldBase* curField = static_cast<RTTIReflectableFieldBase*>(curGenericField);
-					SPtr<SerializedObject> serializedChildObj;
-					decodeEntry(data, dataLength, bytesRead, serializedChildObj, copyData, streamDataBlock);
+
+					// Note: Ideally we can skip decoding the entry if the field no longer exists
+					SPtr<IReflectable> childObj;
+					if (curField)
+						childObj = curField->newObject();
+
+					decodeEntry(data, dataEnd, childObj);
 
 					if (curField != nullptr)
 					{
-						serializedEntry = serializedChildObj;
-						hasModification = true;
+						// Note: Would be nice to avoid this copy by value and decode directly into the field
+						curField->setValue(rttiInstance, output.get(), *childObj);
 					}
 
 					break;
@@ -812,30 +851,18 @@ namespace bs
 
 					if (curField != nullptr)
 					{
-						SPtr<SerializedField> serializedField = bs_shared_ptr_new<SerializedField>();
-						if (copyData)
-						{
-							serializedField->value = (UINT8*)bs_alloc(typeSize);
-							data->read(serializedField->value, typeSize);
+						// Note: Two data copies that can potentially be avoided:
+						//  - Copy from stream into a temporary buffer (use stream directly for decoding)
+						//  - Internally the field will do a value copy of the decoded object (ideally we decode directly into the destination)
+						void* fieldValue = bs_stack_alloc(typeSize);
+						READ_FROM_BUFFER(fieldValue, typeSize)
 
-							serializedField->ownsMemory = true;
-						}
-						else // Guaranteed not to be a file stream, as we check earlier
-						{
-							SPtr<MemoryDataStream> memStream = std::static_pointer_cast<MemoryDataStream>(data);
-							serializedField->value = memStream->getCurrentPtr();
-
-							data->skip(typeSize);
-						}
-
-						serializedField->size = typeSize;
-						serializedEntry = serializedField;
-						hasModification = true;
+						curField->fromBuffer(rttiInstance, output.get(), fieldValue);
+						bs_stack_free(fieldValue);
 					}
 					else
-						data->skip(typeSize);
+						SKIP_READ(typeSize);
 
-					bytesRead += typeSize;
 					break;
 				}
 				case SerializableFT_DataBlock:
@@ -844,43 +871,31 @@ namespace bs
 
 					// Data block size
 					UINT32 dataBlockSize = 0;
-					if(data->read(&dataBlockSize, DATA_BLOCK_TYPE_FIELD_SIZE) != DATA_BLOCK_TYPE_FIELD_SIZE)
-					{
-						BS_EXCEPT(InternalErrorException, "Error decoding data.");
-					}
-
-					bytesRead += DATA_BLOCK_TYPE_FIELD_SIZE;
+					READ_FROM_BUFFER(&dataBlockSize, DATA_BLOCK_TYPE_FIELD_SIZE)
 
 					// Data block data
 					if (curField != nullptr)
 					{
-						SPtr<SerializedDataBlock> serializedDataBlock = bs_shared_ptr_new<SerializedDataBlock>();
-
-						if (streamDataBlock || !copyData)
+						if (data->isFile()) // Allow streaming
 						{
-							serializedDataBlock->stream = data;
-							serializedDataBlock->offset = (UINT32)data->tell();
+							const size_t dataBlockOffset = data->tell();
+							curField->setValue(rttiInstance, output.get(), data, dataBlockSize);
+							REPORT_READ(dataBlockSize);
 
-							data->skip(dataBlockSize);
+							// Seek past the data (use original offset in case the field read from the stream)
+							data->seek(dataBlockOffset + dataBlockSize);
 						}
 						else
 						{
 							UINT8* dataBlockBuffer = (UINT8*)bs_alloc(dataBlockSize);
-							data->read(dataBlockBuffer, dataBlockSize);
+							READ_FROM_BUFFER(dataBlockBuffer, dataBlockSize)
 
 							SPtr<DataStream> stream = bs_shared_ptr_new<MemoryDataStream>(dataBlockBuffer, dataBlockSize);
-							serializedDataBlock->stream = stream;
-							serializedDataBlock->offset = 0;
+							curField->setValue(rttiInstance, output.get(), stream, dataBlockSize);
 						}
-
-						serializedDataBlock->size = dataBlockSize;
-						serializedEntry = serializedDataBlock;
-						hasModification = true;
 					}
 					else
-						data->skip(dataBlockSize);
-
-					bytesRead += dataBlockSize;
+						SKIP_READ(dataBlockSize)
 
 					break;
 				}
@@ -890,261 +905,31 @@ namespace bs
 						", Is array: " + toString(isArray));
 				}
 			}
-
-			if (hasModification)
-			{
-				SerializedEntry entry;
-				entry.fieldId = curGenericField->mUniqueId;
-				entry.serialized = serializedEntry;
-
-				serializedSubObject->entries.insert(std::make_pair(curGenericField->mUniqueId, entry));
-			}
 		}
 
+		finalizeObject(output.get());
 		return false;
 	}
 
-	void BinarySerializer::decodeEntry(const SPtr<IReflectable>& object, const SPtr<SerializedObject>& serializableObject)
+	UINT8* BinarySerializer::complexTypeToBuffer(IReflectable* object, UINT8* buffer, UINT32& bufferLength, 
+		UINT32* bytesWritten, std::function<UINT8*(UINT8*, UINT32, UINT32&)> flushBufferCallback, bool shallow)
 	{
-		UINT32 numSubObjects = (UINT32)serializableObject->subObjects.size();
-		if (numSubObjects == 0)
-			return;
-
-		FrameStack<RTTITypeBase*> rttiInstances;
-		for (INT32 subObjectIdx = numSubObjects - 1; subObjectIdx >= 0; subObjectIdx--)
+		if (object != nullptr)
 		{
-			const SerializedSubObject& subObject = serializableObject->subObjects[subObjectIdx];
+			buffer = encodeEntry(object, 0, buffer, bufferLength, bytesWritten, flushBufferCallback, shallow);
 
-			RTTITypeBase* rtti = IReflectable::_getRTTIfromTypeId(subObject.typeId);
-			if (rtti == nullptr)
-				continue;
-
-			RTTITypeBase* rttiInstance = rtti->_clone(*mAlloc);
-			rttiInstance->onDeserializationStarted(object.get(), mParams);
-			rttiInstances.push(rttiInstance);
-
-			UINT32 numFields = rtti->getNumFields();
-			for (UINT32 fieldIdx = 0; fieldIdx < numFields; fieldIdx++)
-			{
-				RTTIField* curGenericField = rtti->getField(fieldIdx);
-
-				auto iterFindFieldData = subObject.entries.find(curGenericField->mUniqueId);
-				if (iterFindFieldData == subObject.entries.end())
-					continue;
-
-				SPtr<SerializedInstance> entryData = iterFindFieldData->second.serialized;
-				if (curGenericField->isArray())
-				{
-					SPtr<SerializedArray> arrayData = std::static_pointer_cast<SerializedArray>(entryData);
-
-					UINT32 arrayNumElems = (UINT32)arrayData->numElements;
-					curGenericField->setArraySize(rttiInstance, object.get(), arrayNumElems);
-
-					switch (curGenericField->mType)
-					{
-					case SerializableFT_ReflectablePtr:
-					{
-						RTTIReflectablePtrFieldBase* curField = static_cast<RTTIReflectablePtrFieldBase*>(curGenericField);
-
-						for (auto& arrayElem : arrayData->entries)
-						{
-							SPtr<SerializedObject> arrayElemData = std::static_pointer_cast<SerializedObject>(arrayElem.second.serialized);
-							RTTITypeBase* childRtti = nullptr;
-							
-							if (arrayElemData != nullptr)
-								childRtti = IReflectable::_getRTTIfromTypeId(arrayElemData->getRootTypeId());
-
-							if (childRtti != nullptr)
-							{
-								auto findObj = mObjectMap.find(arrayElemData);
-								if (findObj == mObjectMap.end())
-								{
-									SPtr<IReflectable> newObject = childRtti->newRTTIObject();
-									findObj = mObjectMap.insert(std::make_pair(arrayElemData, ObjectToDecode(newObject, arrayElemData))).first;
-								}
-
-								ObjectToDecode& objToDecode = findObj->second;
-
-								bool needsDecoding = (curField->getFlags() & RTTI_Flag_WeakRef) == 0 && !objToDecode.isDecoded;
-								if (needsDecoding)
-								{
-									if (objToDecode.decodeInProgress)
-									{
-										LOGWRN("Detected a circular reference when decoding. Referenced object fields " \
-											"will be resolved in an undefined order (i.e. one of the objects will not " \
-											"be fully deserialized when assigned to its field). Use RTTI_Flag_WeakRef to " \
-											"get rid of this warning and tell the system which of the objects is allowed " \
-											"to be deserialized after it is assigned to its field.");
-									}
-									else
-									{
-										objToDecode.decodeInProgress = true;
-										decodeEntry(objToDecode.object, objToDecode.serializedObject);
-										objToDecode.decodeInProgress = false;
-										objToDecode.isDecoded = true;
-									}
-								}
-
-								curField->setArrayValue(rttiInstance, object.get(), arrayElem.first, objToDecode.object);
-							}
-							else
-							{
-								curField->setArrayValue(rttiInstance, object.get(), arrayElem.first, nullptr);
-							}
-						}
-					}
-						break;
-					case SerializableFT_Reflectable:
-					{
-						RTTIReflectableFieldBase* curField = static_cast<RTTIReflectableFieldBase*>(curGenericField);
-
-						for (auto& arrayElem : arrayData->entries)
-						{
-							SPtr<SerializedObject> arrayElemData = std::static_pointer_cast<SerializedObject>(arrayElem.second.serialized);
-							RTTITypeBase* childRtti = nullptr;
-
-							if (arrayElemData != nullptr)
-								childRtti = IReflectable::_getRTTIfromTypeId(arrayElemData->getRootTypeId());
-
-							if (childRtti != nullptr)
-							{
-								SPtr<IReflectable> newObject = childRtti->newRTTIObject();
-								decodeEntry(newObject, arrayElemData);
-								curField->setArrayValue(rttiInstance, object.get(), arrayElem.first, *newObject);
-							}
-						}
-						break;
-					}
-					case SerializableFT_Plain:
-					{
-						RTTIPlainFieldBase* curField = static_cast<RTTIPlainFieldBase*>(curGenericField);
-
-						for (auto& arrayElem : arrayData->entries)
-						{
-							SPtr<SerializedField> fieldData = std::static_pointer_cast<SerializedField>(arrayElem.second.serialized);
-							if (fieldData != nullptr)
-							{
-								curField->arrayElemFromBuffer(rttiInstance, object.get(), arrayElem.first, fieldData->value);
-							}
-						}
-					}
-						break;
-					default:
-						break;
-					}
-				}
-				else
-				{
-					switch (curGenericField->mType)
-					{
-					case SerializableFT_ReflectablePtr:
-					{
-						RTTIReflectablePtrFieldBase* curField = static_cast<RTTIReflectablePtrFieldBase*>(curGenericField);
-
-						SPtr<SerializedObject> fieldObjectData = std::static_pointer_cast<SerializedObject>(entryData);
-						RTTITypeBase* childRtti = nullptr;
-
-						if (fieldObjectData != nullptr)
-							childRtti = IReflectable::_getRTTIfromTypeId(fieldObjectData->getRootTypeId());
-
-						if (childRtti != nullptr)
-						{
-							auto findObj = mObjectMap.find(fieldObjectData);
-							if (findObj == mObjectMap.end())
-							{
-								SPtr<IReflectable> newObject = childRtti->newRTTIObject();
-								findObj = mObjectMap.insert(std::make_pair(fieldObjectData, ObjectToDecode(newObject, fieldObjectData))).first;
-							}
-
-							ObjectToDecode& objToDecode = findObj->second;
-
-							bool needsDecoding = (curField->getFlags() & RTTI_Flag_WeakRef) == 0 && !objToDecode.isDecoded;
-							if (needsDecoding)
-							{
-								if (objToDecode.decodeInProgress)
-								{
-									LOGWRN("Detected a circular reference when decoding. Referenced object's fields " \
-										"will be resolved in an undefined order (i.e. one of the objects will not " \
-										"be fully deserialized when assigned to its field). Use RTTI_Flag_WeakRef to " \
-										"get rid of this warning and tell the system which of the objects is allowed " \
-										"to be deserialized after it is assigned to its field.");
-								}
-								else
-								{
-									objToDecode.decodeInProgress = true;
-									decodeEntry(objToDecode.object, objToDecode.serializedObject);
-									objToDecode.decodeInProgress = false;
-									objToDecode.isDecoded = true;
-								}
-							}
-
-							curField->setValue(rttiInstance, object.get(), objToDecode.object);
-						}
-						else
-						{
-							curField->setValue(rttiInstance, object.get(), nullptr);
-						}
-					}
-						break;
-					case SerializableFT_Reflectable:
-					{
-						RTTIReflectableFieldBase* curField = static_cast<RTTIReflectableFieldBase*>(curGenericField);
-
-						SPtr<SerializedObject> fieldObjectData = std::static_pointer_cast<SerializedObject>(entryData);
-						RTTITypeBase* childRtti = nullptr;
-
-						if (fieldObjectData != nullptr)
-							childRtti = IReflectable::_getRTTIfromTypeId(fieldObjectData->getRootTypeId());
-
-						if (childRtti != nullptr)
-						{
-							SPtr<IReflectable> newObject = childRtti->newRTTIObject();
-							decodeEntry(newObject, fieldObjectData);
-							curField->setValue(rttiInstance, object.get(), *newObject);
-						}
-						break;
-					}
-					case SerializableFT_Plain:
-					{
-						RTTIPlainFieldBase* curField = static_cast<RTTIPlainFieldBase*>(curGenericField);
-
-						SPtr<SerializedField> fieldData = std::static_pointer_cast<SerializedField>(entryData);
-						if (fieldData != nullptr)
-						{
-							curField->fromBuffer(rttiInstance, object.get(), fieldData->value);
-						}
-					}
-						break;
-					case SerializableFT_DataBlock:
-					{
-						RTTIManagedDataBlockFieldBase* curField = static_cast<RTTIManagedDataBlockFieldBase*>(curGenericField);
-
-						SPtr<SerializedDataBlock> fieldData = std::static_pointer_cast<SerializedDataBlock>(entryData);
-						if (fieldData != nullptr)
-						{
-							fieldData->stream->seek(fieldData->offset);
-							curField->setValue(rttiInstance, object.get(), fieldData->stream, fieldData->size);
-						}
-
-						break;
-					}
-					}
-				}
-			}
+			// Encode terminator field
+			// Complex types require terminator fields because they can be embedded within other complex types and we need
+			// to know when their fields end and parent's resume
+			int metaData = encodeFieldMetaData(0, 0, false, SerializableFT_Plain, false, true);
+			COPY_TO_BUFFER(&metaData, META_SIZE)
 		}
 
-		while (!rttiInstances.empty())
-		{
-			RTTITypeBase* rttiInstance = rttiInstances.top();
-			rttiInstance->onDeserializationEnded(object.get(), mParams);
-			mAlloc->destruct(rttiInstance);
-
-			rttiInstances.pop();
-		}
+		return buffer;
 	}
 
-	UINT32 BinarySerializer::encodeFieldMetaData(UINT16 id, UINT8 size, bool array, 
-		SerializableFieldType type, bool hasDynamicSize, bool terminator)
+	UINT32 BinarySerializer::encodeFieldMetaData(UINT16 id, UINT8 size, bool array, SerializableFieldType type, 
+		bool hasDynamicSize, bool terminator)
 	{
 		// If O == 0 - Meta contains field information (Encoded using this method)
 		//// Encoding: IIII IIII IIII IIII SSSS SSSS xTYP DCAO
@@ -1200,7 +985,7 @@ namespace bs
 		//// S - Size of the object identifier
 		//// O - Object descriptor
 		//// B - Base class indicator
-		
+
 		if(objId > 1073741823)
 		{
 			BS_EXCEPT(InvalidParametersException, "Object ID is larger than we can store (max 30 bits): " + toString(objId));
@@ -1212,7 +997,7 @@ namespace bs
 		return metaData;
 	}
 
-	void BinarySerializer::decodeObjectMetaData(BinarySerializer::ObjectMetaData encodedData, UINT32& objId, UINT32& objTypeId, bool& isBaseClass)
+	void BinarySerializer::decodeObjectMetaData(ObjectMetaData encodedData, UINT32& objId, UINT32& objTypeId, bool& isBaseClass)
 	{
 		if(!isObjectMetaData(encodedData.objectMeta))
 		{
@@ -1228,23 +1013,6 @@ namespace bs
 	bool BinarySerializer::isObjectMetaData(UINT32 encodedData)
 	{
 		return ((encodedData & 0x01) != 0);
-	}
-
-	UINT8* BinarySerializer::complexTypeToBuffer(IReflectable* object, UINT8* buffer, UINT32& bufferLength, 
-		UINT32* bytesWritten, std::function<UINT8*(UINT8*, UINT32, UINT32&)> flushBufferCallback, bool shallow)
-	{
-		if (object != nullptr)
-		{
-			buffer = encodeEntry(object, 0, buffer, bufferLength, bytesWritten, flushBufferCallback, shallow);
-
-			// Encode terminator field
-			// Complex types require terminator fields because they can be embedded within other complex types and we need
-			// to know when their fields end and parent's resume
-			int metaData = encodeFieldMetaData(0, 0, false, SerializableFT_Plain, false, true);
-			COPY_TO_BUFFER(&metaData, META_SIZE)
-		}
-
-		return buffer;
 	}
 
 	UINT8* BinarySerializer::dataBlockToBuffer(UINT8* data, UINT32 size, UINT8* buffer, UINT32& bufferLength, UINT32* bytesWritten,

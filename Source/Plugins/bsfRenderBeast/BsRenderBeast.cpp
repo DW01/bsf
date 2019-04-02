@@ -66,13 +66,12 @@ namespace bs { namespace ct
 
 	void RenderBeast::initializeCore()
 	{
-		const RenderAPI& rapi = RenderAPI::instance();
-		const RenderAPIInfo& rapiInfo = rapi.getAPIInfo();
+		const RenderAPICapabilities& caps = gCaps();
 
 		if(
-			!rapiInfo.isFlagSet(RenderAPIFeatureFlag::Compute) ||
-			!rapiInfo.isFlagSet(RenderAPIFeatureFlag::LoadStore) ||
-			!rapiInfo.isFlagSet(RenderAPIFeatureFlag::TextureViews))
+			!caps.hasCapability(RSC_COMPUTE_PROGRAM) ||
+			!caps.hasCapability(RSC_LOAD_STORE) ||
+			!caps.hasCapability(RSC_TEXTURE_VIEWS))
 		{
 			mFeatureSet = RenderBeastFeatureSet::DesktopMacOS;
 		}
@@ -98,7 +97,7 @@ namespace bs { namespace ct
 		gProfilerGPU().endFrame();
 
 		RenderCompositor::registerNodeType<RCNodeSceneDepth>();
-		RenderCompositor::registerNodeType<RCNodeGBuffer>();
+		RenderCompositor::registerNodeType<RCNodeBasePass>();
 		RenderCompositor::registerNodeType<RCNodeLightAccumulation>();
 		RenderCompositor::registerNodeType<RCNodeSceneColor>();
 		RenderCompositor::registerNodeType<RCNodeDeferredDirectLighting>();
@@ -117,6 +116,10 @@ namespace bs { namespace ct
 		RenderCompositor::registerNodeType<RCNodeSSR>();
 		RenderCompositor::registerNodeType<RCNodeMSAACoverage>();
 		RenderCompositor::registerNodeType<RCNodeParticleSimulate>();
+		RenderCompositor::registerNodeType<RCNodeParticleSort>();
+		RenderCompositor::registerNodeType<RCNodeHalfSceneColor>();
+		RenderCompositor::registerNodeType<RCNodeBloom>();
+		RenderCompositor::registerNodeType<RCNodeEyeAdaptation>();
 	}
 
 	void RenderBeast::destroyCore()
@@ -241,6 +244,20 @@ namespace bs { namespace ct
 		mScene->unregisterParticleSystem(particleSystem);
 	}
 
+	void RenderBeast::notifyDecalAdded(Decal* decal)
+	{
+		mScene->registerDecal(decal);
+	}
+
+	void RenderBeast::notifyDecalRemoved(Decal* decal)
+	{
+		mScene->unregisterDecal(decal);
+	}
+
+	void RenderBeast::notifyDecalUpdated(Decal* decal)
+	{
+		mScene->updateDecal(decal);
+	}
 	void RenderBeast::setOptions(const SPtr<RendererOptions>& options)
 	{
 		mOptions = std::static_pointer_cast<RenderBeastOptions>(options);
@@ -321,7 +338,7 @@ namespace bs { namespace ct
 	void RenderBeast::renderAll(PerFrameData perFrameData) 
 	{
 		// Sync all dirty sim thread CoreObject data to core thread
-		CoreObjectManager::instance().syncToCore();
+		PROFILE_CALL(CoreObjectManager::instance().syncToCore(), "Sync to core")
 
 		if (mOptionsDirty)
 		{
@@ -342,7 +359,7 @@ namespace bs { namespace ct
 		THROW_IF_NOT_CORE_THREAD;
 
 		gProfilerGPU().beginFrame();
-		gProfilerCPU().beginSample("renderAllCore");
+		gProfilerCPU().beginSample("Render");
 
 		const SceneInfo& sceneInfo = mScene->getSceneInfo();
 
@@ -356,7 +373,7 @@ namespace bs { namespace ct
 
 		// Update bounds for all particle systems
 		if(perFrameData.particles)
-			mScene->updateParticleSystemBounds(perFrameData.particles);
+			PROFILE_CALL(mScene->updateParticleSystemBounds(perFrameData.particles), "Particle bounds")
 
 		sceneInfo.renderableReady.resize(sceneInfo.renderables.size(), false);
 		sceneInfo.renderableReady.assign(sceneInfo.renderables.size(), false);
@@ -369,12 +386,23 @@ namespace bs { namespace ct
 		// If any reflection probes were updated or added, we need to copy them over in the global reflection probe array
 		updateReflProbeArray();
 
-		// Update material animation times for all renderables
+		// Update material parameters & animation times for all renderables
 		for (UINT32 i = 0; i < sceneInfo.renderables.size(); i++)
 		{
 			RendererRenderable* renderable = sceneInfo.renderables[i];
 			for (auto& element : renderable->elements)
 				element.materialAnimationTime += timings.timeDelta;
+		}
+
+		for (UINT32 i = 0; i < sceneInfo.particleSystems.size(); i++)
+			mScene->prepareParticleSystem(i, frameInfo);
+
+		for (UINT32 i = 0; i < sceneInfo.decals.size(); i++)
+		{
+			const RendererDecal& decal = sceneInfo.decals[i];
+			decal.renderElement.materialAnimationTime += timings.timeDelta;
+
+			mScene->prepareDecal(i, frameInfo);
 		}
 
 		// Gather all views
@@ -393,17 +421,17 @@ namespace bs { namespace ct
 			}
 
 			mMainViewGroup->setViews(views.data(), (UINT32)views.size());
-			mMainViewGroup->determineVisibility(sceneInfo);
+			PROFILE_CALL(mMainViewGroup->determineVisibility(sceneInfo), "Determine visibility")
 
 			// Render everything
 			renderViews(*mMainViewGroup, frameInfo);
 
 			if(rtInfo.target->getProperties().isWindow)
-				RenderAPI::instance().swapBuffers(rtInfo.target);
+				PROFILE_CALL(RenderAPI::instance().swapBuffers(rtInfo.target), "Swap buffers");
 		}
 
 		gProfilerGPU().endFrame();
-		gProfilerCPU().endSample("renderAllCore");
+		gProfilerCPU().endSample("Render");
 	}
 
 	void RenderBeast::renderViews(RendererViewGroup& viewGroup, const FrameInfo& frameInfo)
@@ -440,7 +468,7 @@ namespace bs { namespace ct
 
 	void RenderBeast::renderView(const RendererViewGroup& viewGroup, RendererView& view, const FrameInfo& frameInfo)
 	{
-		gProfilerCPU().beginSample("Render");
+		gProfilerCPU().beginSample("Render view");
 
 		const SceneInfo& sceneInfo = mScene->getSceneInfo();
 		auto& viewProps = view.getProperties();
@@ -465,42 +493,42 @@ namespace bs { namespace ct
 				switch(location)
 				{
 				case RenderLocation::Prepare:
-					inputs.extPrepare.push_back(extension);
+					inputs.extPrepare.add(extension);
 					break;
 				case RenderLocation::PreBasePass: 
-					inputs.extPreBasePass.push_back(extension);
+					inputs.extPreBasePass.add(extension);
 					break;
 				case RenderLocation::PostBasePass:
-					inputs.extPostBasePass.push_back(extension);
+					inputs.extPostBasePass.add(extension);
 					break;
 				case RenderLocation::PostLightPass:
-					inputs.extPostLighting.push_back(extension);
+					inputs.extPostLighting.add(extension);
 					break;
 				case RenderLocation::Overlay:
-					inputs.extOverlay.push_back(extension);
+					inputs.extOverlay.add(extension);
 					break;
 				}
 			}
 		}
 
 		const RenderCompositor& compositor = view.getCompositor();
-		compositor.execute(inputs);
+		PROFILE_CALL(compositor.execute(inputs), "Compositor")
 
 		view.endFrame();
 
-		gProfilerCPU().endSample("Render");
+		gProfilerCPU().endSample("Render view");
 	}
 
 	void RenderBeast::renderOverlay(RendererView& view)
 	{
-		gProfilerCPU().beginSample("RenderOverlay");
+		gProfilerCPU().beginSample("Render overlay");
 
 		view.getPerViewBuffer()->flushToGPU();
 		view.beginFrame();
 
 		auto& viewProps = view.getProperties();
 		const Camera* camera = view.getSceneCamera();
-		SPtr<RenderTarget> target = viewProps.target;
+		SPtr<RenderTarget> target = viewProps.target.target;
 		SPtr<Viewport> viewport = camera->getViewport();
 
 		ClearFlags clearFlags = viewport->getClearFlags();
@@ -544,7 +572,7 @@ namespace bs { namespace ct
 
 		view.endFrame();
 
-		gProfilerCPU().endSample("RenderOverlay");
+		gProfilerCPU().endSample("Render overlay");
 	}
 	
 	void RenderBeast::updateReflProbeArray()
@@ -668,7 +696,7 @@ namespace bs { namespace ct
 		viewDesc.visibleLayers = 0xFFFFFFFFFFFFFFFF;
 		viewDesc.nearPlane = 0.5f;
 		viewDesc.farPlane = 1000.0f;
-		viewDesc.flipView = !RenderAPI::instance().getAPIInfo().isFlagSet(RenderAPIFeatureFlag::UVYAxisUp);
+		viewDesc.flipView = gCaps().conventions.uvYAxis != Conventions::Axis::Up;
 
 		viewDesc.viewOrigin = position;
 		viewDesc.projTransform = projTransform;

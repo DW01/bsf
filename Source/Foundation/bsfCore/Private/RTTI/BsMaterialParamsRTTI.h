@@ -104,10 +104,12 @@ namespace bs
 		void setParamData(MaterialParams* obj, UINT32 idx, MaterialParam& param)
 		{
 			UINT32 paramIdx = param.index;
-			if(paramIdx == (UINT32)-1)
-				paramIdx = (UINT32)obj->mParams.size();
 
-			obj->mParams.push_back(param.data);
+			// Older saved files might not have indices preserved
+			if(paramIdx == (UINT32)-1)
+				paramIdx = mNextParamIdx++;
+
+			obj->mParams[paramIdx] = param.data;
 			obj->mParamLookup[param.name] = paramIdx;
 		}
 
@@ -117,7 +119,9 @@ namespace bs
 		}
 
 		void setParamDataArraySize(MaterialParams* obj, UINT32 size)
-		{ }
+		{
+			obj->mParams.resize(size);
+		}
 
 		SPtr<DataStream> getDataBuffer(MaterialParams* obj, UINT32& size)
 		{
@@ -212,7 +216,7 @@ namespace bs
 				&MaterialParamsRTTI::getDataParamArraySize, &MaterialParamsRTTI::setDataParam, &MaterialParamsRTTI::setDataParamArraySize);
 		}
 
-		void onSerializationStarted(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onSerializationStarted(IReflectable* obj, SerializationContext* context) override
 		{
 			MaterialParams* paramsObj = static_cast<MaterialParams*>(obj);
 
@@ -223,7 +227,7 @@ namespace bs
 			}
 		}
 
-		void onDeserializationEnded(IReflectable* obj, const UnorderedMap<String, UINT64>& params) override
+		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override
 		{
 			MaterialParams* paramsObj = static_cast<MaterialParams*>(obj);
 
@@ -284,6 +288,7 @@ namespace bs
 
 	private:
 		Vector<MaterialParam> mMatParams;
+		UINT32 mNextParamIdx = 0;
 	};
 
 	template<> struct RTTIPlainType<MaterialParamsBase::ParamData>
@@ -305,7 +310,9 @@ namespace bs
 			memory = rttiReadElem(data.dataType, memory, size);
 			memory = rttiReadElem(data.index, memory, size);
 			memory = rttiReadElem(data.arraySize, memory, size);
+
 			data.version = 1;
+			size += sizeof(data.version);
 
 			return size;
 		}
@@ -365,6 +372,10 @@ namespace bs
 				
 				UINT32 curveType = 0;
 				memory = rttiReadElem(curveType, memory);
+
+				data.floatCurve = nullptr;
+				data.colorGradient = nullptr;
+				data.spriteTextureIdx = (UINT32)-1;
 
 				switch(curveType)
 				{

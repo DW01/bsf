@@ -565,12 +565,6 @@ namespace bs
 	const UINT32 TAnimationCurve<T>::CACHE_LOOKAHEAD = 3;
 
 	template <class T>
-	TAnimationCurve<T>::TAnimationCurve()
-		:mStart(0.0f), mEnd(0.0f), mLength(0.0f)
-	{
-	}
-
-	template <class T>
 	TAnimationCurve<T>::TAnimationCurve(const Vector<KeyFrame>& keyframes)
 		:mKeyframes(keyframes)
 	{
@@ -1143,6 +1137,15 @@ namespace bs
 			value = (T)(impl::evaluateCubic(t, 0.0f, 0.0f, coeffs) * t * t + cache.segmentSums[i - 1] * t);
 			cache.doubleSegmentSums[i] = cache.doubleSegmentSums[i - 1] + value;
 		}
+	}
+
+	template <class T>
+	bool TAnimationCurve<T>::operator==(const TAnimationCurve<T>& rhs) const
+	{
+		if(mLength != rhs.mLength || mStart != rhs.mStart || mEnd != rhs.mEnd)
+			return false;
+
+		return mKeyframes == rhs.mKeyframes;
 	}
 
 	template class TAnimationCurve<Vector3>;

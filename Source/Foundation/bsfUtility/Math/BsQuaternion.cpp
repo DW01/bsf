@@ -107,7 +107,7 @@ namespace bs
 		Quaternion quatY(cy, 0.0f, sy, 0.0f);
 		Quaternion quatZ(cz, 0.0f, 0.0f, sz);
 
-		*this = (quatZ * quatX) * quatY;
+		*this = quatZ * (quatX * quatY);
 	}
 
 	void Quaternion::fromEulerAngles(const Radian& xAngle, const Radian& yAngle, const Radian& zAngle, EulerAngleOrder order)
@@ -134,23 +134,23 @@ namespace bs
 		quats[1] = Quaternion(cy, 0.0f, sy, 0.0f);
 		quats[2] = Quaternion(cz, 0.0f, 0.0f, sz);
 
-		*this = (quats[l.c] * quats[l.b]) * quats[l.a];
+		*this = quats[l.c] * (quats[l.b] * quats[l.a]);
 	}
 
 	void Quaternion::toRotationMatrix(Matrix3& mat) const
 	{
 		float tx  = x+x;
 		float ty  = y+y;
-		float fTz  = z+z;
+		float tz  = z+z;
 		float twx = tx*w;
 		float twy = ty*w;
-		float twz = fTz*w;
+		float twz = tz*w;
 		float txx = tx*x;
 		float txy = ty*x;
-		float txz = fTz*x;
+		float txz = tz*x;
 		float tyy = ty*y;
-		float tyz = fTz*y;
-		float tzz = fTz*z;
+		float tyz = tz*y;
+		float tzz = tz*z;
 
 		mat[0][0] = 1.0f-(tyy+tzz);
 		mat[0][1] = txy-twz;

@@ -16,8 +16,10 @@ namespace bs
 	/** Contains particle system state that varies from frame to frame. */
 	struct ParticleSystemState
 	{
-		float time;
-		float nrmTime;
+		float timeStart;
+		float timeEnd;
+		float nrmTimeStart;
+		float nrmTimeEnd;
 		float length;
 		float timeStep;
 		UINT32 maxParticles;
@@ -26,6 +28,7 @@ namespace bs
 		Matrix4 localToWorld;
 		Matrix4 worldToLocal;
 		ParticleSystem* system;
+		const SceneInstance* scene;
 		const EvaluatedAnimationData* animData;
 	};
 

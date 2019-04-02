@@ -14,14 +14,20 @@ namespace bs
 	 */
 
 	/**	Structure containing parameters for starting the application. */
-	struct START_UP_DESC
+	struct BS_SCRIPT_EXPORT(m:Application,pl:true,api:bsf) START_UP_DESC
 	{
 		String renderAPI; /**< Name of the render system plugin to use. */
 		String renderer; /**< Name of the renderer plugin to use. */
 		String physics; /**< Name of physics plugin to use. */
 		String audio; /**< Name of the audio plugin to use. */
 		String input; /**< Name of the input plugin to use. */
-		bool scripting = false; /**< True to load the scripting system. */
+
+		/**
+		 * True if physics cooking library should be loaded. Cooking is useful for creating collision meshes during
+		 * development type, but might be unnecessary in the final application. When turned off you can save on space by
+		 * not shipping the cooking library.
+		 */
+		bool physicsCooking = true;
 
 		RENDER_WINDOW_DESC primaryWindowDesc; /**< Describes the window to create during start-up. */
 

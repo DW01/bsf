@@ -9,6 +9,7 @@
 #include "RenderAPI/BsGpuParams.h"
 #include "RenderAPI/BsGpuProgram.h"
 #include "RenderAPI/BsGpuPipelineState.h"
+#include "CoreThread/BsCoreObjectSync.h"
 
 namespace bs
 {
@@ -102,6 +103,14 @@ namespace bs
 		}
 	}
 
+	template <bool Core>
+	template <class P>
+	void TPass<Core>::rttiEnumFields(P p)
+	{
+		p(mGraphicsPipelineState);
+		p(mComputePipelineState);
+	}
+
 	template class TPass < false > ;
 	template class TPass < true >;
 
@@ -129,6 +138,9 @@ namespace bs
 		if(mComputePipelineState || mGraphicsPipelineState)
 			return; // Already compiled
 
+		// Note: It's possible (and quite likely) the pass has already been compiled on the core thread, so this will
+		// unnecessarily recompile it. However syncing them in a clean way is not trivial hard and this method is currently
+		// not being used much (at all) to warrant a complex solution. Something to keep in mind for later though.
 		createPipelineState();
 
 		markCoreDirty();
@@ -137,21 +149,12 @@ namespace bs
 
 	CoreSyncData Pass::syncToCore(FrameAlloc* allocator)
 	{
-		UINT32 size = sizeof(SPtr<ct::ComputePipelineState>) + sizeof(SPtr<ct::GraphicsPipelineState>);
+		UINT32 size = coreSyncGetElemSize(*this);
 
 		UINT8* data = allocator->alloc(size);
 
 		char* dataPtr = (char*)data;
-		SPtr<ct::ComputePipelineState>* computePipelineState = new (dataPtr) SPtr<ct::ComputePipelineState>();
-
-		if(mComputePipelineState)
-			*computePipelineState = mComputePipelineState->getCore();
-
-		dataPtr += sizeof(SPtr<ct::ComputePipelineState>);
-		SPtr<ct::GraphicsPipelineState>* graphicsPipelineState = new (dataPtr) SPtr<ct::GraphicsPipelineState>();
-
-		if(mGraphicsPipelineState)
-			*graphicsPipelineState = mGraphicsPipelineState->getCore();
+		dataPtr = coreSyncWriteElem(*this, dataPtr);
 
 		return CoreSyncData(data, size);
 	}
@@ -201,15 +204,8 @@ namespace bs
 
 	void Pass::syncToCore(const CoreSyncData& data)
 	{
-		UINT8* dataPtr = data.getBuffer();
-		SPtr<ComputePipelineState>* computePipelineState = (SPtr<ComputePipelineState>*)dataPtr;
-		mComputePipelineState = *computePipelineState;
-		computePipelineState->~SPtr<ComputePipelineState>();
-
-		dataPtr += sizeof(SPtr<ComputePipelineState>);
-		SPtr<GraphicsPipelineState>* graphicsPipelineState = (SPtr<GraphicsPipelineState>*)dataPtr;
-		mGraphicsPipelineState = *graphicsPipelineState;
-		graphicsPipelineState->~SPtr<GraphicsPipelineState>();
+		char* dataPtr = (char*)data.getBuffer();
+		dataPtr = coreSyncReadElem(*this, dataPtr);
 	}
 
 	SPtr<Pass> Pass::create(const PASS_DESC& desc)

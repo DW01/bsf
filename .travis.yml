@@ -38,11 +38,13 @@ install:
   # Download CMake
   - |
     if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
-      CMAKE_URL="https://cmake.org/files/v3.9/cmake-3.9.6-Linux-x86_64.tar.gz"
+      CMAKE_URL="https://cmake.org/files/v3.12/cmake-3.12.4-Linux-x86_64.tar.gz"
       cd ${DEPS_DIR}
       mkdir cmake
       travis_retry wget --no-check-certificate --quiet -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C cmake
       export PATH=${DEPS_DIR}/cmake/bin:${PATH}
+    else
+      brew install cmake || brew upgrade cmake
     fi
 
   # Download GCC 7.1
@@ -89,7 +91,7 @@ script:
   
 after_success:
   - cd ..
-  - today=`date +%d.%m.%Y`
+  - today=`date +%Y.%m.%d`
   - |
     if [ -n "$TRAVIS_TAG" ]; then
       buildName=${TRAVIS_TAG}
@@ -105,6 +107,26 @@ after_success:
       find ./Install -not -name "*.dbg" -not -name ".dwarf" -not -type d | cut -sd / -f 3- | tar -C ./Install -czvf ${filename} -T -
       find ./Install -name "*.dbg" -or -name "*.dwarf" -not -type d | cut -sd / -f 3- | tar -C ./Install -czvf ${symbolsFilename} -T -
 
-      curl -v --ftp-create-dirs -T ${filename} -u ${FTP_USER}:${FTP_PASSWORD} ${FTP_DESTINATION}
-      curl -v --ftp-create-dirs -T ${symbolsFilename} -u ${FTP_USER}:${FTP_PASSWORD} ${FTP_DESTINATION}
+      mkdir artifacts
+      mv ${filename} artifacts
+      mv ${symbolsFilename} artifacts
     fi
+deploy:
+  - provider: s3
+    access_key_id: ${S3_ACCESS}
+    secret_access_key: ${S3_SECRET}
+    bucket: ${S3_BUCKET}
+    skip_cleanup: true
+    region: ${S3_REGION}
+    local_dir: ${TRAVIS_BUILD_DIR}/artifacts
+    on:
+      condition: $TRAVIS_EVENT_TYPE = cron
+  - provider: s3
+    access_key_id: ${S3_ACCESS}
+    secret_access_key: ${S3_SECRET}
+    bucket: ${S3_BUCKET}
+    skip_cleanup: true
+    region: ${S3_REGION}
+    local_dir: ${TRAVIS_BUILD_DIR}/artifacts
+    on:
+      tags: true

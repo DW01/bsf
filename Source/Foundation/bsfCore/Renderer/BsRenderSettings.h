@@ -5,6 +5,8 @@
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsIReflectable.h"
 #include "Math/BsVector3.h"
+#include "Image/BsColor.h"
+#include <cfloat>
 
 namespace bs
 {
@@ -87,6 +89,10 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class AutoExposureSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -142,6 +148,10 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class TonemappingSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -175,6 +185,10 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class WhiteBalanceSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -217,6 +231,10 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class ColorGradingSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -289,6 +307,10 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class AmbientOcclusionSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -337,18 +359,22 @@ namespace bs
 		 * zone. Set to zero to disable near-field blur. Only relevant for Gaussian depth of field.
 		 */
 		BS_SCRIPT_EXPORT()
-		float nearBlurAmount = 0.15f;
+		float nearBlurAmount = 0.02f;
 
 		/** 
 		 * Determines the amount of blur to apply to fully unfocused objects that are farther away from camera than the
 		 * in-focus zone. Set to zero to disable far-field blur. Only relevant for Gaussian depth of field.
 		 */
 		BS_SCRIPT_EXPORT()
-		float farBlurAmount = 0.15f;
+		float farBlurAmount = 0.02f;
 
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class DepthOfFieldSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -394,8 +420,61 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class ScreenSpaceReflectionsRTTI;
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
+	};
+
+	/** Settings that control the bloom effect. Bloom adds an extra highlight to bright areas of the scene. */
+	struct BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Rendering) BloomSettings : public IReflectable
+	{
+		BS_SCRIPT_EXPORT()
+		BloomSettings() = default;
+
+		/** Enables or disables the bloom effect. */
+		BS_SCRIPT_EXPORT()
+		bool enabled = false;
+
+		/** 
+		 * Quality of the bloom effect. Higher values will use higher resolution texture for calculating bloom, at the cost
+		 * of lower performance. Valid range is [0, 3], default is 2.
+		 */
+		BS_SCRIPT_EXPORT()
+		UINT32 quality = 2;
+
+		/** 
+		 * Determines the minimal threshold of pixel luminance to be included in the bloom calculations. Any pixel with
+		 * luminance below this value will be ignored for the purposes of bloom. The value represents luminance after
+		 * it is scaled by exposure. Set to zero or negative to disable the threshold and include all pixels in the
+		 * calculations.
+		 */
+		BS_SCRIPT_EXPORT()
+		float threshold = 1.0f;
+
+		/** 
+		 * Determines the intensity of the bloom effect. Ideally should be in [0, 4] range but higher values are allowed. 
+		 */
+		BS_SCRIPT_EXPORT()
+		float intensity = 0.5f;
+
+		/** Tint color to apply to the bloom highlight. A pure white means the bloom inherits the underlying scene color. */
+		BS_SCRIPT_EXPORT()
+		Color tint = Color::White;
+
+		/************************************************************************/
+		/* 								RTTI		                     		*/
+		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
+	public:
+		friend class BloomSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
 		RTTITypeBase* getRTTI() const override;
 	};
@@ -442,6 +521,10 @@ namespace bs
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
 	public:
 		friend class ShadowSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();
@@ -518,6 +601,10 @@ namespace bs
 		BS_SCRIPT_EXPORT()
 		ScreenSpaceReflectionsSettings screenSpaceReflections;
 
+		/** Parameters used for customizing the bloom effect. */
+		BS_SCRIPT_EXPORT()
+		BloomSettings bloom;
+
 		/** Enables the fast approximate anti-aliasing effect. */
 		BS_SCRIPT_EXPORT()
 		bool enableFXAA = true;
@@ -580,34 +667,21 @@ namespace bs
 		BS_SCRIPT_EXPORT()
 		bool enableSkybox = true;
 
-		/** @name Internal
-		 *  @{
-		 */
-
 		/** 
-		 * Populates the provided buffer with data that can be used for syncing between two versions of this object.
-		 * Apply the retrieved buffer via _setSyncData().
-		 *
-		 * @param[in]		buffer		Pre-allocated buffer to store the sync data in. Set to null to calculate the size
-		 *								of the required buffer.
-		 * @param[in, out]	size		Size of the provided allocated buffer. Or if the buffer is null, this parameter will
-		 *								contain the required buffer size when the method executes.
+		 * The absolute base cull-distance for objects rendered through this camera in world units. Objects will use this 
+		 * distance and apply their own factor to it to determine whether they should be visible.
 		 */
-		void _getSyncData(UINT8* buffer, UINT32& size);
+		BS_SCRIPT_EXPORT()
+		float cullDistance = FLT_MAX;
 
-		/** 
-		 * Updates the stored data from the provided buffer, allowing changes to be transfered between two versions of this
-		 * object. Buffer must be retrieved from _getSyncData(). 
-		 *
-		 * @param[in]		buffer		Buffer containing the dirty data.
-		 * @param[in, out]	size		Size of the provided buffer.
-		 */
-		void _setSyncData(UINT8* buffer, UINT32 size);
-
-		/** @} */
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P processor);
+
 	public:
 		friend class RenderSettingsRTTI;
 		static RTTITypeBase* getRTTIStatic();

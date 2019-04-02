@@ -32,8 +32,8 @@ namespace bs
 	class BS_CORE_EXPORT GameObject : public IReflectable
 	{
 	public:
-		GameObject();
-		virtual ~GameObject();
+		GameObject() = default;
+		virtual ~GameObject() = default;
 
 		/**	Returns the unique instance ID of the GameObject. */
 		UINT64 getInstanceId() const { return mInstanceData->mInstanceId; }
@@ -43,6 +43,9 @@ namespace bs
 		 * -1 if the object has no prefab link, or if the object is specific to the instance and has no prefab equivalent.
 		 */
 		UINT32 getLinkId() const { return mLinkId; }
+
+		/**	Globally unique identifier of the game object that persists scene save/load. */
+		const UUID& getUUID() const { return mUUID; }
 
 		/**	Gets the name of the object. */
 		const String& getName() const { return mName; }
@@ -66,6 +69,9 @@ namespace bs
 
 		/** Changes the prefab link ID for this object. See getLinkId(). */
 		void _setLinkId(UINT32 id) { mLinkId = id; }
+
+		/** @copydoc getUUID */
+		void _setUUID(const UUID& uuid) { mUUID = uuid; }
 
 		/**
 		 * Replaces the instance data with another objects instance data. This object will basically become the original 
@@ -101,13 +107,14 @@ namespace bs
 
 	protected:
 		String mName;
-		UINT32 mLinkId;
+		UUID mUUID;
+		UINT32 mLinkId = (UINT32)-1;
 
 		Any mRTTIData; // RTTI only
 	private:
 		friend class Prefab;
 		GameObjectInstanceDataPtr mInstanceData;
-		bool mIsDestroyed;
+		bool mIsDestroyed = false;
 
 		/************************************************************************/
 		/* 								RTTI		                     		*/

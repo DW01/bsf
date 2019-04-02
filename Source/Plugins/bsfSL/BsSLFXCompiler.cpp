@@ -286,6 +286,34 @@ namespace bs
 		return HTexture();
 	}
 
+	UINT32 getStructSize(INT32 structIdx, const std::vector<Xsc::Reflection::Struct>& structLookup)
+	{
+		if(structIdx < 0 || structIdx >= (INT32)structLookup.size())
+			return 0;
+
+		UINT32 size = 0;
+
+		const Xsc::Reflection::Struct& structInfo = structLookup[structIdx];
+		for(auto& entry : structInfo.members)
+		{
+			if(entry.type == Xsc::Reflection::VariableType::Variable)
+			{
+				// Note: We're ignoring any padding. Since we can't guarantee the padding will be same for structs across
+				// different render backends it's expected for the user to set up structs in such a way so padding is not
+				// needed (i.e. add padding variables manually).
+				GpuParamDataType type = ReflTypeToDataType((Xsc::Reflection::DataType)entry.baseType);
+
+				const GpuParamDataTypeInfo& typeInfo = GpuParams::PARAM_SIZES.lookup[(int)type];
+				size += typeInfo.numColumns * typeInfo.numRows * typeInfo.baseTypeSize * entry.arraySize;
+
+			}
+			else if(entry.type == Xsc::Reflection::VariableType::Struct)
+				size += getStructSize(entry.baseType, structLookup);
+		}
+
+		return size;
+	}
+
 	TextureAddressingMode parseTexAddrMode(Xsc::Reflection::TextureAddressMode addrMode)
 	{
 		switch (addrMode)
@@ -419,10 +447,10 @@ namespace bs
 			String ident = entry.ident.c_str();
 			switch(entry.type)
 			{
-			case Xsc::Reflection::UniformType::UniformBuffer:
+			case Xsc::Reflection::VariableType::UniformBuffer:
 				desc.setParamBlockAttribs(entry.ident.c_str(), false, GBU_STATIC);
 				break;
-			case Xsc::Reflection::UniformType::Buffer:
+			case Xsc::Reflection::VariableType::Buffer:
 				{
 					GpuParamObjectType objType = ReflTypeToTextureType((Xsc::Reflection::BufferType)entry.baseType);
 					if(objType != GPOT_UNKNOWN)
@@ -453,7 +481,7 @@ namespace bs
 					}
 				}
 				break;
-			case Xsc::Reflection::UniformType::Sampler:
+			case Xsc::Reflection::VariableType::Sampler:
 			{
 				auto findIter = reflData.samplerStates.find(entry.ident);
 				if (findIter != reflData.samplerStates.end())
@@ -487,7 +515,7 @@ namespace bs
 				}
 				break;
 			}
-			case Xsc::Reflection::UniformType::Variable:
+			case Xsc::Reflection::VariableType::Variable:
 			{
 				bool isBlockInternal = false;
 				if(entry.uniformBlock != -1)
@@ -495,7 +523,7 @@ namespace bs
 					std::string blockName = reflData.constantBuffers[entry.uniformBlock].ident;
 					for (auto& uniform : reflData.uniforms)
 					{
-						if (uniform.type == Xsc::Reflection::UniformType::UniformBuffer && uniform.ident == blockName)
+						if (uniform.type == Xsc::Reflection::VariableType::UniformBuffer && uniform.ident == blockName)
 						{
 							isBlockInternal = (uniform.flags & Xsc::Reflection::Uniform::Flags::Internal) != 0;
 							break;
@@ -512,13 +540,15 @@ namespace bs
 						type = GPDT_COLOR;
 					}
 
+					UINT32 arraySize = entry.arraySize;
+
 					if (entry.defaultValue == -1)
-						desc.addParameter(SHADER_DATA_PARAM_DESC(ident, ident, type));
+						desc.addParameter(SHADER_DATA_PARAM_DESC(ident, ident, type, StringID::NONE, arraySize));
 					else
 					{
 						const Xsc::Reflection::DefaultValue& defVal = reflData.defaultValues[entry.defaultValue];
 
-						desc.addParameter(SHADER_DATA_PARAM_DESC(ident, ident, type, StringID::NONE, 1, 0), 
+						desc.addParameter(SHADER_DATA_PARAM_DESC(ident, ident, type, StringID::NONE, arraySize, 0), 
 							(UINT8*)defVal.matrix);
 					}
 
@@ -534,7 +564,14 @@ namespace bs
 				}
 			}
 				break;
-			case Xsc::Reflection::UniformType::Struct:
+			case Xsc::Reflection::VariableType::Struct:
+			{
+				INT32 structIdx = entry.baseType;
+				UINT32 structSize = getStructSize(structIdx, reflData.structs);
+
+				desc.addParameter(SHADER_DATA_PARAM_DESC(ident, ident, GPDT_STRUCT, StringID::NONE, entry.arraySize,
+					structSize));
+			}
 				break;
 			default: ;
 			}
@@ -714,13 +751,13 @@ namespace bs
 	}
 
 	BSLFXCompileResult BSLFXCompiler::compile(const String& name, const String& source,
-		const UnorderedMap<String, String>& defines)
+		const UnorderedMap<String, String>& defines, ShadingLanguageFlags languages)
 	{
 		// Parse global shader options & shader meta-data
 		SHADER_DESC shaderDesc;
 		Vector<String> includes;
 
-		BSLFXCompileResult output = compileShader(source, defines, shaderDesc, includes);
+		BSLFXCompileResult output = compileShader(source, defines, languages, shaderDesc, includes);
 
 		// Generate a shader from the parsed information
 		output.shader = Shader::_createPtr(name, shaderDesc);
@@ -1662,7 +1699,8 @@ namespace bs
 
 	BSLFXCompileResult BSLFXCompiler::compileTechniques(
 		const Vector<std::pair<ASTFXNode*, ShaderMetaData>>& shaderMetaData, const String& source,
-		const UnorderedMap<String, String>& defines, SHADER_DESC& shaderDesc, Vector<String>& includes)
+		const UnorderedMap<String, String>& defines, ShadingLanguageFlags languages, SHADER_DESC& shaderDesc, 
+		Vector<String>& includes)
 	{
 		BSLFXCompileResult output;
 
@@ -1777,8 +1815,8 @@ namespace bs
 						rawCode = rawCode->next;
 					}
 
-					output = compileTechniques(variationParseState, entry.second.name, codeBlocks, variation, includeSet,
-						shaderDesc);
+					output = compileTechniques(variationParseState, entry.second.name, codeBlocks, variation, languages,
+						includeSet, shaderDesc);
 
 					if (!output.errorMessage.empty())
 						return output;
@@ -1846,7 +1884,7 @@ namespace bs
 	}
 
 	BSLFXCompileResult BSLFXCompiler::compileShader(String source, const UnorderedMap<String, String>& defines,
-		SHADER_DESC& shaderDesc, Vector<String>& includes)
+		ShadingLanguageFlags languages, SHADER_DESC& shaderDesc, Vector<String>& includes)
 	{
 		SPtr<ct::Renderer> renderer = RendererManager::instance().getActive();
 
@@ -1891,7 +1929,7 @@ namespace bs
 		if (!output.errorMessage.empty())
 			return output;
 
-		output = compileTechniques(shaderMetaData, source, defines, shaderDesc, includes);
+		output = compileTechniques(shaderMetaData, source, defines, languages, shaderDesc, includes);
 
 		if (!output.errorMessage.empty())
 			return output;
@@ -1926,8 +1964,8 @@ namespace bs
 
 				SHADER_DESC subShaderDesc;
 				Vector<String> subShaderIncludes;
-				BSLFXCompileResult subShaderOutput = compileShader(subShaderSource.str(), subShaderDefines, subShaderDesc,
-					subShaderIncludes);
+				BSLFXCompileResult subShaderOutput = compileShader(subShaderSource.str(), subShaderDefines, languages, 
+					subShaderDesc, subShaderIncludes);
 
 				if (!subShaderOutput.errorMessage.empty())
 					return subShaderOutput;
@@ -1949,8 +1987,8 @@ namespace bs
 	}
 
 	BSLFXCompileResult BSLFXCompiler::compileTechniques(ParseState* parseState, const String& name,
-		const Vector<String>& codeBlocks, const ShaderVariation& variation, UnorderedSet<String>& includes,
-		SHADER_DESC& shaderDesc)
+		const Vector<String>& codeBlocks, const ShaderVariation& variation, ShadingLanguageFlags languages,
+		UnorderedSet<String>& includes, SHADER_DESC& shaderDesc)
 	{
 		BSLFXCompileResult output;
 
@@ -2079,121 +2117,176 @@ namespace bs
 		parseStateDelete(parseState);
 
 		// Parse extended HLSL code and generate per-program code, also convert to GLSL/VKSL
-		UINT32 end = (UINT32)shaderData.size();
+		const auto end = (UINT32)shaderData.size();
+		Vector<pair<ASTFXNode*, ShaderData>> outputShaderData;
 		for(UINT32 i = 0; i < end; i++)
 		{
 			const ShaderMetaData& metaData = shaderData[i].second.metaData;
 			if (metaData.isMixin)
 				continue;
 
-			ShaderData& hlslTechnique = shaderData[i].second;
+			ShaderData& shaderDataEntry = shaderData[i].second;
 
-			ShaderData glslTechnique = shaderData[i].second;
+			ShaderData hlslShaderData = shaderData[i].second;
+			ShaderData glslShaderData = shaderData[i].second;
 
 			// When working with OpenGL, lower-end feature sets are supported. For other backends, high-end is always assumed.
 			CrossCompileOutput glslVersion = CrossCompileOutput::GLSL41;
-			if(glslTechnique.metaData.featureSet == "HighEnd")
+			if(glslShaderData.metaData.featureSet == "HighEnd")
 			{
-				glslTechnique.metaData.language = "glsl";
+				glslShaderData.metaData.language = "glsl";
 				glslVersion = CrossCompileOutput::GLSL45;
 			}
 			else
-				glslTechnique.metaData.language = "glsl4_1";
+				glslShaderData.metaData.language = "glsl4_1";
 
-			ShaderData vkslTechnique = shaderData[i].second;
-			vkslTechnique.metaData.language = "vksl";
+			ShaderData vkslShaderData = shaderData[i].second;
+			vkslShaderData.metaData.language = "vksl";
 
-			UINT32 numPasses = (UINT32)hlslTechnique.passes.size();
-
+			const auto numPasses = (UINT32)shaderDataEntry.passes.size();
 			for(UINT32 j = 0; j < numPasses; j++)
 			{
-				PassData& hlslPassData = hlslTechnique.passes[j];
-				PassData& glslPassData = glslTechnique.passes[j];
-				PassData& vkslPassData = vkslTechnique.passes[j];
-
-				// Clean non-standard HLSL
-				// Note: Ideally we add a full HLSL output module to XShaderCompiler, instead of using simple regex. This
-				// way the syntax could be enhanced with more complex features, while still being able to output pure
-				// HLSL.
-				static const std::regex attrRegex(
-					R"(\[\s*layout\s*\(.*\)\s*\]|\[\s*internal\s*\]|\[\s*color\s*\]|\[\s*alias\s*\(.*\)\s*\]|\[\s*spriteuv\s*\(.*\)\s*\])");
-				hlslPassData.code = regex_replace(hlslPassData.code, attrRegex, "");
-
-				static const std::regex initializerRegex(
-					R"(Texture2D\s*(\S*)\s*=.*;)");
-				hlslPassData.code = regex_replace(hlslPassData.code, initializerRegex, "Texture2D $1;");
+				PassData& passData = shaderDataEntry.passes[j];
 
 				// Find valid entry points and parameters
 				// Note: XShaderCompiler needs to do a full pass when doing reflection, and for each individual program
 				// type. If performance is ever important here it could be good to update XShaderCompiler so it can
 				// somehow save the AST and then re-use it for multiple actions.
 				Vector<GpuProgramType> types;
-				reflectHLSL(glslPassData.code, shaderDesc, types);
+				reflectHLSL(passData.code, shaderDesc, types);
 
-				UINT32 glslBinding = 0;
-				UINT32 vkslBinding = 0;
-
-				// Cross-compile for all detected shader types
-				// Note: I'm just copying HLSL code as-is. This code will contain all entry points which could have
-				// an effect on compile time. It would be ideal to remove dead code depending on program type. This would
-				// involve adding a HLSL code generator to XShaderCompiler.
-				for(auto& type : types)
+				if(languages.isSet(ShadingLanguageFlag::GLSL))
 				{
-					switch(type)
+					PassData& glslPassData = glslShaderData.passes[j];
+					UINT32 glslBinding = 0;
+
+					for (auto& type : types)
 					{
-					case GPT_VERTEX_PROGRAM:
-						hlslPassData.vertexCode = hlslPassData.code;
-						glslPassData.vertexCode = HLSLtoGLSL(glslPassData.code, GPT_VERTEX_PROGRAM,
-							glslVersion, glslBinding);
-						vkslPassData.vertexCode = HLSLtoGLSL(glslPassData.code, GPT_VERTEX_PROGRAM,
-							CrossCompileOutput::VKSL45, vkslBinding);
-						break;
-					case GPT_FRAGMENT_PROGRAM:
-						hlslPassData.fragmentCode = hlslPassData.code;
-						glslPassData.fragmentCode = HLSLtoGLSL(glslPassData.code, GPT_FRAGMENT_PROGRAM,
-							glslVersion, glslBinding);
-						vkslPassData.fragmentCode = HLSLtoGLSL(glslPassData.code, GPT_FRAGMENT_PROGRAM,
-							CrossCompileOutput::VKSL45, vkslBinding);
-						break;
-					case GPT_GEOMETRY_PROGRAM:
-						hlslPassData.geometryCode = hlslPassData.code;
-						glslPassData.geometryCode = HLSLtoGLSL(glslPassData.code, GPT_GEOMETRY_PROGRAM,
-							glslVersion, glslBinding);
-						vkslPassData.geometryCode = HLSLtoGLSL(glslPassData.code, GPT_GEOMETRY_PROGRAM,
-							CrossCompileOutput::VKSL45, vkslBinding);
-						break;
-					case GPT_HULL_PROGRAM:
-						hlslPassData.hullCode = hlslPassData.code;
-						glslPassData.hullCode = HLSLtoGLSL(glslPassData.code, GPT_HULL_PROGRAM,
-							glslVersion, glslBinding);
-						vkslPassData.hullCode = HLSLtoGLSL(glslPassData.code, GPT_HULL_PROGRAM,
-							CrossCompileOutput::VKSL45, vkslBinding);
-						break;
-					case GPT_DOMAIN_PROGRAM:
-						hlslPassData.domainCode = hlslPassData.code;
-						glslPassData.domainCode = HLSLtoGLSL(glslPassData.code, GPT_DOMAIN_PROGRAM,
-							glslVersion, glslBinding);
-						vkslPassData.domainCode = HLSLtoGLSL(glslPassData.code, GPT_DOMAIN_PROGRAM,
-							CrossCompileOutput::VKSL45, vkslBinding);
-						break;
-					case GPT_COMPUTE_PROGRAM:
-						hlslPassData.computeCode = hlslPassData.code;
-						glslPassData.computeCode = HLSLtoGLSL(glslPassData.code, GPT_COMPUTE_PROGRAM,
-							glslVersion, glslBinding);
-						vkslPassData.computeCode = HLSLtoGLSL(glslPassData.code, GPT_COMPUTE_PROGRAM,
-							CrossCompileOutput::VKSL45, vkslBinding);
-						break;
-					default:
-						break;
+						switch (type)
+						{
+						case GPT_VERTEX_PROGRAM:
+							glslPassData.vertexCode = HLSLtoGLSL(glslPassData.code, GPT_VERTEX_PROGRAM,
+								glslVersion, glslBinding);
+							break;
+						case GPT_FRAGMENT_PROGRAM:
+							glslPassData.fragmentCode = HLSLtoGLSL(glslPassData.code, GPT_FRAGMENT_PROGRAM,
+								glslVersion, glslBinding);
+							break;
+						case GPT_GEOMETRY_PROGRAM:
+							glslPassData.geometryCode = HLSLtoGLSL(glslPassData.code, GPT_GEOMETRY_PROGRAM,
+								glslVersion, glslBinding);
+							break;
+						case GPT_HULL_PROGRAM:
+							glslPassData.hullCode = HLSLtoGLSL(glslPassData.code, GPT_HULL_PROGRAM,
+								glslVersion, glslBinding);
+							break;
+						case GPT_DOMAIN_PROGRAM:
+							glslPassData.domainCode = HLSLtoGLSL(glslPassData.code, GPT_DOMAIN_PROGRAM,
+								glslVersion, glslBinding);
+							break;
+						case GPT_COMPUTE_PROGRAM:
+							glslPassData.computeCode = HLSLtoGLSL(glslPassData.code, GPT_COMPUTE_PROGRAM,
+								glslVersion, glslBinding);
+							break;
+						default:
+							break;
+						}
+					}
+				}
+
+				if(languages.isSet(ShadingLanguageFlag::VKSL))
+				{
+					PassData& vkslPassData = vkslShaderData.passes[j];
+					UINT32 vkslBinding = 0;
+
+					for (auto& type : types)
+					{
+						switch (type)
+						{
+						case GPT_VERTEX_PROGRAM:
+							vkslPassData.vertexCode = HLSLtoGLSL(vkslPassData.code, GPT_VERTEX_PROGRAM,
+								CrossCompileOutput::VKSL45, vkslBinding);
+							break;
+						case GPT_FRAGMENT_PROGRAM:
+							vkslPassData.fragmentCode = HLSLtoGLSL(vkslPassData.code, GPT_FRAGMENT_PROGRAM,
+								CrossCompileOutput::VKSL45, vkslBinding);
+							break;
+						case GPT_GEOMETRY_PROGRAM:
+							vkslPassData.geometryCode = HLSLtoGLSL(vkslPassData.code, GPT_GEOMETRY_PROGRAM,
+								CrossCompileOutput::VKSL45, vkslBinding);
+							break;
+						case GPT_HULL_PROGRAM:
+							vkslPassData.hullCode = HLSLtoGLSL(vkslPassData.code, GPT_HULL_PROGRAM,
+								CrossCompileOutput::VKSL45, vkslBinding);
+							break;
+						case GPT_DOMAIN_PROGRAM:
+							vkslPassData.domainCode = HLSLtoGLSL(vkslPassData.code, GPT_DOMAIN_PROGRAM,
+								CrossCompileOutput::VKSL45, vkslBinding);
+							break;
+						case GPT_COMPUTE_PROGRAM:
+							vkslPassData.computeCode = HLSLtoGLSL(vkslPassData.code, GPT_COMPUTE_PROGRAM,
+								CrossCompileOutput::VKSL45, vkslBinding);
+							break;
+						default:
+							break;
+						}
+					}
+				}
+
+				if(languages.isSet(ShadingLanguageFlag::HLSL))
+				{
+					PassData& hlslPassData = hlslShaderData.passes[j];
+
+					// Clean non-standard HLSL
+					// Note: Ideally we add a full HLSL output module to XShaderCompiler, instead of using simple regex. This
+					// way the syntax could be enhanced with more complex features, while still being able to output pure
+					// HLSL.
+					static const std::regex attrRegex(
+						R"(\[\s*layout\s*\(.*\)\s*\]|\[\s*internal\s*\]|\[\s*color\s*\]|\[\s*alias\s*\(.*\)\s*\]|\[\s*spriteuv\s*\(.*\)\s*\])");
+					hlslPassData.code = regex_replace(hlslPassData.code, attrRegex, "");
+
+					static const std::regex initializerRegex(
+						R"(Texture2D\s*(\S*)\s*=.*;)");
+					hlslPassData.code = regex_replace(hlslPassData.code, initializerRegex, "Texture2D $1;");
+
+					// Note: I'm just copying HLSL code as-is. This code will contain all entry points which could have
+					// an effect on compile time. It would be ideal to remove dead code depending on program type. This would
+					// involve adding a HLSL code generator to XShaderCompiler.
+					for (auto& type : types)
+					{
+						switch (type)
+						{
+						case GPT_VERTEX_PROGRAM:
+							hlslPassData.vertexCode = hlslPassData.code;
+							break;
+						case GPT_FRAGMENT_PROGRAM:
+							hlslPassData.fragmentCode = hlslPassData.code;
+							break;
+						case GPT_GEOMETRY_PROGRAM:
+							hlslPassData.geometryCode = hlslPassData.code;
+							break;
+						case GPT_HULL_PROGRAM:
+							hlslPassData.hullCode = hlslPassData.code;
+							break;
+						case GPT_DOMAIN_PROGRAM:
+							hlslPassData.domainCode = hlslPassData.code;
+							break;
+						case GPT_COMPUTE_PROGRAM:
+							hlslPassData.computeCode = hlslPassData.code;
+							break;
+						default:
+							break;
+						}
 					}
 				}
 			}
 
-			shaderData.push_back(std::make_pair(nullptr, glslTechnique));
-			shaderData.push_back(std::make_pair(nullptr, vkslTechnique));
+			outputShaderData.push_back(std::make_pair(nullptr, hlslShaderData));
+			outputShaderData.push_back(std::make_pair(nullptr, glslShaderData));
+			outputShaderData.push_back(std::make_pair(nullptr, vkslShaderData));
 		}
 
-		for(auto& entry : shaderData)
+		for(auto& entry : outputShaderData)
 		{
 			const ShaderMetaData& metaData = entry.second.metaData;
 			if (metaData.isMixin)
@@ -2267,7 +2360,7 @@ namespace bs
 			for (auto& KVP : passes)
 				orderedPasses.push_back(KVP.second);
 
-			if (orderedPasses.size() > 0)
+			if (!orderedPasses.empty())
 			{
 				SPtr<Technique> technique = Technique::create(metaData.language, metaData.tags, variation, orderedPasses);
 				shaderDesc.techniques.push_back(technique);

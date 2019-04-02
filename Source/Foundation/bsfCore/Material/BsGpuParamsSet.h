@@ -69,6 +69,7 @@ namespace bs
 			UINT32 paramIdx;
 			UINT32 blockIdx;
 			UINT32 offset;
+			UINT32 arrayStride;
 		};
 
 		/** Information about how an object parameter maps from a material parameter to a GPU stage slot. */
@@ -99,7 +100,7 @@ namespace bs
 		};
 
 	public:
-		TGpuParamsSet() {}
+		TGpuParamsSet() = default;
 		TGpuParamsSet(const SPtr<TechniqueType>& technique, const ShaderType& shader,
 			const SPtr<MaterialParamsType>& params);
 		~TGpuParamsSet();
@@ -183,7 +184,7 @@ namespace bs
 	class BS_CORE_EXPORT GpuParamsSet : public TGpuParamsSet<false>
 	{
 	public:
-		GpuParamsSet() { }
+		GpuParamsSet() = default;
 		GpuParamsSet(const SPtr<Technique>& technique, const HShader& shader, 
 			const SPtr<MaterialParams>& params)
 			:TGpuParamsSet(technique, shader, params)
@@ -196,7 +197,7 @@ namespace bs
 	class BS_CORE_EXPORT GpuParamsSet : public TGpuParamsSet<true>
 	{
 	public:
-		GpuParamsSet() { }
+		GpuParamsSet() = default;
 		GpuParamsSet(const SPtr<Technique>& technique, const SPtr<Shader>& shader,
 			const SPtr<MaterialParams>& params)
 			:TGpuParamsSet(technique, shader, params)

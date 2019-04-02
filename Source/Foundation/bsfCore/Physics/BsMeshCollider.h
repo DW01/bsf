@@ -8,6 +8,8 @@
 
 namespace bs
 {
+	class PhysicsScene;
+
 	/** @addtogroup Physics
 	 *  @{
 	 */
@@ -16,7 +18,7 @@ namespace bs
 	class BS_CORE_EXPORT MeshCollider : public Collider, public IResourceListener
 	{
 	public:
-		MeshCollider();
+		MeshCollider() = default;
 
 		/** 
 		 * Sets a mesh that represents the collider geometry. This can be a generic triangle mesh, or and convex mesh. 
@@ -31,10 +33,11 @@ namespace bs
 		/** 
 		 * Creates a new mesh collider. 
 		 *
+		 * @param[in]	scene		Scene into which to add the collider to.
 		 * @param[in]	position	Position of the collider.
 		 * @param[in]	rotation	Rotation of the collider.
 		 */
-		static SPtr<MeshCollider> create(const Vector3& position = Vector3::ZERO, 
+		static SPtr<MeshCollider> create(PhysicsScene& scene, const Vector3& position = Vector3::ZERO, 
 			const Quaternion& rotation = Quaternion::IDENTITY);
 
 	protected:

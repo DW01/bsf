@@ -25,6 +25,8 @@ namespace bs
 		mDefines[name] = value;
 	}
 
+	const ShaderVariation ShaderVariation::EMPTY;
+
 	ShaderVariation::ShaderVariation(const SmallVector<Param, 4>& params)
 	{
 		for (auto& entry : params)
@@ -90,26 +92,44 @@ namespace bs
 		return defines;
 	}
 
-	bool ShaderVariation::operator==(const ShaderVariation& rhs) const
+	bool ShaderVariation::matches(const ShaderVariation& other, bool exact) const
 	{
-		for(auto& entry : mParams)
+		for(auto& entry : other.mParams)
 		{
-			auto iterFind = rhs.mParams.find(entry.first);
-			if(iterFind == rhs.mParams.end())
+			const auto iterFind = mParams.find(entry.first);
+			if(iterFind == mParams.end())
 				return false;
 
 			if(entry.second.i != iterFind->second.i)
 				return false;
 		}
 
+		if(exact)
+		{
+			for (auto& entry : mParams)
+			{
+				const auto iterFind = other.mParams.find(entry.first);
+				if (iterFind == other.mParams.end())
+					return false;
+
+				if (entry.second.i != iterFind->second.i)
+					return false;
+			}
+		}
+
 		return true;
+	}
+
+	bool ShaderVariation::operator==(const ShaderVariation& rhs) const
+	{
+		return matches(rhs, true);
 	}
 
 	void ShaderVariations::add(const ShaderVariation& variation)
 	{
 		variation.mIdx = mNextIdx++;
 
-		mVariations.push_back(variation);
+		mVariations.add(variation);
 	}
 	
 	UINT32 ShaderVariations::find(const ShaderVariation& variation) const
@@ -136,4 +156,9 @@ namespace bs
 		return ShaderVariation::getRTTIStatic();
 	}
 
+	// This is here to solve a linking issue on Clang 7. The destructor apparently either doesn't get implicitly
+	// instantiated. This means external libraries linking with bsf, using the same SmallVector template parameters will
+	// trigger an undefined reference linker error. And why doesn't the library instantiate it itself? Don't know, either
+	// a Clang issue or maybe even some part of the standard.
+	template SmallVector<ShaderVariation::Param, 4>::~SmallVector();
 }

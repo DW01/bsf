@@ -165,19 +165,16 @@ namespace bs
 	/**	Scene information used and modified during FBX import. */
 	struct FBXImportScene
 	{
-		FBXImportScene();
+		FBXImportScene() = default;
 		~FBXImportScene();
 
 		Vector<FBXImportMesh*> meshes;
-		FBXImportNode* rootNode;
+		FBXImportNode* rootNode = nullptr;
 
 		UnorderedMap<FbxNode*, FBXImportNode*> nodeMap;
 		UnorderedMap<FbxMesh*, UINT32> meshMap;
 
 		Vector<FBXAnimationClip> clips;
-
-		float scaleFactor;
-		Matrix4 globalScale;
 	};
 
 	/** @} */

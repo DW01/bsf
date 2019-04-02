@@ -37,7 +37,7 @@ namespace bs
 		mOutputStream.clear();
 	}
 
-	void FileEncoder::encode(IReflectable* object, const UnorderedMap<String, UINT64>& params)
+	void FileEncoder::encode(IReflectable* object, SerializationContext* context)
 	{
 		if (object == nullptr)
 			return;
@@ -48,7 +48,7 @@ namespace bs
 		BinarySerializer bs;
 		UINT32 totalBytesWritten = 0;
 		bs.encode(object, mWriteBuffer, WRITE_BUFFER_SIZE, &totalBytesWritten, 
-			std::bind(&FileEncoder::flushBuffer, this, _1, _2, _3), false, params);
+			std::bind(&FileEncoder::flushBuffer, this, _1, _2, _3), false, context);
 
 		mOutputStream.seekp(curPos);
 		mOutputStream.write((char*)&totalBytesWritten, sizeof(totalBytesWritten));
@@ -76,7 +76,7 @@ namespace bs
 		}
 	}
 
-	SPtr<IReflectable> FileDecoder::decode(const UnorderedMap<String, UINT64>& params)
+	SPtr<IReflectable> FileDecoder::decode(SerializationContext* context)
 	{
 		if (mInputStream->eof())
 			return nullptr;
@@ -85,9 +85,21 @@ namespace bs
 		mInputStream->read(&objectSize, sizeof(objectSize));
 
 		BinarySerializer bs;
-		SPtr<IReflectable> object = bs.decode(mInputStream, objectSize, params);
+		SPtr<IReflectable> object = bs.decode(mInputStream, objectSize, context);
 
 		return object;
+	}
+
+	UINT32 FileDecoder::getSize() const
+	{
+		if (mInputStream->eof())
+			return 0;
+
+		UINT32 objectSize = 0;
+		mInputStream->read(&objectSize, sizeof(objectSize));
+		mInputStream->seek(mInputStream->tell() - sizeof(objectSize));
+
+		return objectSize;
 	}
 
 	void FileDecoder::skip()

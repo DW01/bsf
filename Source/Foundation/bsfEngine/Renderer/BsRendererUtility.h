@@ -26,10 +26,10 @@ namespace bs { namespace ct
 		static const ShaderVariation& getVariation()
 		{
 			static ShaderVariation variation = ShaderVariation(
-			Vector<ShaderVariation::Param>{
+			SmallVector<ShaderVariation::Param, 4>({
 				ShaderVariation::Param("MSAA_COUNT", msaa),
 				ShaderVariation::Param("COLOR", color),
-			});
+			}));
 
 			return variation;
 		}
@@ -83,7 +83,7 @@ namespace bs { namespace ct
 	{
 	public:
 		RendererUtility();
-		~RendererUtility();
+		~RendererUtility() = default;
 
 		/**
 		 * Activates the specified material pass for rendering. Any further draw calls will be executed using this pass.
@@ -222,7 +222,14 @@ namespace bs { namespace ct
 		SPtr<Mesh> getSkyBoxMesh() const { return mSkyBoxMesh; }
 
 	private:
-		SPtr<Mesh> mFullScreenQuadMesh;
+		static constexpr UINT32 NUM_QUAD_VB_SLOTS = 1024;
+
+		SPtr<IndexBuffer> mFullScreenQuadIB;
+		SPtr<VertexBuffer> mFullScreenQuadVB;
+		SPtr<VertexDataDesc> mFullscreenQuadVDesc;
+		SPtr<VertexDeclaration> mFullscreenQuadVDecl;
+		UINT32 mNextQuadVBSlot = 0;
+
 		SPtr<Mesh> mUnitSphereStencilMesh;
 		SPtr<Mesh> mUnitBoxStencilMesh;
 		SPtr<Mesh> mSpotLightStencilMesh;

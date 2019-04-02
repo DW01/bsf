@@ -32,7 +32,7 @@
 
 namespace bs { namespace ct
 {
-	const char* MODULE_NAME = "BansheeGLRenderAPI.dll";
+	const char* MODULE_NAME = "bsfGLRenderAPI.dll";
 
 	const char* bs_get_gl_error_string(GLenum errorCode)
 	{
@@ -79,24 +79,6 @@ namespace bs { namespace ct
 	/************************************************************************/
 
 	GLRenderAPI::GLRenderAPI()
-		: mViewportNorm(0.0f, 0.0f, 1.0f, 1.0f)
-		, mScissorTop(0), mScissorBottom(720), mScissorLeft(0), mScissorRight(1280)
-		, mViewportLeft(0), mViewportTop(0), mViewportWidth(0), mViewportHeight(0)
-		, mScissorEnabled(false)
-		, mStencilReadMask(0xFFFFFFFF)
-		, mStencilWriteMask(0xFFFFFFFF)
-		, mStencilRefValue(0)
-		, mStencilCompareFront(CMPF_ALWAYS_PASS)
-		, mStencilCompareBack(CMPF_ALWAYS_PASS)
-		, mNumTextureUnits(0)
-		, mTextureInfos(nullptr)
-		, mDepthWrite(true)
-		, mGLSLProgramFactory(nullptr)
-		, mProgramPipelineManager(nullptr)
-		, mActivePipeline(nullptr)
-		, mCurrentDrawOperation(DOT_TRIANGLE_LIST)
-		, mDrawCallInProgress(false)
-		, mActiveTextureUnit(-1)
 	{
 		// Get our GLSupport
 		mGLSupport = ct::getGLSupport();
@@ -112,11 +94,6 @@ namespace bs { namespace ct
 		mMipFilter = FO_POINT;
 
 		mProgramPipelineManager = bs_new<GLSLProgramPipelineManager>();
-	}
-
-	GLRenderAPI::~GLRenderAPI()
-	{
-
 	}
 
 	const StringID& GLRenderAPI::getName() const
@@ -2080,7 +2057,7 @@ namespace bs { namespace ct
 	{
 		if (mActiveTextureUnit != unit)
 		{
-			if (unit < getCapabilities(0).getNumCombinedTextureUnits())
+			if (unit < getCapabilities(0).numCombinedTextureUnits)
 			{
 				glActiveTexture(GL_TEXTURE0 + unit);
 				BS_CHECK_GL_ERROR();
@@ -2096,7 +2073,7 @@ namespace bs { namespace ct
 			else
 			{
 				LOGWRN("Provided texture unit index is higher than OpenGL supports. Provided: " + toString(unit) + 
-					". Supported range: 0 .. " + toString(getCapabilities(0).getNumCombinedTextureUnits() - 1));
+					". Supported range: 0 .. " + toString(getCapabilities(0).numCombinedTextureUnits - 1));
 				return false;
 			}
 		}
@@ -2371,7 +2348,7 @@ namespace bs { namespace ct
 
 	void GLRenderAPI::initFromCaps(RenderAPICapabilities* caps)
 	{
-		if(caps->getRenderAPIName() != getName())
+		if(caps->renderAPIName != getName())
 		{
 			BS_EXCEPT(InvalidParametersException, 
 				"Trying to initialize GLRenderAPI from RenderSystemCapabilities that do not support OpenGL");
@@ -2398,7 +2375,7 @@ namespace bs { namespace ct
 
 		GLRTTManager::startUp<GLRTTManager>();
 
-		mNumTextureUnits = caps->getNumCombinedTextureUnits();
+		mNumTextureUnits = caps->numCombinedTextureUnits;
 		mTextureInfos = bs_newN<TextureInfo>(mNumTextureUnits);
 		
 		bs::TextureManager::startUp<bs::GLTextureManager>(std::ref(*mGLSupport));
@@ -2443,23 +2420,23 @@ namespace bs { namespace ct
 		}
 		driverVersion.build = 0;
 
-		caps.setDriverVersion(driverVersion);
-		caps.setRenderAPIName(getName());
+		caps.driverVersion = driverVersion;
+		caps.renderAPIName = getName();
 
 		const char* deviceName = (const char*)glGetString(GL_RENDERER);
-		caps.setDeviceName(deviceName);
+		caps.deviceName = deviceName;
 
 		const char* vendorName = (const char*)glGetString(GL_VENDOR);
 		if (strstr(vendorName, "NVIDIA"))
-			caps.setVendor(GPU_NVIDIA);
+			caps.deviceVendor = GPU_NVIDIA;
 		else if (strstr(vendorName, "ATI"))
-			caps.setVendor(GPU_AMD);
+			caps.deviceVendor = GPU_AMD;
 		else if (strstr(vendorName, "AMD"))
-			caps.setVendor(GPU_AMD);
+			caps.deviceVendor = GPU_AMD;
 		else if (strstr(vendorName, "Intel"))
-			caps.setVendor(GPU_INTEL);
+			caps.deviceVendor = GPU_INTEL;
 		else
-			caps.setVendor(GPU_UNKNOWN);
+			caps.deviceVendor = GPU_UNKNOWN;
 
 #if BS_OPENGL_4_1
 		caps.addShaderProfile("glsl4_1");
@@ -2475,6 +2452,24 @@ namespace bs { namespace ct
 		caps.setCapability(RSC_GEOMETRY_PROGRAM);
 #endif
 
+#if BS_OPENGL_4_2 || BS_OPENGLES_3_2
+		caps.setCapability(RSC_LOAD_STORE);
+		caps.setCapability(RSC_LOAD_STORE_MSAA);
+#endif
+
+#if BS_OPENGL_4_3 || BS_OPENGLES_3_1
+		caps.setCapability(RSC_TEXTURE_VIEWS);
+#endif
+
+#if BS_PLATFORM != BS_PLATFORM_OSX
+		caps.setCapability(RSC_RENDER_TARGET_LAYERS);
+#endif
+
+		caps.conventions.uvYAxis = Conventions::Axis::Up;
+		caps.conventions.matrixOrder = Conventions::MatrixOrder::ColumnMajor;
+		caps.minDepth = -1.0f;
+		caps.maxDepth = 1.0f;
+
 		GLint maxOutputVertices;
 
 #if BS_OPENGL_4_1 || BS_OPENGLES_3_2
@@ -2484,32 +2479,32 @@ namespace bs { namespace ct
 		maxOutputVertices = 0;
 #endif
 
-		caps.setGeometryProgramNumOutputVertices(maxOutputVertices);
+		caps.geometryProgramNumOutputVertices = maxOutputVertices;
 
 		// Max number of fragment shader textures
 		GLint units;
 		glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &units);
 		BS_CHECK_GL_ERROR();
 
-		caps.setNumTextureUnits(GPT_FRAGMENT_PROGRAM, static_cast<UINT16>(units));
+		caps.numTextureUnitsPerStage[GPT_FRAGMENT_PROGRAM] = static_cast<UINT16>(units);
 
 		// Max number of vertex shader textures
 		GLint vUnits;
 		glGetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &vUnits);
 		BS_CHECK_GL_ERROR();
 
-		caps.setNumTextureUnits(GPT_VERTEX_PROGRAM, static_cast<UINT16>(vUnits));
+		caps.numTextureUnitsPerStage[GPT_VERTEX_PROGRAM] = static_cast<UINT16>(vUnits);
 
 		GLint numUniformBlocks;
 		glGetIntegerv(GL_MAX_VERTEX_UNIFORM_BLOCKS, &numUniformBlocks);
 		BS_CHECK_GL_ERROR();
 
-		caps.setNumGpuParamBlockBuffers(GPT_VERTEX_PROGRAM, numUniformBlocks);
+		caps.numGpuParamBlockBuffersPerStage[GPT_VERTEX_PROGRAM] = numUniformBlocks;
 
 		glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_BLOCKS, &numUniformBlocks);
 		BS_CHECK_GL_ERROR();
 
-		caps.setNumGpuParamBlockBuffers(GPT_FRAGMENT_PROGRAM, numUniformBlocks);
+		caps.numGpuParamBlockBuffersPerStage[GPT_FRAGMENT_PROGRAM] = numUniformBlocks;
 
 		{
 			GLint geomUnits;
@@ -2521,7 +2516,7 @@ namespace bs { namespace ct
 			geomUnits = 0;
 #endif
 
-			caps.setNumTextureUnits(GPT_GEOMETRY_PROGRAM, static_cast<UINT16>(geomUnits));
+			caps.numTextureUnitsPerStage[GPT_GEOMETRY_PROGRAM] = static_cast<UINT16>(geomUnits);
 
 #if BS_OPENGL_4_1 || BS_OPENGLES_3_2
 			glGetIntegerv(GL_MAX_GEOMETRY_UNIFORM_BLOCKS, &numUniformBlocks);
@@ -2530,7 +2525,7 @@ namespace bs { namespace ct
 			numUniformBlocks = 0;
 #endif
 
-			caps.setNumGpuParamBlockBuffers(GPT_GEOMETRY_PROGRAM, numUniformBlocks);
+			caps.numGpuParamBlockBuffersPerStage[GPT_GEOMETRY_PROGRAM] = numUniformBlocks;
 		}
 
 		if (mGLSupport->checkExtension("GL_ARB_tessellation_shader"))
@@ -2546,7 +2541,7 @@ namespace bs { namespace ct
 			numUniformBlocks = 0;
 #endif
 
-			caps.setNumGpuParamBlockBuffers(GPT_HULL_PROGRAM, numUniformBlocks);
+			caps.numGpuParamBlockBuffersPerStage[GPT_HULL_PROGRAM] = numUniformBlocks;
 
 #if BS_OPENGL_4_1 || BS_OPENGLES_3_2
 			glGetIntegerv(GL_MAX_TESS_EVALUATION_UNIFORM_BLOCKS, &numUniformBlocks);
@@ -2555,7 +2550,7 @@ namespace bs { namespace ct
 			numUniformBlocks = 0;
 #endif
 
-			caps.setNumGpuParamBlockBuffers(GPT_DOMAIN_PROGRAM, numUniformBlocks);
+			caps.numGpuParamBlockBuffersPerStage[GPT_DOMAIN_PROGRAM] = numUniformBlocks;
 		}
 
 		if (mGLSupport->checkExtension("GL_ARB_compute_shader")) 
@@ -2573,7 +2568,7 @@ namespace bs { namespace ct
 			computeUnits = 0;
 #endif
 
-			caps.setNumTextureUnits(GPT_COMPUTE_PROGRAM, static_cast<UINT16>(computeUnits));
+			caps.numTextureUnitsPerStage[GPT_COMPUTE_PROGRAM] = static_cast<UINT16>(computeUnits);
 
 #if BS_OPENGL_4_3 || BS_OPENGLES_3_1
 			glGetIntegerv(GL_MAX_COMPUTE_UNIFORM_BLOCKS, &numUniformBlocks);
@@ -2582,7 +2577,7 @@ namespace bs { namespace ct
 			numUniformBlocks = 0;
 #endif
 
-			caps.setNumGpuParamBlockBuffers(GPT_COMPUTE_PROGRAM, numUniformBlocks);
+			caps.numGpuParamBlockBuffersPerStage[GPT_COMPUTE_PROGRAM] = numUniformBlocks;
 
 			// Max number of load-store textures
 			GLint lsfUnits;
@@ -2594,7 +2589,7 @@ namespace bs { namespace ct
 			lsfUnits = 0;
 #endif
 
-			caps.setNumLoadStoreTextureUnits(GPT_FRAGMENT_PROGRAM, static_cast<UINT16>(lsfUnits));
+			caps.numLoadStoreTextureUnitsPerStage[GPT_FRAGMENT_PROGRAM] = static_cast<UINT16>(lsfUnits);
 
 			GLint lscUnits;
 
@@ -2605,7 +2600,7 @@ namespace bs { namespace ct
 			lscUnits = 0;
 #endif
 
-			caps.setNumLoadStoreTextureUnits(GPT_COMPUTE_PROGRAM, static_cast<UINT16>(lscUnits));
+			caps.numLoadStoreTextureUnitsPerStage[GPT_COMPUTE_PROGRAM] = static_cast<UINT16>(lscUnits);
 
 			GLint combinedLoadStoreTextureUnits;
 
@@ -2616,22 +2611,21 @@ namespace bs { namespace ct
 			combinedLoadStoreTextureUnits = 0;
 #endif
 
-			caps.setNumCombinedLoadStoreTextureUnits(static_cast<UINT16>(combinedLoadStoreTextureUnits));
+			caps.numCombinedLoadStoreTextureUnits = static_cast<UINT16>(combinedLoadStoreTextureUnits);
 		}
 
 		GLint combinedTexUnits;
 		glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &combinedTexUnits);
 		BS_CHECK_GL_ERROR();
 
-		caps.setNumCombinedTextureUnits(static_cast<UINT16>(combinedTexUnits));
+		caps.numCombinedTextureUnits = static_cast<UINT16>(combinedTexUnits);
 
 		GLint combinedUniformBlockUnits;
 		glGetIntegerv(GL_MAX_COMBINED_UNIFORM_BLOCKS, &combinedUniformBlockUnits);
 		BS_CHECK_GL_ERROR();
 
-		caps.setNumCombinedGpuParamBlockBuffers(static_cast<UINT16>(combinedUniformBlockUnits));
-
-		caps.setNumMultiRenderTargets(8);
+		caps.numCombinedParamBlockBuffers = static_cast<UINT16>(combinedUniformBlockUnits);
+		caps.numMultiRenderTargets = 8;
 	}
 
 	void GLRenderAPI::makeGLMatrix(GLfloat gl_matrix[16], const Matrix4& m)
@@ -2681,31 +2675,6 @@ namespace bs { namespace ct
 	void GLRenderAPI::convertProjectionMatrix(const Matrix4& matrix, Matrix4& dest)
 	{
 		dest = matrix;
-	}
-
-	const RenderAPIInfo& GLRenderAPI::getAPIInfo() const
-	{
-		RenderAPIFeatures featureFlags =
-			RenderAPIFeatureFlag::UVYAxisUp |
-			RenderAPIFeatureFlag::ColumnMajorMatrices |
-			RenderAPIFeatureFlag::MSAAImageStores;
-
-#if BS_OPENGL_4_3 || BS_OPENGLES_3_1
-		featureFlags |= RenderAPIFeatureFlag::TextureViews;
-		featureFlags |= RenderAPIFeatureFlag::Compute;
-#endif
-
-#if BS_OPENGL_4_2 || BS_OPENGLES_3_1
-		featureFlags |= RenderAPIFeatureFlag::LoadStore;
-#endif
-
-#if BS_PLATFORM != BS_PLATFORM_OSX
-		featureFlags |= RenderAPIFeatureFlag::RenderTargetLayers;
-#endif
-
-		static RenderAPIInfo info(0.0f, 0.0f, -1.0f, 1.0f, VET_COLOR_ABGR, featureFlags);
-								  
-		return info;
 	}
 
 	GpuParamBlockDesc GLRenderAPI::generateParamBlockDesc(const String& name, Vector<GpuParamDataDesc>& params)

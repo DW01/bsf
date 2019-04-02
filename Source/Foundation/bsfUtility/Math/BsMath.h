@@ -9,12 +9,77 @@
 
 namespace bs
 {
+	/** @addtogroup Implementation
+	 *  @{
+	 */
+
+	namespace impl
+	{
+		/** Helper method for implementing variable-parameter Math::min. */
+		template<typename T>
+		const T& min(const T& in)
+		{
+			return in;
+		}
+
+		/** Helper method for implementing variable-parameter Math::min. */
+		template<typename A, typename B>
+		std::common_type_t<A, B> min(const A& a, const B& b)
+		{
+			return a < b ? a : b;
+		}
+
+		/** Helper method for implementing variable-parameter Math::min. */
+		template<typename A, typename B, typename ...Args>
+		std::common_type_t<A, B, Args...> min(const A& a, const B& b, const Args& ...args)
+		{
+			return min(min(a, b), min(args...));
+		}
+
+		/** Helper method for implementing variable-parameter Math::max. */
+		template<typename T>
+		const T& max(const T& in)
+		{
+			return in;
+		}
+
+		/** Helper method for implementing variable-parameter Math::max. */
+		template<typename A, typename B>
+		std::common_type_t<A, B> max(const A& a, const B& b)
+		{
+			return a > b ? a : b;
+		}
+
+		/** Helper method for implementing variable-parameter Math::max. */
+		template<typename A, typename B, typename ...Args>
+		std::common_type_t<A, B, Args...> max(const A& a, const B& b, const Args& ...args)
+		{
+			return max(max(a, b), max(args...));
+		}
+
+		/** Helper method for implementing Math::gcd. */
+		template <typename A, typename B>
+		std::common_type_t<A, B> gcd(const A& a, const B& b) 
+		{
+			return (b == 0) ? a : gcd(b, a % b);
+		}
+
+		/** Helper method for implementing Math::lcm. */
+		template <typename A, typename B>
+		std::common_type_t<A, B> lcm(const A& a, const B& b) 
+		{
+			return (a * b) / gcd(a, b);
+		}
+	}
+
+	/** @} */
+
 	/** @addtogroup Math
 	 *  @{
 	 */
 
 	/** Utility class providing common scalar math operations. */
-	class BS_UTILITY_EXPORT Math 
+	class BS_UTILITY_EXPORT Math
 	{
 	public:
 		static constexpr float BIGGEST_FLOAT_SMALLER_THAN_ONE = 0.99999994f;
@@ -29,7 +94,7 @@ namespace bs
 		static Radian atan(float val) { return Radian(std::atan(val)); }
 
 		/** Inverse tangent with two arguments, returns angle between the X axis and the point. */
-		static Radian atan2(float y, float x) { return Radian(std::atan2(y,x)); }
+		static Radian atan2(float y, float x) { return Radian(std::atan2(y, x)); }
 
 		/** Cosine. */
 		static float cos(const Radian& val) { return (float)std::cos(val.valueRadians()); }
@@ -62,7 +127,7 @@ namespace bs
 		static float invSqrt(float val);
 
 		/** Returns square of the provided value. */
-		static float sqr(float val) { return val*val; }
+		static float sqr(float val) { return val * val; }
 
 		/** Returns base raised to the provided power. */
 		static float pow(float base, float exponent) { return (float)std::pow(base, exponent); }
@@ -74,10 +139,10 @@ namespace bs
 		static float log(float val) { return (float)std::log(val); }
 
 		/** Returns base 2 logarithm of the provided value. */
-		static float log2(float val) { return (float)(std::log(val)/LOG2); }
+		static float log2(float val) { return (float)(std::log(val) / LOG2); }
 
 		/** Returns base N logarithm of the provided value. */
-		static float logN(float base, float val) { return (float)(std::log(val)/std::log(base)); }
+		static float logN(float base, float val) { return (float)(std::log(val) / std::log(base)); }
 
 		/** Returns the sign of the provided value as 1 or -1. */
 		static float sign(float val);
@@ -100,7 +165,7 @@ namespace bs
 		/** Returns the nearest integer equal or higher to the provided value. */
 		static float ceil(float val) { return (float)std::ceil(val); }
 
-		/** 
+		/**
 		 * Returns the nearest integer equal or higher to the provided value. If you are sure the input is positive use
 		 * ceilToPosInt() for a slightly faster operation.
 		 */
@@ -112,7 +177,7 @@ namespace bs
 			return val >= 0.0f ? (int32_t)(val + BIGGEST_FLOAT_SMALLER_THAN_ONE) : (int32_t)val;
 		}
 
-		/** 
+		/**
 		 * Returns the nearest integer equal or higher to the provided value. Value must be non-negative. Slightly faster
 		 * than ceilToInt().
 		 */
@@ -125,6 +190,9 @@ namespace bs
 
 		/** Returns the integer nearest to the provided value. */
 		static float round(float val) { return (float)std::floor(val + 0.5f); }
+
+		/** Returns the integer nearest to the provided value. */
+		static float fastRound(float val) { return (val >= 0) ? (float)(val + 0.5f) : (float)(val - 0.5f); }
 
 		/** 
 		 * Returns the integer nearest to the provided value. If you are sure the input is positive use roundToPosInt()
@@ -147,6 +215,9 @@ namespace bs
 		/** Returns the nearest integer equal or lower of the provided value. */
 		static float floor(float val) { return (float)std::floor(val); }
 
+		/** Returns the nearest integer equal or lower of the provided value. */
+		static float fastFloor(float val) { return (val >= 0) ? (float)val : (float)val - 1.0f; }
+
 		/** 
 		 * Returns the nearest integer equal or lower of the provided value. If you are sure the input is positive
 		 * use floorToPosInt() for a slightly faster operation.
@@ -168,6 +239,12 @@ namespace bs
 			assert(val >= 0 && val <= std::numeric_limits<uint32_t>::max());
 
 			return (uint32_t)val;
+		}
+		
+		/** Rounds @p x to the nearest multiple of @p multiple. */
+		static float roundToMultiple(float x, float multiple)
+		{
+			return floor((x + multiple * 0.5f) / multiple) * multiple;
 		}
 
 		/** Clamp a value within an inclusive range. */
@@ -211,6 +288,60 @@ namespace bs
 		static bool isNaN(float f)
 		{
 			return f != f;
+		}
+
+		/** Check if the value is a prime number. */
+		static bool isPrime(int n) 
+		{
+			if (n < 2)
+				return false;
+
+			if (n % 2 == 0) 
+				return n == 2;
+
+			if (n % 3 == 0) 
+				return n == 3;
+
+			int d = 5;
+			while (d * d <= n) 
+			{
+				if (n % d == 0) 
+					return false;
+
+				d += 2;
+
+				if (n % d == 0) 
+					return false;
+				d += 4;
+			}
+
+			return true;
+		}
+
+		/** Performs smooth Hermite interpolation between values. */
+		static float smoothStep(float val1, float val2, float t) 
+		{
+			t = clamp((t - val1) / (val2 - val1), 0.0f, 1.0f);
+			return t * t * (3.0f - 2.0f * t);
+		}
+
+		/** 
+		 * Performs quintic interpolation where @p val is the value to map onto a quintic S-curve. @p val should be in 
+		 * [0, 1] range.
+		 */
+		static float quintic(float val) 
+		{
+			return val * val * val * (val * (val * 6.0f - 15.0f) + 10.0f);
+		}
+
+		/** 
+		 * Performs cubic interpolation between two values bound between two other values where @p f is the alpha value. 
+		 * It should range from 0.0f to 1.0f. If it is 0.0f the method returns @p val2. If it is 1.0f it returns @p val3.
+		 */
+		static float cubic(float val1, float val2, float val3, float val4, float f) 
+		{
+			float t = (val4 - val3) - (val1 - val2);
+			return f * f * f * t + f * f * ((val1 - val2) - t) + f * (val3 - val1) + val2;
 		}
 
 		/** Compare two floats, using tolerance for inaccuracies. */
@@ -496,6 +627,48 @@ namespace bs
 		static float invLerp(T val, T min, T max)
 		{
 			return clamp01((val - min) / std::max(max - min, 0.0001F));
+		}
+
+		/** Returns the minimum value of the two provided. */
+		template <typename A, typename B>
+		static std::common_type_t<A, B> min(const A& a, const B& b) 
+		{
+			return impl::min(a, b);
+		}
+
+		/** Returns the minimum value of all the values provided. */
+		template <typename A, typename B, typename... Args>
+		static std::common_type_t<A, B, Args...> min(const A& a, const B& b, const Args&... args)
+		{
+			return impl::min(a, b, args...);
+		}
+
+		/** Returns the maximum value of the two provided. */
+		template <typename A, typename B>
+		static std::common_type_t<A, B> max(const A& a, const B& b)
+		{
+			return impl::max(a, b);
+		}
+
+		/** Returns the maximum value of all the values provided. */
+		template <typename A, typename B, typename... Args>
+		static std::common_type_t<A, B, Args...> max(const A& a, const B& b, const Args&... args)
+		{
+			return impl::max(a, b, args...);
+		}
+
+		/** Return the greater common divisor between two values. */
+		template <typename A, typename B>
+		static std::common_type_t<A, B> gcd(const A& a, const B& b) 
+		{
+			return impl::gcd(a, b);
+		}
+
+		/** Return the least common multiple between two values. */
+		template <typename A, typename B>
+		static std::common_type_t<A, B> lcm(const A& a, const B& b) 
+		{
+			return impl::lcm(a, b);
 		}
 
 		/**
@@ -825,14 +998,84 @@ namespace bs
 			coefficients[2] = tangentA;
 			coefficients[3] = pointA;
 		}
+		
+		/**
+		* Calculates the Romberg Integration.
+		*
+		* @param[in]  a				Lower bound.
+		* @param[in]  b				Upper bound.
+		* @param[in]  order			Order of the function.
+		* @param[in]  integrand		Function to integrate.
+		* @return					Integrated function.
+		*/
+		template <typename T>
+		static T rombergIntegration(T a, T b, int order, const std::function<T(T)> integrand) 
+		{
+			T h[order + 1]; 
+			T r[order + 1][order + 1];
+
+			for (int i = 1; i < order + 1; ++i)
+				h[i] = (b - a) / Math::pow(2, i - 1);
+
+			r[1][1] = h[1] / 2 * (integrand(a) + integrand(b));
+
+			for (int i = 2; i < order + 1; ++i) 
+			{
+				T coeff = 0;
+				for (int k = 1; k <= Math::pow(2, i - 2); ++k)
+					coeff += integrand(a + (2 * k - 1) * h[i]);
+
+				r[i][1] = 0.5 * (r[i - 1][1] + h[i - 1] * coeff);
+			}
+
+			for (int i = 2; i < order + 1; ++i) 
+			{
+				for (int j = 2; j <= i; ++j)
+					r[i][j] = r[i][j - 1] + (r[i][j - 1] - r[i - 1][j - 1]) / (Math::pow(4, j - 1) - 1);
+			}
+
+			return r[order][order];
+		}
+
+		/**
+		* Calculates the Gaussian Quadrature.
+		*
+		* @param[in]  a				Lower bound.
+		* @param[in]  b				Upper bound.
+		* @param[in]  roots			Roots of the function.
+		* @param[in]  coefficients  Coefficients of the function.
+		* @param[in]  integrand		Function to integrate.
+		* @return					Gaussian Quadrature integration.
+		*/
+		template <typename T>
+		static T gaussianQuadrature(T a, T b, T* roots, T* coefficients, const std::function <T(T)>& integrand)
+		{
+			const T half = (T)0.5;
+			const T radius = half * (b - a);
+			const T center = half * (b + a);
+			T res = (T)0;
+
+			for (UINT32 i = 0; i < sizeof(roots) / sizeof(*roots); ++i)
+				res += coefficients[i] * integrand(radius * roots[i] + center);
+
+			res *= radius;
+
+			return res;
+		}
 
 		static constexpr float POS_INFINITY = std::numeric_limits<float>::infinity();
 		static constexpr float NEG_INFINITY = -std::numeric_limits<float>::infinity();
 		static constexpr float PI = 3.14159265358979323846f;
 		static constexpr float TWO_PI = (float)(2.0f * PI);
 		static constexpr float HALF_PI = (float)(0.5f * PI);
+		static constexpr float QUARTER_PI = (float)(0.25f * PI);
+		static constexpr float INV_PI = (float)(1 / PI);
+		static constexpr float INV_HALF_PI = (float)(INV_PI / 2);
+		static constexpr float INV_TWO_PI = (float)(2.0f * INV_PI);
 		static constexpr float DEG2RAD = PI / 180.0f;
 		static constexpr float RAD2DEG = 180.0f / PI;
+		static constexpr float SQRT2 = 1.4142135623730951f;
+		static constexpr float INV_SQRT2 = (float)(1.0f / SQRT2);
 		static const float LOG2;
 	};
 

@@ -11,6 +11,9 @@
 #include "Physics/BsPhysics.h"
 #include "Physics/BsCollider.h"
 #include "Math/BsLineSegment3.h"
+#include "Material/BsShader.h"
+#include "Scene/BsSceneObject.h"
+#include "Scene/BsSceneManager.h"
 
 namespace bs
 {
@@ -20,6 +23,10 @@ namespace bs
 	static constexpr UINT32 PARTICLE_ORBIT_VELOCITY = 0x24c00a5b;
 	static constexpr UINT32 PARTICLE_ORBIT_RADIAL = 0x35978d21;
 	static constexpr UINT32 PARTICLE_LINEAR_VELOCITY = 0x0a299430;
+	static constexpr UINT32 PARTICLE_FORCE = 0x1b618144;
+	static constexpr UINT32 PARTICLE_COLOR = 0x378578b2;
+	static constexpr UINT32 PARTICLE_SIZE = 0x91088409;
+	static constexpr UINT32 PARTICLE_ROTATION = 0x4680eaa4;
 
 	/** Helper method that applies a transform to either a point or a direction. */
 	template<bool dir>
@@ -59,18 +66,30 @@ namespace bs
 		:mDesc(desc)
 	{ }
 
-	void ParticleTextureAnimation::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set) const
+	void ParticleTextureAnimation::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
 	{
-		const UINT32 count = set.getParticleCount();
+		const UINT32 endIdx = startIdx + count;
 		ParticleSetData& particles = set.getParticles();
 
 		SpriteTexture* texture = nullptr;
 		const HMaterial& material = state.system->getSettings().material;
 		if (material.isLoaded(false))
 		{
-			const HSpriteTexture& spriteTex = material->getSpriteTexture("gTexture");
-			if (spriteTex.isLoaded(true))
-				texture = spriteTex.get();
+			const HShader& shader = material->getShader();
+			if(shader->hasTextureParam("gTexture"))
+			{
+				const HSpriteTexture& spriteTex = material->getSpriteTexture("gTexture");
+				if (spriteTex.isLoaded(true))
+					texture = spriteTex.get();
+			}
+
+			if(shader->hasTextureParam("gAlbedoTex"))
+			{
+				const HSpriteTexture& spriteTex = material->getSpriteTexture("gAlbedoTex");
+				if (spriteTex.isLoaded(true))
+					texture = spriteTex.get();
+			}
 		}
 
 		bool hasValidAnimation = texture != nullptr;
@@ -82,7 +101,7 @@ namespace bs
 
 		if(!hasValidAnimation)
 		{
-			for (UINT32 i = 0; i < count; i++)
+			for (UINT32 i = startIdx; i < endIdx; i++)
 				particles.frame[i] = 0.0f;
 
 			return;
@@ -90,7 +109,7 @@ namespace bs
 		
 		const SpriteSheetGridAnimation& gridAnim = texture->getAnimation();
 
-		for (UINT32 i = 0; i < count; i++)
+		for (UINT32 i = startIdx; i < endIdx; i++)
 		{
 			UINT32 frameOffset;
 			UINT32 numFrames;
@@ -116,6 +135,16 @@ namespace bs
 		}
 	}
 
+	SPtr<ParticleTextureAnimation> ParticleTextureAnimation::create(const PARTICLE_TEXTURE_ANIMATION_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleTextureAnimation>(desc);
+	}
+
+	SPtr<ParticleTextureAnimation> ParticleTextureAnimation::create()
+	{
+		return bs_shared_ptr_new<ParticleTextureAnimation>();
+	}
+
 	RTTITypeBase* ParticleTextureAnimation::getRTTIStatic()
 	{
 		return ParticleTextureAnimationRTTI::instance();
@@ -130,21 +159,34 @@ namespace bs
 		:mDesc(desc)
 	{ }
 
-	void ParticleOrbit::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set) const
+	void ParticleOrbit::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
 	{
-		const UINT32 count = set.getParticleCount();
+		const UINT32 endIdx = startIdx + count;
 		ParticleSetData& particles = set.getParticles();
 
-		const Vector3 center = evaluateTransformed(mDesc.center, state, state.nrmTime, random, mDesc.worldSpace);
-		for (UINT32 i = 0; i < count; i++)
+		const Vector3 center = evaluateTransformed(mDesc.center, state, state.nrmTimeEnd, random, mDesc.worldSpace);
+		const float subFrameSpacing = (spacing && count > 0) ? 1.0f / count : 1.0f;
+
+		for (UINT32 i = startIdx; i < endIdx; i++)
 		{
 			const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+			float timeStep = state.timeStep;
+			if(spacing)
+			{
+				const UINT32 localIdx = i - startIdx;
+				const float subFrameOffset = ((float)localIdx + spacingOffset) * subFrameSpacing;
+				timeStep *= subFrameOffset;
+			}
 
 			const UINT32 velocitySeed = particles.seed[i] + PARTICLE_ORBIT_VELOCITY;
 			Vector3 orbitVelocity = evaluateTransformed<true>(mDesc.velocity, state, particleT, Random(velocitySeed), 
 				mDesc.worldSpace);
 			orbitVelocity *= Math::TWO_PI;
-			orbitVelocity *= state.timeStep;
+
+
+			orbitVelocity *= timeStep;
 
 			const Matrix3 rotation(Radian(orbitVelocity.x), Radian(orbitVelocity.y), Radian(orbitVelocity.z));
 
@@ -156,10 +198,20 @@ namespace bs
 			const UINT32 radialSeed = particles.seed[i] + PARTICLE_ORBIT_RADIAL;
 			const float radial = mDesc.radial.evaluate(particleT, Random(radialSeed).getUNorm());
 			if(radial != 0.0f)
-				velocity += Vector3::normalize(point) * radial * state.timeStep;
+				velocity += Vector3::normalize(point) * radial * timeStep;
 
 			particles.position[i] += velocity;
 		}
+	}
+
+	SPtr<ParticleOrbit> ParticleOrbit::create(const PARTICLE_ORBIT_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleOrbit>(desc);
+	}
+
+	SPtr<ParticleOrbit> ParticleOrbit::create()
+	{
+		return bs_shared_ptr_new<ParticleOrbit>();
 	}
 
 	RTTITypeBase* ParticleOrbit::getRTTIStatic()
@@ -176,21 +228,41 @@ namespace bs
 		:mDesc(desc)
 	{ }
 
-	void ParticleVelocity::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set) const
+	void ParticleVelocity::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
 	{
-		const UINT32 count = set.getParticleCount();
+		const UINT32 endIdx = startIdx + count;
 		ParticleSetData& particles = set.getParticles();
 
-		for (UINT32 i = 0; i < count; i++)
+		const float subFrameSpacing = (spacing && count > 0) ? 1.0f / count : 1.0f;
+		for (UINT32 i = startIdx; i < endIdx; i++)
 		{
 			const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
 
-			const UINT32 velocitySeed = particles.seed[i] + PARTICLE_ORBIT_VELOCITY;
+			float timeStep = state.timeStep;
+			if(spacing)
+			{
+				const UINT32 localIdx = i - startIdx;
+				const float subFrameOffset = ((float)localIdx + spacingOffset) * subFrameSpacing;
+				timeStep *= subFrameOffset;
+			}
+
+			const UINT32 velocitySeed = particles.seed[i] + PARTICLE_LINEAR_VELOCITY;
 			const Vector3 velocity = evaluateTransformed<true>(mDesc.velocity, state, particleT, Random(velocitySeed), 
-				mDesc.worldSpace) * state.timeStep;
+				mDesc.worldSpace) * timeStep;
 
 			particles.position[i] += velocity;
 		}
+	}
+
+	SPtr<ParticleVelocity> ParticleVelocity::create(const PARTICLE_VELOCITY_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleVelocity>(desc);
+	}
+
+	SPtr<ParticleVelocity> ParticleVelocity::create()
+	{
+		return bs_shared_ptr_new<ParticleVelocity>();
 	}
 
 	RTTITypeBase* ParticleVelocity::getRTTIStatic()
@@ -203,22 +275,95 @@ namespace bs
 		return getRTTIStatic();
 	}
 
+	ParticleForce::ParticleForce(const PARTICLE_FORCE_DESC& desc)
+		:mDesc(desc)
+	{ }
+
+	void ParticleForce::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
+	{
+		const UINT32 endIdx = startIdx + count;
+		ParticleSetData& particles = set.getParticles();
+
+		const float subFrameSpacing = (spacing && count > 0) ? 1.0f / count : 1.0f;
+		for (UINT32 i = startIdx; i < endIdx; i++)
+		{
+			const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+			float timeStep = state.timeStep;
+			if(spacing)
+			{
+				const UINT32 localIdx = i - startIdx;
+				const float subFrameOffset = ((float)localIdx + spacingOffset) * subFrameSpacing;
+				timeStep *= subFrameOffset;
+			}
+
+			const UINT32 forceSeed = particles.seed[i] + PARTICLE_FORCE;
+			const Vector3 force = evaluateTransformed<true>(mDesc.force, state, particleT, Random(forceSeed), 
+				mDesc.worldSpace) * timeStep;
+
+			particles.velocity[i] += force * timeStep;
+		}
+	}
+
+	SPtr<ParticleForce> ParticleForce::create(const PARTICLE_FORCE_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleForce>(desc);
+	}
+
+	SPtr<ParticleForce> ParticleForce::create()
+	{
+		return bs_shared_ptr_new<ParticleForce>();
+	}
+
+	RTTITypeBase* ParticleForce::getRTTIStatic()
+	{
+		return ParticleForceRTTI::instance();
+	}
+
+	RTTITypeBase* ParticleForce::getRTTI() const
+	{
+		return getRTTIStatic();
+	}
+
 	ParticleGravity::ParticleGravity(const PARTICLE_GRAVITY_DESC& desc)
 		:mDesc(desc)
 	{ }
 
-	void ParticleGravity::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set) const
+	void ParticleGravity::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
 	{
-		Vector3 gravity = gPhysics().getGravity() * mDesc.scale;
+		Vector3 gravity = state.scene->getPhysicsScene()->getGravity() * mDesc.scale;
 
 		if (!state.worldSpace)
 			gravity = state.worldToLocal.multiplyDirection(gravity);
 
-		const UINT32 count = set.getParticleCount();
+		const UINT32 endIdx = startIdx + count;
 		ParticleSetData& particles = set.getParticles();
 
-		for (UINT32 i = 0; i < count; i++)
-			particles.velocity[i] += gravity * state.timeStep;
+		const float subFrameSpacing = (spacing && count > 0) ? 1.0f / count : 1.0f;
+		for (UINT32 i = startIdx; i < endIdx; i++)
+		{
+			float timeStep = state.timeStep;
+			if(spacing)
+			{
+				const UINT32 localIdx = i - startIdx;
+				const float subFrameOffset = ((float)localIdx + spacingOffset) * subFrameSpacing;
+				timeStep *= subFrameOffset;
+			}
+
+			particles.velocity[i] += gravity * timeStep;
+		}
+	}
+
+	SPtr<ParticleGravity> ParticleGravity::create(const PARTICLE_GRAVITY_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleGravity>(desc);
+	}
+
+	SPtr<ParticleGravity> ParticleGravity::create()
+	{
+		return bs_shared_ptr_new<ParticleGravity>();
 	}
 
 	RTTITypeBase* ParticleGravity::getRTTIStatic()
@@ -227,6 +372,151 @@ namespace bs
 	}
 
 	RTTITypeBase* ParticleGravity::getRTTI() const
+	{
+		return getRTTIStatic();
+	}
+
+	ParticleColor::ParticleColor(const PARTICLE_COLOR_DESC& desc)
+		:mDesc(desc)
+	{ }
+
+	void ParticleColor::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
+	{
+		const UINT32 endIdx = startIdx + count;
+		ParticleSetData& particles = set.getParticles();
+
+		for (UINT32 i = startIdx; i < endIdx; i++)
+		{
+			const UINT32 colorSeed = particles.seed[i] + PARTICLE_COLOR;
+			const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+			particles.color[i] = mDesc.color.evaluate(particleT, Random(colorSeed));
+		}
+	}
+
+	SPtr<ParticleColor> ParticleColor::create(const PARTICLE_COLOR_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleColor>(desc);
+	}
+
+	SPtr<ParticleColor> ParticleColor::create()
+	{
+		return bs_shared_ptr_new<ParticleColor>();
+	}
+
+	RTTITypeBase* ParticleColor::getRTTIStatic()
+	{
+		return ParticleColorRTTI::instance();
+	}
+
+	RTTITypeBase* ParticleColor::getRTTI() const
+	{
+		return getRTTIStatic();
+	}
+
+	ParticleSize::ParticleSize(const PARTICLE_SIZE_DESC& desc)
+		:mDesc(desc)
+	{ }
+
+	void ParticleSize::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
+	{
+		const UINT32 endIdx = startIdx + count;
+		ParticleSetData& particles = set.getParticles();
+
+		if(!mDesc.use3DSize)
+		{
+			for (UINT32 i = startIdx; i < endIdx; i++)
+			{
+				const UINT32 sizeSeed = particles.seed[i] + PARTICLE_SIZE;
+				const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+				const float size = mDesc.size.evaluate(particleT, Random(sizeSeed));
+				particles.size[i] = Vector3(size, size, size);
+			}
+		}
+		else
+		{
+			for (UINT32 i = startIdx; i < endIdx; i++)
+			{
+				const UINT32 sizeSeed = particles.seed[i] + PARTICLE_SIZE;
+				const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+				particles.size[i] = mDesc.size3D.evaluate(particleT, Random(sizeSeed));
+			}
+		}
+	}
+
+	SPtr<ParticleSize> ParticleSize::create(const PARTICLE_SIZE_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleSize>(desc);
+	}
+
+	SPtr<ParticleSize> ParticleSize::create()
+	{
+		return bs_shared_ptr_new<ParticleSize>();
+	}
+
+	RTTITypeBase* ParticleSize::getRTTIStatic()
+	{
+		return ParticleSizeRTTI::instance();
+	}
+
+	RTTITypeBase* ParticleSize::getRTTI() const
+	{
+		return getRTTIStatic();
+	}
+
+	ParticleRotation::ParticleRotation(const PARTICLE_ROTATION_DESC& desc)
+		:mDesc(desc)
+	{ }
+
+	void ParticleRotation::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
+	{
+		const UINT32 endIdx = startIdx + count;
+		ParticleSetData& particles = set.getParticles();
+
+		if(!mDesc.use3DRotation)
+		{
+			for (UINT32 i = startIdx; i < endIdx; i++)
+			{
+				const UINT32 rotationSeed = particles.seed[i] + PARTICLE_ROTATION;
+				const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+				const float rotation = mDesc.rotation.evaluate(particleT, Random(rotationSeed));
+				particles.rotation[i] = Vector3(rotation, 0.0f, 0.0f);
+			}
+		}
+		else
+		{
+			for (UINT32 i = startIdx; i < endIdx; i++)
+			{
+				const UINT32 rotationSeed = particles.seed[i] + PARTICLE_ROTATION;
+				const float particleT = (particles.initialLifetime[i] - particles.lifetime[i]) / particles.initialLifetime[i];
+
+				particles.rotation[i] = mDesc.rotation3D.evaluate(particleT, Random(rotationSeed));
+			}
+		}
+	}
+
+	SPtr<ParticleRotation> ParticleRotation::create(const PARTICLE_ROTATION_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleRotation>(desc);
+	}
+
+	SPtr<ParticleRotation> ParticleRotation::create()
+	{
+		return bs_shared_ptr_new<ParticleRotation>();
+	}
+
+	RTTITypeBase* ParticleRotation::getRTTIStatic()
+	{
+		return ParticleRotationRTTI::instance();
+	}
+
+	RTTITypeBase* ParticleRotation::getRTTI() const
 	{
 		return getRTTIStatic();
 	}
@@ -241,7 +531,7 @@ namespace bs
 
 	/** Calculates the new position and velocity after a particle was detected to be colliding. */
 	void calcCollisionResponse(Vector3& position, Vector3& velocity, const ParticleHitInfo& hitInfo, 
-		const PARTICLE_COLLISONS_DESC& desc)
+		const PARTICLE_COLLISIONS_DESC& desc)
 	{
 		Vector3 diff = position - hitInfo.position;
 
@@ -261,7 +551,8 @@ namespace bs
 		velocity = reflectedVel;
 	}
 
-	UINT32 groupRaycast(LineSegment3* segments, ParticleHitInfo* hits, UINT32 numRays, UINT64 layer)
+	UINT32 groupRaycast(const PhysicsScene& physicsScene, LineSegment3* segments, ParticleHitInfo* hits, UINT32 numRays, 
+		UINT64 layer)
 	{
 		if(numRays == 0)
 			return 0;
@@ -274,7 +565,7 @@ namespace bs
 			groupBounds.merge(segments[i].end);
 		}
 
-		Vector<Collider*> hitColliders = gPhysics()._boxOverlap(groupBounds, Quaternion::IDENTITY, layer);
+		Vector<Collider*> hitColliders = physicsScene._boxOverlap(groupBounds, Quaternion::IDENTITY, layer);
 		if(hitColliders.empty())
 			return 0;
 
@@ -317,7 +608,7 @@ namespace bs
 		return numHits;
 	}
 
-	ParticleCollisions::ParticleCollisions(const PARTICLE_COLLISONS_DESC& desc)
+	ParticleCollisions::ParticleCollisions(const PARTICLE_COLLISIONS_DESC& desc)
 		:mDesc(desc)
 	{
 		mDesc.restitution = std::max(mDesc.restitution, 0.0f);
@@ -326,73 +617,104 @@ namespace bs
 		mDesc.radius = std::max(mDesc.radius, 0.0f);
 	}
 
-	void ParticleCollisions::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set) const
+	void ParticleCollisions::evolve(Random& random, const ParticleSystemState& state, ParticleSet& set, 
+		UINT32 startIdx, UINT32 count, bool spacing, float spacingOffset) const
 	{
-		const UINT32 numParticles = set.getParticleCount();
+		const UINT32 endIdx = startIdx + count;
 		ParticleSetData& particles = set.getParticles();
 
 		if(mDesc.mode == ParticleCollisionMode::Plane)
 		{
-			const auto numPlanes = (UINT32)mCollisionPlanes.size();
+			UINT32 numPlanes[2] = { 0, 0 };
+			Plane* planes[2];
 
-			Plane* planes;
-			Plane* localPlanes = nullptr;
+			// Extract planes from scene objects
+			Plane* objPlanes = nullptr;
+			
+			if(!mCollisionPlaneObjects.empty())
+			{
+				objPlanes = bs_stack_alloc<Plane>((UINT32)mCollisionPlaneObjects.size());
+				for (auto& entry : mCollisionPlaneObjects)
+				{
+					if(entry.isDestroyed())
+						continue;
+
+					const Transform& tfrm = entry->getTransform();
+					Plane plane = Plane(tfrm.getForward(), tfrm.getPosition());
+
+					if(!state.worldSpace)
+						plane = state.worldToLocal.multiplyAffine(plane);
+						
+					objPlanes[numPlanes[0]++] = plane;
+				}
+			}
+
+			planes[0] = objPlanes;
 
 			// If particles are in world space, we can just use collision planes as is
-			if(state.worldSpace)
-				planes = (Plane*)mCollisionPlanes.data();
+			Plane* localPlanes = nullptr;
+			if (state.worldSpace)
+				planes[1] = (Plane*)mCollisionPlanes.data();
 			else
 			{
 				const Matrix4& worldToLocal = state.worldToLocal;
-				localPlanes = bs_stack_alloc<Plane>(numParticles);
+				localPlanes = bs_stack_alloc<Plane>((UINT32)mCollisionPlanes.size());
 
-				for (UINT32 i = 0; i < numPlanes; i++)
+				for (UINT32 i = 0; i < (UINT32)mCollisionPlanes.size(); i++)
 					localPlanes[i] = worldToLocal.multiplyAffine(mCollisionPlanes[i]);
 
-				planes = localPlanes;
+				planes[1] = localPlanes;
 			}
 
-			for(UINT32 i = 0; i < numParticles; i++)
+			numPlanes[1] = (UINT32)mCollisionPlanes.size();
+
+			for(UINT32 i = startIdx; i < endIdx; i++)
 			{
 				Vector3& position = particles.position[i];
 				Vector3& velocity = particles.velocity[i];
 
-				for (UINT32 j = 0; j < numPlanes; j++)
+				for(UINT32 j = 0; j < bs_size(planes); j++)
 				{
-					const Plane& plane = planes[j];
+					for (UINT32 k = 0; k < numPlanes[j]; k++)
+					{
+						const Plane& plane = planes[j][k];
 
-					const float dist = plane.getDistance(position);
-					if(dist > mDesc.radius)
-						continue;
+						const float dist = plane.getDistance(position);
+						if (dist > mDesc.radius)
+							continue;
 
-					const float distToTravelAlongNormal = plane.normal.dot(velocity);
+						const float distToTravelAlongNormal = plane.normal.dot(velocity);
 
-					// Ignore movement parallel to the plane
-					if (Math::approxEquals(distToTravelAlongNormal, 0.0f))
-						continue;
+						// Ignore movement parallel to the plane
+						if (Math::approxEquals(distToTravelAlongNormal, 0.0f))
+							continue;
 
-					const float distFromBoundary = mDesc.radius - dist;
-					const float rayT = distFromBoundary / distToTravelAlongNormal;
+						const float distFromBoundary = mDesc.radius - dist;
+						const float rayT = distFromBoundary / distToTravelAlongNormal;
 
-					ParticleHitInfo hitInfo;
-					hitInfo.normal = plane.normal;
-					hitInfo.position = position + velocity * rayT;
-					hitInfo.idx = i;
+						ParticleHitInfo hitInfo;
+						hitInfo.normal = plane.normal;
+						hitInfo.position = position + velocity * rayT;
+						hitInfo.idx = i;
 
-					calcCollisionResponse(position, velocity, hitInfo, mDesc);
-					particles.lifetime[i] -= mDesc.lifetimeLoss * particles.initialLifetime[i];
+						calcCollisionResponse(position, velocity, hitInfo, mDesc);
+						particles.lifetime[i] -= mDesc.lifetimeLoss * particles.initialLifetime[i];
 
-					break;
+						break;
+					}
 				}
 			}
+
+			if(objPlanes)
+				bs_stack_free(objPlanes);
 
 			if(localPlanes)
 				bs_stack_free(localPlanes);
 		}
 		else
 		{
-			const UINT32 rayStart = 0;
-			const UINT32 rayEnd = numParticles;
+			const UINT32 rayStart = startIdx;
+			const UINT32 rayEnd = endIdx;
 			const UINT32 numRays = rayEnd - rayStart;
 
 			const auto segments = bs_stack_alloc<LineSegment3>(numRays);
@@ -415,7 +737,8 @@ namespace bs
 				}
 			}
 
-			const UINT32 numHits = groupRaycast(segments, hits, numRays, mDesc.layer);
+			const PhysicsScene& physicsScene = *state.scene->getPhysicsScene();
+			const UINT32 numHits = groupRaycast(physicsScene, segments, hits, numRays, mDesc.layer);
 
 			if(!state.worldSpace)
 			{
@@ -442,6 +765,16 @@ namespace bs
 			bs_stack_free(hits);
 			bs_stack_free(segments);
 		}
+	}
+
+	SPtr<ParticleCollisions> ParticleCollisions::create(const PARTICLE_COLLISIONS_DESC& desc)
+	{
+		return bs_shared_ptr_new<ParticleCollisions>(desc);
+	}
+
+	SPtr<ParticleCollisions> ParticleCollisions::create()
+	{
+		return bs_shared_ptr_new<ParticleCollisions>();
 	}
 
 	RTTITypeBase* ParticleCollisions::getRTTIStatic()

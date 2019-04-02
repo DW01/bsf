@@ -15,9 +15,7 @@
 namespace bs
 {
 	SceneObject::SceneObject(const String& name, UINT32 flags)
-		: GameObject(), mPrefabHash(0), mFlags(flags), mCachedLocalTfrm(Matrix4::IDENTITY)
-		, mCachedWorldTfrm(Matrix4::IDENTITY), mDirtyFlags(0xFFFFFFFF), mDirtyHash(0), mActiveSelf(true)
-		, mActiveHierarchy(true), mMobility(ObjectMobility::Movable)
+		: GameObject(), mFlags(flags)
 	{
 		setName(name);
 	}
@@ -45,6 +43,7 @@ namespace bs
 	{
 		SPtr<SceneObject> sceneObjectPtr = SPtr<SceneObject>(new (bs_alloc<SceneObject>()) SceneObject(name, flags),
 			&bs_delete<SceneObject>, StdAlloc<SceneObject>());
+		sceneObjectPtr->mUUID = UUIDGenerator::generateRandom();
 
 		HSceneObject sceneObject = static_object_cast<SceneObject>(
 			GameObjectManager::instance().registerObject(sceneObjectPtr));
@@ -53,10 +52,10 @@ namespace bs
 		return sceneObject;
 	}
 
-	HSceneObject SceneObject::createInternal(const SPtr<SceneObject>& soPtr, UINT64 originalId)
+	HSceneObject SceneObject::createInternal(const SPtr<SceneObject>& soPtr)
 	{
 		HSceneObject sceneObject = static_object_cast<SceneObject>(
-			GameObjectManager::instance().registerObject(soPtr, originalId));
+			GameObjectManager::instance().registerObject(soPtr));
 		sceneObject->mThisHandle = sceneObject;
 
 		return sceneObject;
@@ -530,7 +529,12 @@ namespace bs
 				mParent->removeChild(mThisHandle);
 
 			if (parent != nullptr)
+			{
 				parent->addChild(mThisHandle);
+				setScene(parent->mParentScene);
+			}
+			else
+				setScene(nullptr);
 
 			mParent = parent;
 
@@ -542,8 +546,31 @@ namespace bs
 					mLocalTfrm.makeLocal(mParent->getTransform());
 			}
 
-			notifyTransformChanged((TransformChangedFlags)(TCF_Parent | TCF_Transform));
+			bool isInstantiated = (mFlags & SOF_DontInstantiate) == 0;
+			if(isInstantiated)
+				notifyTransformChanged((TransformChangedFlags)(TCF_Parent | TCF_Transform));
 		}
+	}
+
+	const SPtr<SceneInstance>& SceneObject::getScene() const
+	{
+		if(mParentScene)
+			return mParentScene;
+
+		LOGWRN("Attempting to access a scene of a SceneObject with no scene, returning main scene instead.");
+		return gSceneManager().getMainScene();
+		
+	}
+
+	void SceneObject::setScene(const SPtr<SceneInstance>& scene)
+	{
+		if(mParentScene == scene)
+			return;
+
+		mParentScene = scene;
+
+		for(auto& child : mChildren)
+			child->setScene(scene);
 	}
 
 	HSceneObject SceneObject::getChild(UINT32 idx) const
@@ -725,9 +752,9 @@ namespace bs
 		}
 	}
 
-	HSceneObject SceneObject::clone(bool instantiate)
+	HSceneObject SceneObject::clone(bool instantiate, bool preserveUUIDs)
 	{
-		bool isInstantiated = !hasFlag(SOF_DontInstantiate);
+		const bool isInstantiated = !hasFlag(SOF_DontInstantiate);
 
 		if (!instantiate)
 			_setFlags(SOF_DontInstantiate);
@@ -739,8 +766,15 @@ namespace bs
 		MemorySerializer serializer;
 		UINT8* buffer = serializer.encode(this, bufferSize, (void*(*)(size_t))&bs_alloc);
 
-		GameObjectManager::instance().setDeserializationMode(GODM_UseNewIds | GODM_RestoreExternal);
-		SPtr<SceneObject> cloneObj = std::static_pointer_cast<SceneObject>(serializer.decode(buffer, bufferSize));
+		int flags = GODM_RestoreExternal | GODM_UseNewIds;
+		if(!preserveUUIDs)
+			flags |= GODM_UseNewUUID;
+
+		CoreSerializationContext serzContext;
+		serzContext.goState = bs_shared_ptr_new<GameObjectDeserializationState>(flags);
+
+		SPtr<SceneObject> cloneObj = std::static_pointer_cast<SceneObject>(
+			serializer.decode(buffer, bufferSize, &serzContext));
 		bs_free(buffer);
 
 		if(isInstantiated)
@@ -838,6 +872,10 @@ namespace bs
 	void SceneObject::addAndInitializeComponent(const HComponent& component)
 	{
 		component->mThisHandle = component;
+
+		if(component->mUUID.empty())
+			component->mUUID = UUIDGenerator::generateRandom();
+
 		mComponents.push_back(component);
 
 		if (isInstantiated())

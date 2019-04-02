@@ -27,7 +27,7 @@ namespace bs
 {
 	void BuiltinResourcesHelper::importAssets(const nlohmann::json& entries, const Vector<bool>& importFlags, 
 		const Path& inputFolder, const Path& outputFolder, const SPtr<ResourceManifest>& manifest, AssetType mode,
-		nlohmann::json* dependencies, bool compress)
+		nlohmann::json* dependencies, bool compress, bool mipmap)
 	{
 		if (!FileSystem::exists(inputFolder))
 			return;
@@ -79,7 +79,7 @@ namespace bs
 					SPtr<TextureImportOptions> texImportOptions = 
 						std::static_pointer_cast<TextureImportOptions>(importOptions);
 
-					texImportOptions->setGenerateMipmaps(false);
+					texImportOptions->generateMips = mipmap;
 				}
 				else if (rtti_is_of_type<ShaderImportOptions>(importOptions))
 				{
@@ -88,8 +88,9 @@ namespace bs
 					SPtr<ShaderImportOptions> shaderImportOptions = 
 						std::static_pointer_cast<ShaderImportOptions>(importOptions);
 
-					if (!defines.getAll().empty())
-						shaderImportOptions->getDefines() = defines.getAll();
+					UnorderedMap<String, String> allDefines = defines.getAll();
+					for(auto& define : allDefines)
+						shaderImportOptions->setDefine(define.first, define.second);
 				}
 			}
 
@@ -107,6 +108,24 @@ namespace bs
 			outputPath.setFilename("sprite_" + fileName + ".asset");
 
 			SPtr<SpriteTexture> spriteTexPtr = SpriteTexture::_createPtr(texture);
+			HResource spriteTex = gResources()._createResourceHandle(spriteTexPtr, UUID);
+
+			Resources::instance().save(spriteTex, outputPath, true, compress);
+			manifest->registerResource(spriteTex.getUUID(), outputPath);
+		};
+
+		auto generateAnimatedSprite = [&](const HTexture& texture, const String& fileName, const UUID& UUID, 
+			SpriteAnimationPlayback playback, const SpriteSheetGridAnimation& animation)
+		{
+			Path relativePath = fileName;
+			Path outputPath = spriteOutputFolder + relativePath;
+
+			outputPath.setFilename("sprite_" + fileName + ".asset");
+
+			SPtr<SpriteTexture> spriteTexPtr = SpriteTexture::_createPtr(texture);
+			spriteTexPtr->setAnimation(animation);
+			spriteTexPtr->setAnimationPlayback(playback);
+
 			HResource spriteTex = gResources()._createResourceHandle(spriteTexPtr, UUID);
 
 			Resources::instance().save(spriteTex, outputPath, true, compress);
@@ -204,10 +223,26 @@ namespace bs
 
 					if (mode == AssetType::Sprite)
 					{
+						HTexture tex = static_resource_cast<Texture>(outputRes);
 						std::string spriteUUID = entry["SpriteUUID"];
 
-						HTexture tex = static_resource_cast<Texture>(outputRes);
-						generateSprite(tex, name.c_str(), UUID(spriteUUID.c_str()));
+						bool isAnimated = entry.find("Animation") != entry.end();
+						if(isAnimated)
+						{
+							auto& jsonAnimation = entry["Animation"];
+
+							SpriteSheetGridAnimation animation;
+							animation.numRows = jsonAnimation["NumRows"].get<UINT32>();
+							animation.numColumns = jsonAnimation["NumColumns"].get<UINT32>();
+							animation.count = jsonAnimation["Count"].get<UINT32>();
+							animation.fps = jsonAnimation["FPS"].get<UINT32>();
+
+							generateAnimatedSprite(tex, name.c_str(), UUID(spriteUUID.c_str()), 
+								SpriteAnimationPlayback::Loop, animation);
+						}
+						else
+							generateSprite(tex, name.c_str(), UUID(spriteUUID.c_str()));
+
 					}
 
 					if (isIcon)
@@ -300,8 +335,8 @@ namespace bs
 		{
 			FontImportOptions* importOptions = static_cast<FontImportOptions*>(fontImportOptions.get());
 
-			importOptions->setFontSizes(fontSizes);
-			importOptions->setRenderMode(antialiasing ? FontRenderMode::HintedSmooth : FontRenderMode::HintedRaster);
+			importOptions->fontSizes = { fontSizes };
+			importOptions->renderMode = antialiasing ? FontRenderMode::HintedSmooth : FontRenderMode::HintedRaster;
 		}
 		else
 			return;
@@ -720,7 +755,7 @@ namespace bs
 		if(entry.count("wordWrap") > 0)
 			style.wordWrap = entry["wordWrap"];
 
-		const auto loadState = [&loader, &entry](const char* name, GUIElementStyle::GUIElementStateStyle& state)
+		const auto loadState = [&loader, &entry](const char* name, GUIElementStateStyle& state)
 		{
 			if (entry.count(name) == 0)
 				return false;

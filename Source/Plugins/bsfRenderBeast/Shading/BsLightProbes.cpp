@@ -63,9 +63,9 @@ namespace bs { namespace ct
 		POOLED_RENDER_TEXTURE_DESC& depthDesc)
 	{
 		const RendererViewProperties& viewProps = view.getProperties();
-		UINT32 width = viewProps.viewRect.width;
-		UINT32 height = viewProps.viewRect.height;
-		UINT32 numSamples = viewProps.numSamples;
+		UINT32 width = viewProps.target.viewRect.width;
+		UINT32 height = viewProps.target.viewRect.height;
+		UINT32 numSamples = viewProps.target.numSamples;
 
 		colorDesc = POOLED_RENDER_TEXTURE_DESC::create2D(PF_R16U, width, height, TU_RENDERTARGET, numSamples);
 		depthDesc = POOLED_RENDER_TEXTURE_DESC::create2D(PF_D32, width, height, TU_DEPTHSTENCIL, numSamples);
@@ -130,12 +130,19 @@ namespace bs { namespace ct
 		mParamSkyIrradianceTex.set(skyIrradiance);
 		mParamAmbientOcclusionTex.set(ambientOcclusion);
 
+		RenderSurfaceMask loadMask = RT_COLOR0;
 		if(!mSkyOnly)
 		{
 			mParamInputTex.set(lightProbeIndices);
 			mParamSHCoeffsTexture.set(lightProbesInfo.shCoefficients);
 			mParamTetrahedraBuffer.set(lightProbesInfo.tetrahedra);
 			mParamTetFacesBuffer.set(lightProbesInfo.faces);
+		}
+		else
+		{
+			// No need to load depth/stencil when rendering light probes as we'll be using a newly created intermediate
+			// depth buffer
+			loadMask |= RT_DEPTH_STENCIL;
 		}
 
 		gIrradianceEvaluateParamDef.gSkyBrightness.set(mParamBuffer, skyBrightness);
@@ -146,12 +153,12 @@ namespace bs { namespace ct
 
 		// Render
 		RenderAPI& rapi = RenderAPI::instance();
-		rapi.setRenderTarget(output, FBT_DEPTH | FBT_STENCIL, RT_COLOR0);
+		rapi.setRenderTarget(output, FBT_DEPTH | FBT_STENCIL, loadMask);
 
 		bind();
 
-		gRendererUtility().drawScreenQuad(Rect2(0.0f, 0.0f, (float)viewProps.viewRect.width, 
-			(float)viewProps.viewRect.height));
+		gRendererUtility().drawScreenQuad(Rect2(0.0f, 0.0f, (float)viewProps.target.viewRect.width, 
+			(float)viewProps.target.viewRect.height));
 
 		rapi.setRenderTarget(nullptr);
 	}
@@ -190,8 +197,8 @@ namespace bs { namespace ct
 		size_t operator()(const std::pair<INT32, INT32>& key) const
 		{
 			size_t hash = 0;
-			bs::hash_combine(hash, key.first);
-			bs::hash_combine(hash, key.second);
+			bs::bs_hash_combine(hash, key.first);
+			bs::bs_hash_combine(hash, key.second);
 
 			return hash;
 		}

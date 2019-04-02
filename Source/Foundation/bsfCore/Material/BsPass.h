@@ -78,6 +78,17 @@ namespace bs
 		 * Only valid after compile has been called.
 		 */
 		const SPtr<ComputePipelineStateType>& getComputePipelineState() const { return mComputePipelineState; }
+
+		/** 
+		 * @name Internal 
+		 * @{
+		 */
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P p);
+
+		/** @} */
 	protected:
 		TPass();
 		TPass(const PASS_DESC& desc);

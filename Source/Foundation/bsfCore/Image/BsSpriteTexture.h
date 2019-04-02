@@ -58,6 +58,12 @@ namespace bs
 		PingPong
 	};
 
+	/** @} */
+
+	/** @addtogroup Implementation
+	 *  @{
+	 */
+
 	/** Base class used for both sim and core thread SpriteTexture implementations. */
 	class BS_CORE_EXPORT SpriteTextureBase
 	{
@@ -96,6 +102,9 @@ namespace bs
 		 */
 		Rect2 evaluate(float t) const;
 
+		/** Returns the row and column of the current animation frame for time @p t. */
+		void getAnimationFrame(float t, UINT32& row, UINT32& column) const;
+
 		/** 
 		 * Sets properties describing sprite animation. The animation splits the sprite area into a grid of sub-images
 		 * which can be evaluated over time. In order to view the animation you must also enable playback through
@@ -127,13 +136,40 @@ namespace bs
 		SpriteSheetGridAnimation mAnimation;
 	};
 
+	/** Templated base class used for both sim and core thread SpriteTexture implementations. */
+	template<bool Core>
+	class BS_CORE_EXPORT TSpriteTexture : public SpriteTextureBase
+	{
+	public:
+		using TextureType = CoreVariantHandleType<Texture, Core>;
+
+		TSpriteTexture(const Vector2& uvOffset, const Vector2& uvScale, TextureType atlasTexture)
+			:SpriteTextureBase(uvOffset, uvScale), mAtlasTexture(std::move(atlasTexture))
+		{ }
+
+		virtual ~TSpriteTexture() = default;
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P p);
+
+	protected:
+		TextureType mAtlasTexture;
+	};
+
+	/** @} */
+	/** @addtogroup Resources
+	 *  @{
+	 */
+
+
 	/**
 	 * Texture that references a part of a larger texture by specifying an UV subset. When the sprite texture is rendererd
 	 * only the portion of the texture specified by the UV subset will be rendered. This allows you to use the same texture
 	 * for multiple sprites (texture atlasing). Sprite textures also allow you to specify sprite sheet animation by varying
 	 * which portion of the UV is selected over time.
 	 */
-	class BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Rendering) SpriteTexture : public Resource, public SpriteTextureBase
+	class BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Rendering) SpriteTexture : public Resource, public TSpriteTexture<false>
 	{
 	public:
 		/**	Determines the internal texture that the sprite texture references. */
@@ -151,6 +187,20 @@ namespace bs
 		/**	Returns height of the sprite texture in pixels. */
 		BS_SCRIPT_EXPORT(n:Height,pr:getter)
 		UINT32 getHeight() const;
+
+		/**	
+		 * Returns width of a single animation frame sprite texture in pixels. If the texture has no animation this
+		 * is the same as getWidth().
+		 */
+		BS_SCRIPT_EXPORT(n:FrameWidth,pr:getter)
+		UINT32 getFrameWidth() const;
+
+		/**	
+		 * Returns height of a single animation frame sprite texture in pixels. If the texture has no animation this
+		 * is the same as getHeight().
+		 */
+		BS_SCRIPT_EXPORT(n:FrameHeight,pr:getter)
+		UINT32 getFrameHeight() const;
 
 		/**	Retrieves a core implementation of a sprite texture usable only from the core thread. */
 		SPtr<ct::SpriteTexture> getCore() const;
@@ -201,13 +251,11 @@ namespace bs
 		/** @copydoc CoreObject::getCoreDependencies */
 		void getCoreDependencies(Vector<CoreObject*>& dependencies) override;
 
-		HTexture mAtlasTexture;
-
 		/************************************************************************/
 		/* 								RTTI		                     		*/
 		/************************************************************************/
 
-		/**	Creates a new empty and uninitialized sprite texture. To be used by factory methods. */
+		/**	Creates a new empty and uninitialized sprite texture. */
 		static SPtr<SpriteTexture> createEmpty();
 	public:
 		friend class SpriteTextureRTTI;
@@ -228,7 +276,7 @@ namespace bs
 		 *
 		 * @note	Core thread.
 		 */
-		class BS_CORE_EXPORT SpriteTexture : public CoreObject, public SpriteTextureBase
+		class BS_CORE_EXPORT SpriteTexture : public CoreObject, public TSpriteTexture<true>
 		{
 		public:
 			/**	Determines the internal texture that the sprite texture references. */
@@ -245,8 +293,6 @@ namespace bs
 
 			/** @copydoc CoreObject::syncToCore */
 			void syncToCore(const CoreSyncData& data) override;
-
-			SPtr<Texture> mAtlasTexture;
 		};
 
 		/** @} */

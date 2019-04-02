@@ -7,11 +7,13 @@
 
 namespace bs
 {
+	struct SerializationContext;
+
 	/** @addtogroup Serialization
 	 *  @{
 	 */
 
-	/** Base class for intermediate representations of objects that are being decoded with BinarySerializer. */
+	/** Base class for all data types used in intermediate IReflectable object representation. */
 	struct BS_UTILITY_EXPORT SerializedInstance : IReflectable
 	{
 		virtual ~SerializedInstance() = default;
@@ -35,7 +37,7 @@ namespace bs
 		RTTITypeBase* getRTTI() const override;
 	};
 
-	/** An intermediate serialized data for a single field in an object. */
+	/** Contains data for a single field in a serialized object. */
 	struct BS_UTILITY_EXPORT SerializedEntry : IReflectable
 	{
 		SerializedEntry() = default;
@@ -52,27 +54,7 @@ namespace bs
 		RTTITypeBase* getRTTI() const override;
 	};
 
-	/** A serialized value representing a single entry in an array. */
-	struct BS_UTILITY_EXPORT SerializedArrayEntry : IReflectable
-	{
-		SerializedArrayEntry() = default;
-
-		UINT32 index = 0;
-		SPtr<SerializedInstance> serialized;
-
-		/************************************************************************/
-		/* 								RTTI		                     		*/
-		/************************************************************************/
-	public:
-		friend class SerializedArrayEntryRTTI;
-		static RTTITypeBase* getRTTIStatic();
-		RTTITypeBase* getRTTI() const override;
-	};
-
-	/**
-	 * A serialized portion of an object belonging to a specific class in a class hierarchy. Consists of multiple entries,
-	 * one for each field.
-	 */
+	/** Contains a sub-set of fields of a SerializedObject for a single class in a class hierarchy. */
 	struct BS_UTILITY_EXPORT SerializedSubObject : IReflectable
 	{
 		SerializedSubObject() = default;
@@ -89,7 +71,11 @@ namespace bs
 		RTTITypeBase* getRTTI() const override;
 	};
 
-	/** A serialized object consisting of multiple sub-objects, one for each inherited class. */
+	/** 
+	 * Represents a serialized version of an IReflectable object. Data for all leaf fields will be serialized into raw
+	 * memory but complex objects, their references and fields are available as their own serialized objects and can be
+	 * iterated over, viewed, compared or modified. Serialized object can later be decoded back into a IReflectable object.
+	 */
 	struct BS_UTILITY_EXPORT SerializedObject : SerializedInstance
 	{
 		/** Returns the RTTI type ID for the most-derived class of this object. */
@@ -97,6 +83,31 @@ namespace bs
 
 		/** @copydoc SerializedInstance::clone */
 		SPtr<SerializedInstance> clone(bool cloneData = true) override;
+
+		/** 
+		 * Decodes the serialized object back into its original IReflectable object form. 
+		 * 
+		 * @param[in]	context			Optional object that will be passed along to all serialized objects through
+		 *								their serialization callbacks. Can be used for controlling serialization, 
+		 *								maintaining state or sharing information between objects during 
+		 *								serialization.
+		 */
+		SPtr<IReflectable> decode(SerializationContext* context = nullptr) const;
+
+		/** 
+		 * Serializes the provided object and returns its SerializedObject representation. 
+		 * 
+		 * @param[in]	obj			Object to serialize;
+		 * @param[in]	shallow		If true then pointers to other IReflectable objects will not be followed. If false the
+		 *							entire hierarchy will be serialized.
+		 * @param[in]	context		Optional object that will be passed along to all deserialized objects through
+		 *							their deserialization callbacks. Can be used for controlling deserialization, 
+		 *							maintaining state or sharing information between objects during 
+		 *							deserialization.
+		 * @return					Serialized version of @p obj.
+		 */
+		static SPtr<SerializedObject> create(IReflectable& obj, bool shallow = false, 
+			SerializationContext* context = nullptr);
 
 		Vector<SerializedSubObject> subObjects;
 
@@ -153,6 +164,23 @@ namespace bs
 		/************************************************************************/
 	public:
 		friend class SerializedDataBlockRTTI;
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
+	};
+
+	/** A serialized value representing a single entry in an array. */
+	struct BS_UTILITY_EXPORT SerializedArrayEntry : IReflectable
+	{
+		SerializedArrayEntry() = default;
+
+		UINT32 index = 0;
+		SPtr<SerializedInstance> serialized;
+
+		/************************************************************************/
+		/* 								RTTI		                     		*/
+		/************************************************************************/
+	public:
+		friend class SerializedArrayEntryRTTI;
 		static RTTITypeBase* getRTTIStatic();
 		RTTITypeBase* getRTTI() const override;
 	};

@@ -120,11 +120,11 @@ namespace bs
 	 * @note	
 	 * Sim thread unless noted otherwise. Retrieve core implementation from getCore() for core thread only functionality.
 	 */
-	class BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Rendering) RenderTarget : public CoreObject
+	class BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Rendering) RenderTarget : public IReflectable, public CoreObject
 	{
 	public:
 		RenderTarget();
-		virtual ~RenderTarget() { }
+		virtual ~RenderTarget() = default;
 
 		/** Queries the render target for a custom attribute. This may be anything and is implementation specific. */
 		virtual void getCustomAttribute(const String& name, void* pData) const;
@@ -158,6 +158,14 @@ namespace bs
 
 		/**	Returns properties that describe the render target. */
 		virtual const RenderTargetProperties& getPropertiesInternal() const = 0;
+		
+		/************************************************************************/
+		/* 								SERIALIZATION                      		*/
+		/************************************************************************/
+	public:
+		friend class RenderTargetRTTI;
+		static RTTITypeBase* getRTTIStatic();
+		RTTITypeBase* getRTTI() const override;
 	};
 
 	/** @} */
@@ -185,7 +193,7 @@ namespace bs
 		};
 
 		RenderTarget();
-		virtual ~RenderTarget() { }
+		virtual ~RenderTarget() = default;
 
 		/**
 		 * Sets a priority that determines in which orders the render targets the processed.

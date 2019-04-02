@@ -26,8 +26,6 @@ namespace bs
 	}
 
 	Input::Input()
-		: mPointerDoubleClicked(false), mLastPositionSet(false), mMouseScroll(0.0f), mMouseSmoothingEnabled(false)
-		, mMouse(nullptr), mKeyboard(nullptr)
 	{
 		SPtr<RenderWindow> primaryWindow = gCoreApplication().getPrimaryWindow();
 		primaryWindow->getCustomAttribute("WINDOW", &mWindowHandle);
@@ -273,8 +271,11 @@ namespace bs
 		UINT64 hWnd = 0;
 		win.getCustomAttribute("WINDOW", &hWnd);
 
-		mKeyboard->changeCaptureContext(hWnd);
-		mMouse->changeCaptureContext(hWnd);
+		if(mKeyboard != nullptr)
+			mKeyboard->changeCaptureContext(hWnd);
+
+		if(mMouse != nullptr)
+			mMouse->changeCaptureContext(hWnd);
 
 		for (auto& gamepad : mGamepads)
 			gamepad->changeCaptureContext(hWnd);
@@ -282,8 +283,11 @@ namespace bs
 
 	void Input::inputFocusLost()
 	{
-		mKeyboard->changeCaptureContext((UINT64)-1);
-		mMouse->changeCaptureContext((UINT64)-1);
+		if(mKeyboard != nullptr)
+			mKeyboard->changeCaptureContext((UINT64)-1);
+
+		if(mMouse != nullptr)
+			mMouse->changeCaptureContext((UINT64)-1);
 
 		for (auto& gamepad : mGamepads)
 			gamepad->changeCaptureContext((UINT64)-1);

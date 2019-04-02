@@ -9,11 +9,6 @@
 
 namespace bs
 {
-	AnimationClipInfo::AnimationClipInfo()
-		: playbackType(AnimPlaybackType::Normal), fadeDirection(0.0f), fadeTime(0.0f), fadeLength(0.0f), curveVersion(0)
-		, layerIdx((UINT32)-1), stateIdx((UINT32)-1)
-	{ }
-
 	AnimationClipInfo::AnimationClipInfo(const HAnimationClip& clip)
 		: clip(clip), playbackType(AnimPlaybackType::Normal), fadeDirection(0.0f), fadeTime(0.0f), fadeLength(0.0f)
 		, curveVersion(0), layerIdx((UINT32)-1), stateIdx((UINT32)-1)
@@ -641,8 +636,6 @@ namespace bs
 	}
 
 	Animation::Animation()
-		: mDefaultWrapMode(AnimWrapMode::Loop), mDefaultSpeed(1.0f), mCull(true), mDirty(AnimDirtyStateFlag::All)
-		, mGenericCurveValuesValid(false)
 	{
 		mId = AnimationManager::instance().registerAnimation(this);
 		mAnimProxy = bs_shared_ptr_new<AnimationProxy>(mId);
@@ -1214,25 +1207,39 @@ namespace bs
 
 			float start = lastFrameTime;
 			float end = start + delta;
-
 			float clipLength = clipInfo.clip->getLength();
-			AnimationUtility::wrapTime(start, 0.0f, clipLength, loop);
-			AnimationUtility::wrapTime(end, 0.0f, clipLength, loop);
 
-			if (start < end)
+			float wrappedStart = start;
+			float wrappedEnd = end;
+			AnimationUtility::wrapTime(wrappedStart, 0.0f, clipLength, loop);
+			AnimationUtility::wrapTime(wrappedEnd, 0.0f, clipLength, loop);
+
+			if(!loop)
 			{
 				for (auto& event : events)
 				{
-					if (event.time > start && event.time <= end)
+					if (event.time >= wrappedStart && (event.time < wrappedEnd || 
+						(event.time == clipLength && start < clipLength && end >= clipLength)))
 						onEventTriggered(clipInfo.clip, event.name);
 				}
 			}
-			else if(end < start) // End is looped, but start is not
+			else
 			{
-				for (auto& event : events)
+				if (wrappedStart < wrappedEnd)
 				{
-					if (event.time > start && event.time < clipLength && event.time > 0 && event.time <= end)
-						onEventTriggered(clipInfo.clip, event.name);
+					for (auto& event : events)
+					{
+						if (event.time >= wrappedStart && event.time < wrappedEnd)
+							onEventTriggered(clipInfo.clip, event.name);
+					}
+				}
+				else if (wrappedEnd < wrappedStart) // End is looped, but start is not
+				{
+					for (auto& event : events)
+					{
+						if ((event.time >= wrappedStart && event.time <= clipLength) || (event.time >= 0 && event.time < wrappedEnd))
+							onEventTriggered(clipInfo.clip, event.name);
+					}
 				}
 			}
 		}

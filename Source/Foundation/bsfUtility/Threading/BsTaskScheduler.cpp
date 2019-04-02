@@ -196,6 +196,16 @@ namespace bs
 					continue;
 				}
 
+				// Spin until a thread becomes available. This happens primarily because our mActiveTask count and
+				// ThreadPool's thread idle count aren't synced, so while the task manager thinks it's free to run new
+				// tasks, the ThreadPool might still have those threads as running, meaning their allocation will fail.
+				// So we just spin here for a bit, in that rare case.
+				if(ThreadPool::instance().getNumAvailable() == 0)
+				{
+					mCheckTasks = true;
+					break;
+				}
+
 				iter = mTaskQueue.erase(iter);
 
 				curTask->mState.store(1);
@@ -265,11 +275,11 @@ namespace bs
 
 	bool TaskScheduler::taskCompare(const SPtr<Task>& lhs, const SPtr<Task>& rhs)
 	{
-		// If one tasks priority is higher, that one goes first
-		if(lhs->mPriority > rhs->mPriority)
-			return true;
+		// If priority is the same, sort by the order the tasks were queued
+		if(lhs->mPriority == rhs->mPriority)
+			return lhs->mTaskId < rhs->mTaskId;
 
-		// Otherwise we go by smaller id, as that task was queued earlier than the other
-		return lhs->mTaskId < rhs->mTaskId;
+		// Otherwise the task with the higher priority always goes first
+		return lhs->mPriority > rhs->mPriority;
 	}
 }

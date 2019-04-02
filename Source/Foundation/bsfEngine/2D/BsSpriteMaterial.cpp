@@ -11,10 +11,16 @@
 
 namespace bs
 {
-	SpriteMaterial::SpriteMaterial(UINT32 id, const HMaterial& material)
-		:mId(id), mMaterialStored(false), mParamBufferIdx(-1)
+	SpriteMaterial::SpriteMaterial(UINT32 id, const HMaterial& material, const ShaderVariation& variation, 
+		bool allowBatching)
+		:mId(id), mMaterialStored(false), mAllowBatching(allowBatching), mParamBufferIdx(-1)
 	{
 		mMaterial = material->getCore();
+
+		FIND_TECHNIQUE_DESC findTechniqueDesc;
+		findTechniqueDesc.variation = &variation;
+
+		mTechnique = mMaterial->findTechnique(findTechniqueDesc);
 		mMaterialStored.store(true, std::memory_order_release);
 
 		gCoreThread().queueCommand(std::bind(&SpriteMaterial::initialize, this));
@@ -28,10 +34,15 @@ namespace bs
 	void SpriteMaterial::initialize()
 	{
 		// Make sure that mMaterial assignment completes on the previous thread before continuing
-		bool materialStored = mMaterialStored.load(std::memory_order_acquire);
+		const bool materialStored = mMaterialStored.load(std::memory_order_acquire);
 		assert(materialStored == true);
 
-		mParams = mMaterial->createParamsSet();
+		const SPtr<ct::Pass>& pass = mMaterial->getPass(0, mTechnique);
+
+		if(pass)
+			pass->compile();
+
+		mParams = mMaterial->createParamsSet(mTechnique);
 
 		SPtr<ct::Shader> shader = mMaterial->getShader();
 		if(shader->hasTextureParam("gMainTexture"))
@@ -58,10 +69,10 @@ namespace bs
 			textureId = info.texture->getInternalID();
 
 		size_t hash = 0;
-		hash_combine(hash, info.groupId);
-		hash_combine(hash, getId());
-		hash_combine(hash, textureId);
-		hash_combine(hash, info.tint);
+		bs_hash_combine(hash, info.groupId);
+		bs_hash_combine(hash, getId());
+		bs_hash_combine(hash, textureId);
+		bs_hash_combine(hash, info.tint);
 
 		return (UINT64)hash;
 	}
@@ -84,7 +95,7 @@ namespace bs
 
 		mMaterial->updateParamsSet(mParams);
 
-		ct::gRendererUtility().setPass(mMaterial);
+		ct::gRendererUtility().setPass(mMaterial, 0, mTechnique);
 		ct::gRendererUtility().setPassParams(mParams);
 		ct::gRendererUtility().draw(mesh, subMesh);
 	}

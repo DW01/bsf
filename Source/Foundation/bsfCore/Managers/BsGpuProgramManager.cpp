@@ -33,55 +33,41 @@ namespace bs
 	String sNullLang = "null";
 
 	/** Null GPU program used in place of GPU programs we cannot create. Null programs don't do anything. */
-	class NullProgram : public GpuProgram
+	class NullProgram final : public GpuProgram
 	{
 	public:
 		NullProgram()
 			:GpuProgram(GPU_PROGRAM_DESC(), GDF_DEFAULT)
 		{ }
 
-		~NullProgram() { }
+		~NullProgram() = default;
 
-		bool isSupported() const { return false; }
-		const String& getLanguage() const { return sNullLang; }
-
-	protected:
-		void loadFromSource() {}
-
-		void buildConstantDefinitions() const { }
+		bool isSupported() const override { return false; }
 	};
 
-	/**	Factory that creates null GPU programs.  */
-	class NullProgramFactory : public GpuProgramFactory
+	SPtr<GpuProgram> NullProgramFactory::create(const GPU_PROGRAM_DESC& desc, GpuDeviceFlags deviceMask)
 	{
-	public:
-		NullProgramFactory() {}
-		~NullProgramFactory() {}
+		SPtr<NullProgram> ret = bs_shared_ptr_new<NullProgram>();
+		ret->_setThisPtr(ret);
 
-		SPtr<GpuProgram> create(const GPU_PROGRAM_DESC& desc, GpuDeviceFlags deviceMask) override
-		{
-			SPtr<NullProgram> ret = bs_shared_ptr_new<NullProgram>();
-			ret->_setThisPtr(ret);
+		return ret;
+	}
 
-			return ret;
-		}
+	SPtr<GpuProgram> NullProgramFactory::create(GpuProgramType type, GpuDeviceFlags deviceMask)
+	{
+		SPtr<NullProgram> ret = bs_shared_ptr_new<NullProgram>();
+		ret->_setThisPtr(ret);
 
-		SPtr<GpuProgram> create(GpuProgramType type, GpuDeviceFlags deviceMask) override
-		{
-			SPtr<NullProgram> ret = bs_shared_ptr_new<NullProgram>();
-			ret->_setThisPtr(ret);
+		return ret;
+	}
 
-			return ret;
-		}
+	SPtr<GpuProgramBytecode> NullProgramFactory::compileBytecode(const GPU_PROGRAM_DESC& desc)
+	{
+		auto bytecode = bs_shared_ptr_new<GpuProgramBytecode>();
+		bytecode->compilerId = "Null";
 
-		SPtr<GpuProgramBytecode> compileBytecode(const GPU_PROGRAM_DESC& desc) override
-		{
-			auto bytecode = bs_shared_ptr_new<GpuProgramBytecode>();
-			bytecode->compilerId = "Null";
-
-			return bytecode;
-		}
-	};
+		return bytecode;
+	}
 
 	GpuProgramManager::GpuProgramManager()
 	{

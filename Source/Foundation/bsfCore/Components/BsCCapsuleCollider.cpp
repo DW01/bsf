@@ -4,18 +4,23 @@
 #include "Scene/BsSceneObject.h"
 #include "Components/BsCRigidbody.h"
 #include "Private/RTTI/BsCCapsuleColliderRTTI.h"
+#include "Scene/BsSceneManager.h"
 
 namespace bs
 {
 	CCapsuleCollider::CCapsuleCollider()
 	{
 		setName("CapsuleCollider");
+
+		mLocalRotation = Quaternion::getRotationFromTo(Vector3::UNIT_X, mNormal);
 	}
 
 	CCapsuleCollider::CCapsuleCollider(const HSceneObject& parent, float radius, float halfHeight)
 		: CCollider(parent), mRadius(radius), mHalfHeight(halfHeight)
 	{
 		setName("CapsuleCollider");
+
+		mLocalRotation = Quaternion::getRotationFromTo(Vector3::UNIT_X, mNormal);
 	}
 
 	void CCapsuleCollider::setNormal(const Vector3& normal)
@@ -23,10 +28,8 @@ namespace bs
 		if (mNormal == normal)
 			return;
 
-		mNormal = normal;
-		mNormal.normalize();
-
-		mLocalRotation = Quaternion::getRotationFromTo(Vector3::UNIT_X, normal);
+		mNormal = bs::Vector3::normalize(normal);
+		mLocalRotation = Quaternion::getRotationFromTo(Vector3::UNIT_X, mNormal);
 
 		if (mInternal != nullptr)
 			updateTransform();
@@ -79,9 +82,11 @@ namespace bs
 
 	SPtr<Collider> CCapsuleCollider::createInternal()
 	{
+		const SPtr<SceneInstance>& scene = SO()->getScene();
 		const Transform& tfrm = SO()->getTransform();
-		SPtr<Collider> collider = CapsuleCollider::create(mRadius, mHalfHeight, tfrm.getPosition(), 
-			tfrm.getRotation());
+
+		SPtr<Collider> collider = CapsuleCollider::create(*scene->getPhysicsScene(), mRadius, mHalfHeight, 
+			tfrm.getPosition(), tfrm.getRotation());
 
 		collider->_setOwner(PhysicsOwnerType::Component, this);
 		return collider;

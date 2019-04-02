@@ -5,12 +5,9 @@
 
 namespace bs
 {
-	BoxCollider::BoxCollider()
-	{ }
-
-	SPtr<BoxCollider> BoxCollider::create(const Vector3& extents,
+	SPtr<BoxCollider> BoxCollider::create(PhysicsScene& scene, const Vector3& extents,
 		const Vector3& position, const Quaternion& rotation)
 	{
-		return Physics::instance().createBoxCollider(extents, position, rotation);
+		return scene.createBoxCollider(extents, position, rotation);
 	}
 }

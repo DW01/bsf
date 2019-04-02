@@ -13,12 +13,14 @@ namespace bs
 	CParticleSystem::CParticleSystem()
 	{
 		setName("ParticleSystem");
+		setFlag(ComponentFlag::AlwaysRun, true);
 	}
 
 	CParticleSystem::CParticleSystem(const HSceneObject& parent)
 		: Component(parent)
 	{
 		setName("ParticleSystem");
+		setFlag(ComponentFlag::AlwaysRun, true);
 	}
 
 	void CParticleSystem::setSettings(const ParticleSystemSettings& settings)
@@ -37,20 +39,28 @@ namespace bs
 			mInternal->setGpuSimulationSettings(settings);
 	}
 
-	ParticleSystemEmitters& CParticleSystem::getEmitters()
+	void CParticleSystem::setEvolvers(const Vector<SPtr<ParticleEvolver>>& evolvers)
 	{
-		if(mInternal)
-			return mInternal->getEmitters();
+		mEvolvers = evolvers;
 
-		return mEmitters;
+		if(mInternal)
+			mInternal->setEvolvers(evolvers);
 	}
 
-	ParticleSystemEvolvers& CParticleSystem::getEvolvers()
+	void CParticleSystem::setEmitters(const Vector<SPtr<ParticleEmitter>>& emitters)
 	{
-		if(mInternal)
-			return mInternal->getEvolvers();
+		mEmitters = emitters;
 
-		return mEvolvers;
+		if(mInternal)
+			mInternal->setEmitters(emitters);
+	}
+
+	void CParticleSystem::setLayer(UINT64 layer)
+	{
+		mLayer = layer;
+
+		if(mInternal)
+			mInternal->setLayer(layer);
 	}
 
 	void CParticleSystem::onDestroyed()
@@ -65,9 +75,17 @@ namespace bs
 
 	void CParticleSystem::onEnabled()
 	{
-		restoreInternal();
-
-		mInternal->play();
+		if(mPreviewMode)
+		{
+			destroyInternal();
+			mPreviewMode = false;
+		}
+		
+		if(SceneManager::instance().isRunning())
+		{
+			restoreInternal();
+			mInternal->play();
+		}
 	}
 
 	void CParticleSystem::restoreInternal()
@@ -80,8 +98,9 @@ namespace bs
 
 		mInternal->setSettings(mSettings);
 		mInternal->setGpuSimulationSettings(mGpuSimulationSettings);
-		mInternal->getEmitters() = mEmitters;
-		mInternal->getEvolvers() = mEvolvers;
+		mInternal->setEmitters(mEmitters);
+		mInternal->setEvolvers(mEvolvers);
+		mInternal->setLayer(mLayer);
 	}
 
 	void CParticleSystem::destroyInternal()
@@ -96,6 +115,35 @@ namespace bs
 
 		// This should release the last reference and destroy the internal object
 		mInternal = nullptr;
+	}
+
+	bool CParticleSystem::_togglePreviewMode(bool enabled)
+	{
+		bool isRunning = SceneManager::instance().isRunning();
+
+		if(enabled)
+		{
+			// Cannot enable preview while running
+			if (isRunning)
+				return false;
+
+			if(!mPreviewMode)
+			{
+				restoreInternal();
+				mInternal->play();
+				mPreviewMode = true;
+			}
+
+			return true;
+		}
+		else
+		{
+			if (!isRunning)
+				destroyInternal();
+
+			mPreviewMode = false;
+			return false;
+		}
 	}
 
 	RTTITypeBase* CParticleSystem::getRTTIStatic()

@@ -6,6 +6,7 @@ set(BS_RENDERBEAST_INC_NOFILTER
 	"BsRendererLight.h"
 	"BsRendererView.h"
 	"BsRendererRenderable.h"
+	"BsRendererDecal.h"
 	"BsRendererParticles.h"
 	"BsRendererReflectionProbe.h"
 	"BsRendererScene.h"
@@ -21,6 +22,7 @@ set(BS_RENDERBEAST_SRC_NOFILTER
 	"BsRendererLight.cpp"
 	"BsRendererView.cpp"
 	"BsRendererRenderable.cpp"
+	"BsRendererDecal.cpp"
 	"BsRendererParticles.cpp"
 	"BsRendererReflectionProbe.cpp"
 	"BsRendererScene.cpp"
@@ -61,7 +63,15 @@ set(BS_RENDERBEAST_SRC_UTILITY
 	"Utility/BsRendererTextures.cpp"
 )
 
-source_group("" FILES ${BS_RENDERBEAST_INC_NOFILTER} ${BS_RENDERBEAST_SRC_NOFILTER})
+if(WIN32)
+	set(BS_RENDERBEAST_WIN32RES
+	"BsRenderBeastWin32Resource.rc"
+	)
+else()
+	set(BS_RENDERBEAST_WIN32RES )
+endif()
+
+source_group("" FILES ${BS_RENDERBEAST_INC_NOFILTER} ${BS_RENDERBEAST_SRC_NOFILTER} ${BS_RENDERBEAST_WIN32RES})
 source_group("Shading" FILES ${BS_RENDERBEAST_INC_SHADING} ${BS_RENDERBEAST_SRC_SHADING})
 source_group("Utility" FILES ${BS_RENDERBEAST_INC_UTILITY} ${BS_RENDERBEAST_SRC_UTILITY})
 
@@ -72,4 +82,5 @@ set(BS_RENDERBEAST_SRC
 	${BS_RENDERBEAST_SRC_SHADING}
 	${BS_RENDERBEAST_INC_UTILITY}
 	${BS_RENDERBEAST_SRC_UTILITY}
+	${BS_RENDERBEAST_WIN32RES}
 )

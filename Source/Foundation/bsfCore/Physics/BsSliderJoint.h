@@ -7,6 +7,7 @@
 
 namespace bs
 {
+	class PhysicsScene;
 	/** @addtogroup Physics
 	 *  @{
 	 */
@@ -26,7 +27,7 @@ namespace bs
 	{
 	public:
 		SliderJoint(const SLIDER_JOINT_DESC& desc) { }
-		virtual ~SliderJoint() { }
+		virtual ~SliderJoint() = default;
 
 		/** Returns the current position of the slider. */
 		virtual float getPosition() const = 0;
@@ -51,8 +52,13 @@ namespace bs
 		/** Checks is the specified flag enabled. */
 		virtual bool hasFlag(SliderJointFlag flag) const = 0;
 
-		/** Creates a new spherical joint. */
-		static SPtr<SliderJoint> create(const SLIDER_JOINT_DESC& desc);
+		/** 
+		 * Creates a new spherical joint. 
+		 * 
+		 * @param[in]	scene		Scene to which to add the joint.
+		 * @param[in]	desc		Settings describing the joint.
+		 */
+		static SPtr<SliderJoint> create(PhysicsScene& scene, const SLIDER_JOINT_DESC& desc);
 	};
 
 	/** Structure used for initializing a new SliderJoint. */

@@ -21,7 +21,6 @@
 #include "Renderer/BsRendererManager.h"
 #include "Managers/BsGpuProgramManager.h"
 #include "Managers/BsMeshManager.h"
-#include "Material/BsMaterialManager.h"
 #include "Managers/BsRenderWindowManager.h"
 #include "Renderer/BsRenderer.h"
 #include "Utility/BsDeferredCallManager.h"
@@ -63,7 +62,6 @@ namespace bs
 		mPrimaryWindow = nullptr;
 
 		Importer::shutDown();
-		MaterialManager::shutDown();
 		MeshManager::shutDown();
 		ProfilerGPU::shutDown();
 
@@ -133,7 +131,7 @@ namespace bs
 		MessageHandler::startUp();
 		ProfilerCPU::startUp();
 		ProfilingManager::startUp();
-		ThreadPool::startUp<TThreadPool<ThreadBansheePolicy>>((numWorkerThreads));
+		ThreadPool::startUp<TThreadPool<ThreadDefaultPolicy>>((numWorkerThreads));
 		TaskScheduler::startUp();
 		TaskScheduler::instance().removeWorker();
 		RenderStats::startUp();
@@ -159,16 +157,16 @@ namespace bs
 
 		loadPlugin(mStartUpDesc.renderer, &mRendererPlugin);
 
+		// Must be initialized before the scene manager, as game scene creation triggers physics scene creation
+		PhysicsManager::startUp(mStartUpDesc.physics, mStartUpDesc.physicsCooking);
 		SceneManager::startUp();
 		RendererManager::instance().setActive(mStartUpDesc.renderer);
 		startUpRenderer();
 
 		ProfilerGPU::startUp();
 		MeshManager::startUp();
-		MaterialManager::startUp();
 		Importer::startUp();
 		AudioManager::startUp(mStartUpDesc.audio);
-		PhysicsManager::startUp(mStartUpDesc.physics, isEditor());
 		AnimationManager::startUp();
 		ParticleManager::startUp();
 
@@ -240,7 +238,7 @@ namespace bs
 				{
 					fixedUpdate();
 					PROFILE_CALL(gSceneManager()._fixedUpdate(), "Scene fixed update");
-					gPhysics().fixedUpdate(stepSeconds);
+					PROFILE_CALL(gPhysics().fixedUpdate(stepSeconds), "Physics simulation");
 
 					gTime()._advanceFixedUpdate(step);
 				}

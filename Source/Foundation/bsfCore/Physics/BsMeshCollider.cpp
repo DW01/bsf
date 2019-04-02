@@ -5,12 +5,9 @@
 
 namespace bs
 {
-	MeshCollider::MeshCollider()
-	{ }
-
-	SPtr<MeshCollider> MeshCollider::create(const Vector3& position, const Quaternion& rotation)
+	SPtr<MeshCollider> MeshCollider::create(PhysicsScene& scene, const Vector3& position, const Quaternion& rotation)
 	{
-		return Physics::instance().createMeshCollider(position, rotation);
+		return scene.createMeshCollider(position, rotation);
 	}
 
 	void MeshCollider::getListenerResources(Vector<HResource>& resources)

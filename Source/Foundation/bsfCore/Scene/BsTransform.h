@@ -99,7 +99,7 @@ namespace bs
 		void moveRelative(const Vector3& vec);
 
 		/**
-		 * Gets the Z (forward) axis of the object.
+		 * Gets the negative Z (forward) axis of the object.
 		 *
 		 * @return	Forward axis of the object.
 		 */
@@ -154,6 +154,15 @@ namespace bs
 		 * @param[in]	angle	Angle to rotate by.
 		 */
 		void pitch(const Radian& angle);
+
+		/** Enumerates all the fields in the type and executes the specified processor action for each field. */
+		template<class P>
+		void rttiEnumFields(P p)
+		{
+			p(mPosition);
+			p(mRotation);
+			p(mScale);
+		}
 
 		static Transform IDENTITY;
 	private:

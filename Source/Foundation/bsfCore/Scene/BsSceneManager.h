@@ -9,6 +9,7 @@
 namespace bs
 {
 	class LightProbeVolume;
+	class PhysicsScene;
 
 	/** @addtogroup Scene-Internal
 	 *  @{
@@ -17,8 +18,7 @@ namespace bs
 	/** Information about a scene actor and the scene object it has been bound to. */
 	struct BoundActorData
 	{
-		BoundActorData() { }
-
+		BoundActorData() = default;
 		BoundActorData(const SPtr<SceneActor>& actor, const HSceneObject& so)
 			:actor(actor), so(so)
 		{ }
@@ -35,6 +35,41 @@ namespace bs
 		Stopped /**< No component callbacks are being triggered. */
 	};
 
+	/** Contains information about an instantiated scene. */
+	class BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:Scene) SceneInstance
+	{
+		struct ConstructPrivately {};
+	public:
+		SceneInstance(ConstructPrivately dummy, const String& name, const HSceneObject& root, 
+			const SPtr<PhysicsScene>& physicsScene);
+
+		/** Name of the scene. */
+		BS_SCRIPT_EXPORT(n:Name,pr:getter)
+		const String& getName() const { return mName; }
+
+		/** Root object of the scene. */
+		BS_SCRIPT_EXPORT(n:Root,pr:getter)
+		const HSceneObject& getRoot() const { return mRoot; }
+
+		/** Checks is the scene currently active. IF inactive the scene properties aside from the name are undefined. */
+		BS_SCRIPT_EXPORT(n:IsActive,pr:getter)
+		bool isActive() const { return mIsActive; }
+
+		/** 
+		 * Physical representation of the scene, as assigned by the physics sub-system. Exact implementation depends on the 
+		 * physics plugin used. 
+		 */
+		BS_SCRIPT_EXPORT(n:Physics,pr:getter)
+		const SPtr<PhysicsScene>& getPhysicsScene() const { return mPhysicsScene; }
+	private:
+		friend class SceneManager;
+
+		String mName;
+		HSceneObject mRoot;
+		bool mIsActive = true;
+		SPtr<PhysicsScene> mPhysicsScene;
+	};
+
 	/** 
 	 * Keeps track of all active SceneObject%s and their components. Keeps track of component state and triggers their
 	 * events. Updates the transforms of objects as SceneObject%s move.
@@ -45,8 +80,8 @@ namespace bs
 		SceneManager();
 		~SceneManager();
 
-		/**	Returns the root scene object. */
-		HSceneObject getRootNode() const { return mRootNode; }
+		/** Returns the object that represents the main scene. */
+		const SPtr<SceneInstance>& getMainScene() const { return mMainScene; }
 
 		/**
 		 * Destroys all scene objects in the scene.
@@ -55,8 +90,17 @@ namespace bs
 		 */
 		void clearScene(bool forceAll = false);
 
-		/** Changes the root scene object. Any persistent objects will remain in the scene, now parented to the new root. */
-		void setRootNode(const HSceneObject& root);
+		/**
+		 * Instantiates a new scene and makes it active. All non-persistent objects that are part of the current scene will
+		 * be destroyed.
+		 */
+		void loadScene(const HPrefab& scene);
+
+		/** 
+		 * Saves all the currently active scene objects into a brand new prefab which can then be saved to disk, loaded back
+		 * and provided to setScene() for loading.
+		 */
+		HPrefab saveScene() const;
 
 		/** 
 		 * Changes the component state that globally determines which component callbacks are activated. Only affects
@@ -92,6 +136,9 @@ namespace bs
 		 * the main game window when running standalone, or the Game viewport when running in editor.
 		 */
 		void setMainRenderTarget(const SPtr<RenderTarget>& rt);
+
+		/** Changes the root scene object. Any persistent objects will remain in the scene, now parented to the new root. */
+		void _setRootNode(const HSceneObject& root);
 
 		/** 
 		 * Binds a scene actor with a scene object. Every frame the scene object's transform will be monitored for
@@ -202,7 +249,7 @@ namespace bs
 		static bool isComponentOfType(const HComponent& component, UINT32 rttiId);
 
 	protected:
-		HSceneObject mRootNode;
+		SPtr<SceneInstance> mMainScene;
 
 		UnorderedMap<SceneActor*, BoundActorData> mBoundActors;
 		UnorderedMap<Camera*, SPtr<Camera>> mCameras;

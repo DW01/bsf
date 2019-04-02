@@ -40,7 +40,7 @@ namespace bs
 
 	public:
 		TRenderable();
-		virtual ~TRenderable();
+		virtual ~TRenderable() = default;
 
 		/** @copydoc bs::SceneActor::setTransform */
 		void setTransform(const Transform& transform) override;
@@ -95,6 +95,12 @@ namespace bs
 		 */
 		void setUseOverrideBounds(bool enable);
 
+		/** Factor to be applied to the cull distance set in the camera's render settings.  */
+		void setCullDistanceFactor(float factor);
+
+		/** @copydoc setCullDistanceFactor() */
+		float getCullDistanceFactor() const { return mCullDistanceFactor; }
+
 		/** @copydoc setLayer() */
 		UINT64 getLayer() const { return mLayer; }
 
@@ -129,12 +135,13 @@ namespace bs
 
 		MeshType mMesh;
 		Vector<MaterialType> mMaterials;
-		UINT64 mLayer;
+		UINT64 mLayer = 1;
 		AABox mOverrideBounds;
-		bool mUseOverrideBounds;
-		Matrix4 mTfrmMatrix;
-		Matrix4 mTfrmMatrixNoScale;
-		RenderableAnimType mAnimType;
+		bool mUseOverrideBounds = false;
+		float mCullDistanceFactor = 1.0f;
+		Matrix4 mTfrmMatrix = BsIdentity;
+		Matrix4 mTfrmMatrixNoScale = BsIdentity;
+		RenderableAnimType mAnimType = RenderableAnimType::None;
 	};
 
 	/** @} */

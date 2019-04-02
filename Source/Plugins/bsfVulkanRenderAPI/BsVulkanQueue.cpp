@@ -11,7 +11,7 @@ namespace bs { namespace ct
 		, mLastCBSemaphoreUsed(false), mNextSubmitIdx(1)
 	{
 		for (UINT32 i = 0; i < BS_MAX_UNIQUE_QUEUES; i++)
-			mSubmitDstWaitMask[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			mSubmitDstWaitMask[i] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	}
 
 	bool VulkanQueue::isExecuting() const
@@ -143,11 +143,11 @@ namespace bs { namespace ct
 		}
 	}
 
-	void VulkanQueue::present(VulkanSwapChain* swapChain, VulkanSemaphore** waitSemaphores, UINT32 semaphoresCount)
+	VkResult VulkanQueue::present(VulkanSwapChain* swapChain, VulkanSemaphore** waitSemaphores, UINT32 semaphoresCount)
 	{
 		UINT32 backBufferIdx;
 		if (!swapChain->prepareForPresent(backBufferIdx))
-			return; // Nothing to present (back buffer wasn't even acquired)
+			return VK_SUCCESS; // Nothing to present (back buffer wasn't even acquired)
 
 		mSemaphoresTemp.resize(semaphoresCount + 1); // +1 for self semaphore
 		prepareSemaphores(waitSemaphores, mSemaphoresTemp.data(), semaphoresCount);
@@ -174,9 +174,10 @@ namespace bs { namespace ct
 		}
 
 		VkResult result = vkQueuePresentKHR(mQueue, &presentInfo);
-		assert(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR);
+		assert(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR);
 
 		mActiveSubmissions.push_back(SubmitInfo(nullptr, mNextSubmitIdx++, semaphoresCount, 0));
+		return result;
 	}
 
 	void VulkanQueue::waitIdle() const
@@ -226,7 +227,7 @@ namespace bs { namespace ct
 				VulkanSemaphore* semaphore = mActiveSemaphores.front();
 				mActiveSemaphores.pop();
 
-				semaphore->notifyDone(0, VulkanUseFlag::Read | VulkanUseFlag::Write);
+				semaphore->notifyDone(0, VulkanAccessFlag::Read | VulkanAccessFlag::Write);
 			}
 
 			for(UINT32 i = 0; i < iter->numCommandBuffers; i++)
@@ -249,7 +250,7 @@ namespace bs { namespace ct
 			VulkanSemaphore* semaphore = inSemaphores[i];
 
 			semaphore->notifyBound();
-			semaphore->notifyUsed(0, 0, VulkanUseFlag::Read | VulkanUseFlag::Write);
+			semaphore->notifyUsed(0, 0, VulkanAccessFlag::Read | VulkanAccessFlag::Write);
 
 			outSemaphores[semaphoreIdx++] = semaphore->getHandle();
 			mActiveSemaphores.push(semaphore);
@@ -261,7 +262,7 @@ namespace bs { namespace ct
 			VulkanSemaphore* prevSemaphore = mLastCommandBuffer->getIntraQueueSemaphore();
 
 			prevSemaphore->notifyBound();
-			prevSemaphore->notifyUsed(0, 0, VulkanUseFlag::Read | VulkanUseFlag::Write);
+			prevSemaphore->notifyUsed(0, 0, VulkanAccessFlag::Read | VulkanAccessFlag::Write);
 
 			outSemaphores[semaphoreIdx++] = prevSemaphore->getHandle();
 			mActiveSemaphores.push(prevSemaphore);
