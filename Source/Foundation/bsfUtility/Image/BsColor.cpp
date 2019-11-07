@@ -3,7 +3,7 @@
 #include "Image/BsColor.h"
 #include "Math/BsMath.h"
 
-namespace bs 
+namespace bs
 {
 	const Color Color::ZERO = Color(0.0f, 0.0f, 0.0f, 0.0f);
 	const Color Color::Black = Color(0.0f, 0.0f, 0.0f);
@@ -83,14 +83,14 @@ namespace bs
 		brightness = std::max(brightness, (float)0.0);
 
 		if (brightness == 0.0f)
-		{   
+		{
 			// early exit, this has to be black
 			output.r = output.g = output.b = 0.0f;
 			return output;
 		}
 
 		if (saturation == 0.0f)
-		{   
+		{
 			// early exit, this has to be grey
 
 			output.r = output.g = output.b = brightness;
@@ -262,6 +262,48 @@ namespace bs
 		return val32;
 	}
 
+	float linearToSRGB(float x)
+	{
+		if (x <= 0.0f)
+			return 0.0f;
+		else if (x >= 1.0f)
+			return 1.0f;
+		else if (x < 0.0031308f)
+			return x * 12.92f;
+		else
+			return std::pow(x, 1.0f / 2.4f) * 1.055f - 0.055f;
+	}
+
+	float SRGBToLinear(float x)
+	{
+		if (x <= 0.0f)
+			return 0.0f;
+		else if (x >= 1.0f)
+			return 1.0f;
+		else if (x < 0.04045f)
+			return x / 12.92f;
+		else
+			return std::pow((x + 0.055f) / 1.055f, 2.4f);
+	}
+
+	Color Color::getGamma() const
+	{
+		return Color(
+				bs::linearToSRGB(r),
+				bs::linearToSRGB(g),
+				bs::linearToSRGB(b),
+				a);
+	}
+
+	Color Color::getLinear() const
+	{
+		return Color(
+				bs::SRGBToLinear(r),
+				bs::SRGBToLinear(g),
+				bs::SRGBToLinear(b),
+				a);
+	}
+
 	bool Color::operator==(const Color& rhs) const
 	{
 		return (r == rhs.r &&
@@ -289,7 +331,7 @@ namespace bs
 			*hue = 0;
 			*saturation = 0;
 		}
-		else                                    
+		else
 		{
 			// a colour
 			*saturation = delta / vMax;
@@ -302,10 +344,10 @@ namespace bs
 				*hue = deltaB - deltaG;
 			else if (Math::approxEquals(g, vMax))
 				*hue = 0.3333333f + deltaR - deltaB;
-			else if (Math::approxEquals(b, vMax)) 
+			else if (Math::approxEquals(b, vMax))
 				*hue = 0.6666667f + deltaG - deltaR;
 
-			if (*hue < 0.0f) 
+			if (*hue < 0.0f)
 				*hue += 1.0f;
 			if (*hue > 1.0f)
 				*hue -= 1.0f;

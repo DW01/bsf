@@ -95,7 +95,7 @@ namespace bs
 	/**
 	 * Attempts to cook a triangle or convex mesh from the provided mesh data. Will log a warning and return false if it is
 	 * unable to cook the mesh. If the method returns true the resulting convex mesh will be output in the @p data buffer,
-	 * and its size in @p size. The data buffer will be allocated used the generic allocator and is up to the caller to 
+	 * and its size in @p size. The data buffer will be allocated used the generic allocator and is up to the caller to
 	 * free it.
 	 */
 	bool cookMesh(const SPtr<MeshData>& meshData, PhysicsMeshType type, UINT8** data, UINT32& size)
@@ -106,14 +106,14 @@ namespace bs
 		PxCooking* cooking = gPhysX().getCooking();
 		if (cooking == nullptr)
 		{
-			LOGWRN("Attempting to cook a physics mesh but cooking is not enabled globally.");
+			BS_LOG(Warning, Physics, "Attempting to cook a physics mesh but cooking is not enabled globally.");
 			return false;
 		}
 
 		SPtr<VertexDataDesc> vertexDesc = meshData->getVertexDesc();
 		if (!vertexDesc->hasElement(VES_POSITION))
 		{
-			LOGWRN("Provided PhysicsMesh mesh data has no vertex positions.");
+			BS_LOG(Warning, Physics, "Provided PhysicsMesh mesh data has no vertex positions.");
 			return false;
 		}
 
@@ -121,7 +121,8 @@ namespace bs
 		{
 			if(!cookConvex(cooking, meshData, data, size))
 			{
-				LOGWRN("Failed cooking a convex mesh. Perpahs it is too complex? Maximum number of convex vertices is 256.");
+				BS_LOG(Warning, Physics, "Failed cooking a convex mesh. Perpahs it is too complex? Maximum number of "
+					"convex vertices is 256.");
 				return false;
 			}
 		}

@@ -6,6 +6,7 @@
 #include "Reflection/BsRTTIType.h"
 #include "Components/BsCD6Joint.h"
 #include "Private/RTTI/BsGameObjectRTTI.h"
+#include "RTTI/BsMathRTTI.h"
 
 namespace bs
 {
@@ -91,7 +92,7 @@ namespace bs
 
 		SPtr<IReflectable> newRTTIObject() override
 		{
-			return GameObjectRTTI::createGameObject<CD6Joint>();
+			return SceneObject::createEmptyComponent<CD6Joint>();
 		}
 	};
 

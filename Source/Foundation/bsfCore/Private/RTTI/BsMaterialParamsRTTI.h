@@ -4,13 +4,15 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringRTTI.h"
+#include "RTTI/BsColorGradientRTTI.h"
+#include "Private/RTTI/BsTextureRTTI.h"
+#include "Private/RTTI/BsAnimationCurveRTTI.h"
 #include "Material/BsMaterialParams.h"
 #include "RenderAPI/BsSamplerState.h"
 #include "FileSystem/BsDataStream.h"
 #include "Animation/BsAnimationCurve.h"
 #include "Image/BsColorGradient.h"
-#include "Private/RTTI/BsAnimationCurveRTTI.h"
-#include "Private/RTTI/BsColorGradientRTTI.h"
 
 namespace bs
 {
@@ -53,7 +55,7 @@ namespace bs
 		{
 			size = obj->dataSize;
 
-			return bs_shared_ptr_new<MemoryDataStream>(obj->data, obj->dataSize, false);
+			return bs_shared_ptr_new<MemoryDataStream>(obj->data, obj->dataSize);
 		}
 
 		void setDataBuffer(MaterialParamStructData* obj, const SPtr<DataStream>& value, UINT32 size)
@@ -66,7 +68,7 @@ namespace bs
 
 		MaterialParamStructDataRTTI()
 		{
-			addDataBlockField("dataBuffer", 0, &MaterialParamStructDataRTTI::getDataBuffer, &MaterialParamStructDataRTTI::setDataBuffer, 0);
+			addDataBlockField("dataBuffer", 0, &MaterialParamStructDataRTTI::getDataBuffer, &MaterialParamStructDataRTTI::setDataBuffer);
 		}
 
 		const String& getRTTIName() override
@@ -109,6 +111,9 @@ namespace bs
 			if(paramIdx == (UINT32)-1)
 				paramIdx = mNextParamIdx++;
 
+			if (obj->mParams.size() <= (size_t)paramIdx)
+				obj->mParams.resize((size_t)paramIdx + 1);
+			
 			obj->mParams[paramIdx] = param.data;
 			obj->mParamLookup[param.name] = paramIdx;
 		}
@@ -127,7 +132,7 @@ namespace bs
 		{
 			size = obj->mDataSize;
 
-			return bs_shared_ptr_new<MemoryDataStream>(obj->mDataParamsBuffer, obj->mDataSize, false);
+			return bs_shared_ptr_new<MemoryDataStream>(obj->mDataParamsBuffer, obj->mDataSize);
 		}
 
 		void setDataBuffer(MaterialParams* obj, const SPtr<DataStream>& value, UINT32 size)
@@ -196,10 +201,10 @@ namespace bs
 
 		MaterialParamsRTTI()
 		{
-			addPlainArrayField("paramData", 0, &MaterialParamsRTTI::getParamData, &MaterialParamsRTTI::getParamDataArraySize, 
+			addPlainArrayField("paramData", 0, &MaterialParamsRTTI::getParamData, &MaterialParamsRTTI::getParamDataArraySize,
 				&MaterialParamsRTTI::setParamData, &MaterialParamsRTTI::setParamDataArraySize);
 
-			addDataBlockField("dataBuffer", 1, &MaterialParamsRTTI::getDataBuffer, &MaterialParamsRTTI::setDataBuffer, 0);
+			addDataBlockField("dataBuffer", 1, &MaterialParamsRTTI::getDataBuffer, &MaterialParamsRTTI::setDataBuffer);
 
 			addReflectableArrayField("structParams", 2, &MaterialParamsRTTI::getStructParam,
 				&MaterialParamsRTTI::getStructArraySize, &MaterialParamsRTTI::setStructParam, &MaterialParamsRTTI::setStructArraySize);
@@ -276,9 +281,9 @@ namespace bs
 			return name;
 		}
 
-		UINT32 getRTTIId() override 
-		{ 
-			return TID_MaterialParams; 
+		UINT32 getRTTIId() override
+		{
+			return TID_MaterialParams;
 		}
 
 		SPtr<IReflectable> newRTTIObject() override
@@ -295,32 +300,33 @@ namespace bs
 	{
 		enum { id = TID_MaterialParamData }; enum { hasDynamicSize = 0 };
 
-		static void toMemory(const MaterialParamsBase::ParamData& data, char* memory)
+		static BitLength toMemory(const MaterialParamsBase::ParamData& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			memory = rttiWriteElem(data.type, memory);
-			memory = rttiWriteElem(data.dataType, memory);
-			memory = rttiWriteElem(data.index, memory);
-			memory = rttiWriteElem(data.arraySize, memory);
+			rtti_write(data.type, stream);
+			rtti_write(data.dataType, stream);
+			rtti_write(data.index, stream);
+			rtti_write(data.arraySize, stream);
+			rtti_write((UINT64)0, stream);
+
+			return sizeof(MaterialParamsBase::ParamData);
 		}
 
-		static UINT32 fromMemory(MaterialParamsBase::ParamData& data, char* memory)
+		static BitLength fromMemory(MaterialParamsBase::ParamData& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = 0;
-			memory = rttiReadElem(data.type, memory, size);
-			memory = rttiReadElem(data.dataType, memory, size);
-			memory = rttiReadElem(data.index, memory, size);
-			memory = rttiReadElem(data.arraySize, memory, size);
+			rtti_read(data.type, stream);
+			rtti_read(data.dataType, stream);
+			rtti_read(data.index, stream);
+			rtti_read(data.arraySize, stream);
+			rtti_read(data.version, stream);
 
+			// Not a field we should serialize, but we do because this struct is serialized as a whole
 			data.version = 1;
-			size += sizeof(data.version);
-
-			return size;
+			return sizeof(MaterialParamsBase::ParamData);
 		}
 
-		static UINT32 getDynamicSize(const MaterialParamsBase::ParamData& data)
+		static BitLength getSize(const MaterialParamsBase::ParamData& data, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			assert(false);
-			return 0;
+			return sizeof(MaterialParamsBase::ParamData);
 		}
 	};
 
@@ -328,67 +334,83 @@ namespace bs
 	{
 		enum { id = TID_DataParamInfo }; enum { hasDynamicSize = 1 };
 
-		static void toMemory(const MaterialParamsBase::DataParamInfo& data, char* memory)
+		static BitLength toMemory(const MaterialParamsBase::DataParamInfo& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			static constexpr UINT32 VERSION = 0;
+			static constexpr uint32_t VERSION = 1;
 
-			const UINT32 size = getDynamicSize(data);
-			memory = rttiWriteElem(size, memory);
-			memory = rttiWriteElem(VERSION, memory);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+			{
+				BitLength size = 0;
+				size += rtti_write(VERSION, stream);
+				size += rtti_write(data.offset, stream);
 
-			memory = rttiWriteElem(data.offset, memory);
+				uint32_t curveType = 0; // No curve
 
-			UINT32 curveType = 0; // No curve
+				if (data.floatCurve)
+					curveType = 1;
+				else if (data.colorGradient)
+					curveType = 2;
+				else if (data.spriteTextureIdx != (uint32_t)-1)
+					curveType = 3;
 
-			if(data.floatCurve)
-				curveType = 1;
-			else if(data.colorGradient)
-				curveType = 2;
-			else if(data.spriteTextureIdx != (UINT32)-1)
-				curveType = 3;
+				size += rtti_write(curveType, stream);
+				if (data.floatCurve)
+					size += rtti_write(*data.floatCurve, stream);
+				else if (data.colorGradient)
+					size += rtti_write(*data.colorGradient, stream);
+				else if (data.spriteTextureIdx != (uint32_t)-1)
+					size += rtti_write(data.spriteTextureIdx, stream);
 
-			memory = rttiWriteElem(curveType, memory);
-			if(data.floatCurve)
-				memory = rttiWriteElem(*data.floatCurve, memory);
-			else if(data.colorGradient)
-				memory = rttiWriteElem(*data.colorGradient, memory);
-			else if(data.spriteTextureIdx != (UINT32)-1)
-				memory = rttiWriteElem(data.spriteTextureIdx, memory);
+				return size;
+			});
 		}
 
-		static UINT32 fromMemory(MaterialParamsBase::DataParamInfo& data, char* memory)
+		static BitLength fromMemory(MaterialParamsBase::DataParamInfo& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = 0;
-			memory = rttiReadElem(size, memory);
+			BitLength size;
+			rtti_read_size_header(stream, compress, size);
 
-			UINT32 version = 0;
-			memory = rttiReadElem(version, memory);
+			uint32_t version = 0;
+			rtti_read(version, stream);
 
 			switch(version)
 			{
 			case 0:
+			case 1:
 			{
-				memory = rttiReadElem(data.offset, memory);
+				rtti_read(data.offset, stream);
 				
-				UINT32 curveType = 0;
-				memory = rttiReadElem(curveType, memory);
+				uint32_t curveType = 0;
+				rtti_read(curveType, stream);
 
 				data.floatCurve = nullptr;
 				data.colorGradient = nullptr;
-				data.spriteTextureIdx = (UINT32)-1;
+				data.spriteTextureIdx = (uint32_t)-1;
 
 				switch(curveType)
 				{
 				case 1:
 					data.floatCurve = bs_pool_new<TAnimationCurve<float>>();
-					memory = rttiReadElem(*data.floatCurve, memory);
+					rtti_read(*data.floatCurve, stream);
 					break;
 				case 2:
-					data.colorGradient = bs_pool_new<ColorGradient>();
-					memory = rttiReadElem(*data.colorGradient, memory);
+					if(version == 0)
+					{
+						// Version 0 stores non-HDR gradients
+						ColorGradient temp;
+						rtti_read(temp, stream);
+
+						data.colorGradient = bs_pool_new<ColorGradientHDR>(temp.getKeys());
+					}
+					else
+					{
+						data.colorGradient = bs_pool_new<ColorGradientHDR>();
+						rtti_read(*data.colorGradient, stream);
+					}
+
 					break;
 				case 3:
-					memory = rttiReadElem(data.spriteTextureIdx, memory);
+					rtti_read(data.spriteTextureIdx, stream);
 					break;
 				default:
 					break;
@@ -396,24 +418,25 @@ namespace bs
 			}
 				break;
 			default:
-				LOGERR("Unknown version. Unable to deserialize.");
+				BS_LOG(Error, RTTI, "Unknown version. Unable to deserialize.");
 				break;
 			}
 
 			return size;
 		}
 
-		static UINT32 getDynamicSize(const MaterialParamsBase::DataParamInfo& data)
+		static BitLength getSize(const MaterialParamsBase::DataParamInfo& data, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = sizeof(UINT32) * 3 + rttiGetElemSize(data.offset);
+			BitLength size = rtti_size(data.offset) + sizeof(uint32_t) * 2;
 
 			if(data.floatCurve)
-				size += rttiGetElemSize(*data.floatCurve);
+				size += rtti_size(*data.floatCurve);
 			else if(data.colorGradient)
-				size += rttiGetElemSize(*data.colorGradient);
-			else if(data.spriteTextureIdx != (UINT32)-1)
-				size += rttiGetElemSize(data.spriteTextureIdx);
+				size += rtti_size(*data.colorGradient);
+			else if(data.spriteTextureIdx != (uint32_t)-1)
+				size += rtti_size(data.spriteTextureIdx);
 
+			rtti_add_header_size(size, compress);
 			return size;
 		}
 	};
@@ -422,67 +445,63 @@ namespace bs
 	{	
 		enum { id = TID_MaterialRTTIParam }; enum { hasDynamicSize = 1 };
 
-		static void toMemory(const MaterialParamsRTTI::MaterialParam& data, char* memory)
-		{ 
+		static BitLength toMemory(const MaterialParamsRTTI::MaterialParam& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
+		{
 			static constexpr UINT32 VERSION = 1;
 
-			const UINT32 size = getDynamicSize(data);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+			{
+				BitLength size = 0;
+				size += rtti_write(data.name, stream);
+				size += rtti_write(data.data, stream);
 
-			memory = rttiWriteElem(size, memory);
-			memory = rttiWriteElem(data.name, memory);
-			memory = rttiWriteElem(data.data, memory);
+				// Version 1 data
+				size += rtti_write(VERSION, stream);
+				size += rtti_write(data.index, stream);
 
-			// Version 1 data
-			memory = rttiWriteElem(VERSION, memory);
-			memory = rttiWriteElem(data.index, memory);
+				return size;
+			});
 		}
 
-		static UINT32 fromMemory(MaterialParamsRTTI::MaterialParam& data, char* memory)
-		{ 
-			UINT32 size = 0;
-			UINT32 sizeRead = 0;
+		static BitLength fromMemory(MaterialParamsRTTI::MaterialParam& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
+		{
+			BitLength size;
 			
-			memory = rttiReadElem(size, memory, sizeRead);
-			memory = rttiReadElem(data.name, memory, sizeRead);
-			memory = rttiReadElem(data.data, memory, sizeRead);
+			BitLength sizeRead = rtti_read_size_header(stream, compress, size);
+			sizeRead += rtti_read(data.name, stream);
+			sizeRead += rtti_read(data.data, stream);
 
 			// More fields means a newer version of the data format
 			if(size > sizeRead)
 			{
-				UINT32 version = 0;
-				memory = rttiReadElem(version, memory);
+				uint32_t version = 0;
+				rtti_read(version, stream);
 
 				switch (version)
 				{
 				case 1:
-					memory = rttiReadElem(data.index, memory);
+					rtti_read(data.index, stream);
 					break;
 				default:
-					LOGERR("Unknown version. Unable to deserialize.");
+					BS_LOG(Error, RTTI, "Unknown version. Unable to deserialize.");
 					break;
 				}
 			}
 			else
-				data.index = (UINT32)-1; // Lets the other code know that index needs to be generated
+				data.index = (uint32_t)-1; // Lets the other code know that index needs to be generated
 
 			return size;
 		}
 
-		static UINT32 getDynamicSize(const MaterialParamsRTTI::MaterialParam& data)
-		{ 
-			const UINT64 dataSize = rttiGetElemSize(data.name) + rttiGetElemSize(data.data) + rttiGetElemSize(data.index) + 
-				sizeof(UINT32) * 2;
+		static BitLength getSize(const MaterialParamsRTTI::MaterialParam& data, const RTTIFieldInfo& fieldInfo, bool compress)
+		{
+			BitLength size = rtti_size(data.name) + rtti_size(data.data) + rtti_size(data.index) +
+				sizeof(uint32_t) * 1;
 
-#if BS_DEBUG_MODE
-			if(dataSize > std::numeric_limits<UINT32>::max())
-			{
-				__string_throwDataOverflowException();
-			}
-#endif
-
-			return (UINT32)dataSize;
+			rtti_add_header_size(size, compress);
+			return size;
 		}	
-	}; 
+	};
 
 	/** @} */
 	/** @endcond */

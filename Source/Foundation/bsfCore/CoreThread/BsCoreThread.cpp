@@ -12,12 +12,13 @@ namespace bs
 	CoreThread::QueueData CoreThread::mPerThreadQueue;
 	BS_THREADLOCAL CoreThread::ThreadQueueContainer* CoreThread::QueueData::current = nullptr;
 
-	CoreThread::CoreThread()
-		: mActiveFrameAlloc(0)
-		, mCoreThreadShutdown(false)
-		, mCoreThreadStarted(false)
-		, mCommandQueue(nullptr)
-		, mMaxCommandNotifyId(0)
+#if BS_CORE_THREAD_IS_MAIN
+	bool CoreThread::sAppStarted = false;
+	Mutex CoreThread::sAppStartedMutex;
+	Signal CoreThread::sAppStartedCondition;
+#endif
+
+	void CoreThread::onStartUp()
 	{
 		for (UINT32 i = 0; i < NUM_SYNC_BUFFERS; i++)
 		{
@@ -38,7 +39,7 @@ namespace bs
 		shutdownCoreThread();
 
 		{
-			Lock lock(mCoreQueueMutex);
+			Lock lock(mSubmitMutex);
 
 			for(auto& queue : mAllQueues)
 				bs_delete(queue);
@@ -62,19 +63,41 @@ namespace bs
 	void CoreThread::initCoreThread()
 	{
 #if !BS_FORCE_SINGLETHREADED_RENDERING
-#if BS_THREAD_SUPPORT
+#if !BS_CORE_THREAD_IS_MAIN
 		mCoreThread = ThreadPool::instance().run("Core", std::bind(&CoreThread::runCoreThread, this));
+#else
+		{
+			Lock lock(sAppStartedMutex);
+			sAppStarted = true;
+		}
+
+		sAppStartedCondition.notify_one();
+#endif
 		
 		// Need to wait to unsure thread ID is correctly set before continuing
 		Lock lock(mThreadStartedMutex);
 
 		while (!mCoreThreadStarted)
 			mCoreThreadStartedCondition.wait(lock);
-#else
-		BS_EXCEPT(InternalErrorException, "Attempting to start a core thread but application isn't compiled with thread support.");
-#endif
 #endif
 	}
+
+#if BS_CORE_THREAD_IS_MAIN
+	void CoreThread::_run()
+	{
+		// Wait for the application to reach a point where core thread can be safely started
+		{
+			Lock lock(sAppStartedMutex);
+
+			while (!sAppStarted)
+				sAppStartedCondition.wait(lock);
+		}
+
+		ThreadDefaultPolicy::onThreadStarted("Core");
+		instance().runCoreThread();
+		ThreadDefaultPolicy::onThreadEnded("Core");
+	}
+#endif
 
 	void CoreThread::runCoreThread()
 	{
@@ -114,7 +137,7 @@ namespace bs
 			}
 
 			// Play commands
-			mCommandQueue->playbackWithNotify(commands, std::bind(&CoreThread::commandCompletedNotify, this, _1)); 
+			mCommandQueue->playbackWithNotify(commands, std::bind(&CoreThread::commandCompletedNotify, this, _1));
 		}
 #endif
 	}
@@ -133,62 +156,114 @@ namespace bs
 
 		mCoreThreadId = BS_THREAD_CURRENT_ID;
 
+#if !BS_CORE_THREAD_IS_MAIN
 		mCoreThread.blockUntilComplete();
+#endif
 #endif
 	}
 
-	SPtr<TCoreThreadQueue<CommandQueueNoSync>> CoreThread::getQueue()
+	SPtr<CommandQueue<CommandQueueSync>> CoreThread::getQueue()
 	{
 		if(mPerThreadQueue.current == nullptr)
 		{
-			SPtr<TCoreThreadQueue<CommandQueueNoSync>> newQueue = bs_shared_ptr_new<TCoreThreadQueue<CommandQueueNoSync>>(BS_THREAD_CURRENT_ID);
+			SPtr<CommandQueue<CommandQueueSync>> newQueue = bs_shared_ptr_new<CommandQueue<CommandQueueSync>>(BS_THREAD_CURRENT_ID);
 			mPerThreadQueue.current = bs_new<ThreadQueueContainer>();
 			mPerThreadQueue.current->queue = newQueue;
 			mPerThreadQueue.current->isMain = BS_THREAD_CURRENT_ID == mSimThreadId;
 
-			Lock lock(mCoreQueueMutex);
+			Lock lock(mSubmitMutex);
 			mAllQueues.push_back(mPerThreadQueue.current);
 		}
 
 		return mPerThreadQueue.current->queue;
 	}
 
+	void CoreThread::submitCommandQueue(CommandQueue<CommandQueueSync>& queue, bool blockUntilComplete)
+	{
+		Queue<QueuedCommand>* commands = queue.flush();
+
+		CoreThreadQueueFlags flags = CTQF_InternalQueue;
+
+		if(blockUntilComplete)
+			flags |= CTQF_BlockUntilComplete;
+
+		queueCommand(std::bind(&CommandQueueBase::playback, &queue, commands), flags);
+	}
+
 	void CoreThread::submitAll(bool blockUntilComplete)
 	{
-		Vector<ThreadQueueContainer*> queueCopies;
+		UINT32 blockCommandId = (UINT32)-1;
 
 		{
-			Lock lock(mCoreQueueMutex);
+			// This lock is needed mainly because of blocking. Without it another submitting thread might flush a command
+			// we want to wait on.
+			Lock lock(mSubmitMutex);
 
-			queueCopies = mAllQueues;
+			// Submit workers first
+			ThreadQueueContainer* mainQueue = nullptr;
+			for (auto& queue : mAllQueues)
+			{
+				if (!queue->isMain)
+					submitCommandQueue(*queue->queue, false);
+				else
+					mainQueue = queue;
+			}
+
+			// Then main
+			if (mainQueue != nullptr)
+				submitCommandQueue(*mainQueue->queue, false);
+
+			if(blockUntilComplete)
+			{
+				Lock lock2(mCommandQueueMutex);
+
+				blockCommandId = mMaxCommandNotifyId++;
+				mCommandQueue->queue([](){}, true, blockCommandId);
+			}
 		}
 
-		// Submit workers first
-		ThreadQueueContainer* mainQueue = nullptr;
-		for (auto& queue : queueCopies)
+		if(blockUntilComplete)
 		{
-			if (!queue->isMain)
-				queue->queue->submitToCoreThread(blockUntilComplete);
-			else
-				mainQueue = queue;
+			mCommandReadyCondition.notify_all();
+			blockUntilCommandCompleted(blockCommandId);
 		}
-
-		// Then main
-		if (mainQueue != nullptr)
-			mainQueue->queue->submitToCoreThread(blockUntilComplete);
 	}
 
 	void CoreThread::submit(bool blockUntilComplete)
 	{
-		getQueue()->submitToCoreThread(blockUntilComplete);
+		Lock lock(mSubmitMutex);
+
+		CommandQueue<CommandQueueSync>& queue = *getQueue();
+		Queue<QueuedCommand>* commands = queue.flush();
+
+		UINT32 commandId = -1;
+		{
+			Lock lock2(mCommandQueueMutex);
+
+			if (blockUntilComplete)
+			{
+				commandId = mMaxCommandNotifyId++;
+
+				mCommandQueue->queue([commands, &queue]() { queue.playback(commands); }, true, commandId);
+			}
+			else
+				mCommandQueue->queue([commands, &queue]() { queue.playback(commands); });
+		}
+
+		mCommandReadyCondition.notify_all();
+
+		if (blockUntilComplete)
+			blockUntilCommandCompleted(commandId);
 	}
 
 	AsyncOp CoreThread::queueReturnCommand(std::function<void(AsyncOp&)> commandCallback, CoreThreadQueueFlags flags)
 	{
+#if !BS_FORCE_SINGLETHREADED_RENDERING
 		assert(BS_THREAD_CURRENT_ID != getCoreThreadId() && "Cannot queue commands on the core thread for the core thread");
+#endif
 
 		if (!flags.isSet(CTQF_InternalQueue))
-			return getQueue()->queueReturnCommand(commandCallback);
+			return getQueue()->queueReturn(commandCallback);
 		else
 		{
 			bool blockUntilComplete = flags.isSet(CTQF_BlockUntilComplete);
@@ -218,10 +293,12 @@ namespace bs
 
 	void CoreThread::queueCommand(std::function<void()> commandCallback, CoreThreadQueueFlags flags)
 	{
+#if !BS_FORCE_SINGLETHREADED_RENDERING
 		assert(BS_THREAD_CURRENT_ID != getCoreThreadId() && "Cannot queue commands on the core thread for the core thread");
+#endif
 
 		if (!flags.isSet(CTQF_InternalQueue))
-			getQueue()->queueCommand(commandCallback);
+			getQueue()->queue(commandCallback);
 		else
 		{
 			bool blockUntilComplete = flags.isSet(CTQF_BlockUntilComplete);
@@ -264,22 +341,20 @@ namespace bs
 	void CoreThread::blockUntilCommandCompleted(UINT32 commandId)
 	{
 #if !BS_FORCE_SINGLETHREADED_RENDERING
-		Lock lock(mCommandNotifyMutex);
 
 		while(true)
 		{
+			Lock lock(mCommandNotifyMutex);
+
 			// Check if our command id is in the completed list
 			auto iter = mCommandsCompleted.begin();
 			for(; iter != mCommandsCompleted.end(); ++iter)
 			{
 				if(*iter == commandId)
-					break;
-			}
-
-			if(iter != mCommandsCompleted.end())
-			{
-				mCommandsCompleted.erase(iter);
-				break;
+				{
+					mCommandsCompleted.erase(iter);
+					return;
+				}
 			}
 
 			mCommandCompleteCondition.wait(lock);
@@ -291,7 +366,6 @@ namespace bs
 	{
 		{
 			Lock lock(mCommandNotifyMutex);
-
 			mCommandsCompleted.push_back(commandId);
 		}
 

@@ -52,11 +52,11 @@ namespace bs { namespace ct
 	}
 	
 	GLSLGpuProgram::GLSLGpuProgram(const GPU_PROGRAM_DESC& desc, GpuDeviceFlags deviceMask)
-		:GpuProgram(desc, deviceMask), mProgramID(0), mGLHandle(0)
+		:GpuProgram(desc, deviceMask)
 	{ }
 
 	GLSLGpuProgram::~GLSLGpuProgram()
-	{ 
+	{
 		if (mIsCompiled && mGLHandle != 0)
 		{
 			glDeleteProgram(mGLHandle);
@@ -211,7 +211,7 @@ namespace bs { namespace ct
 			strcat(versionDefine, "\n");
 
 			const char* EXTRA_LINES[] =
-				{ 
+				{
 					"#define OPENGL\n",
 					versionDefine
 				};

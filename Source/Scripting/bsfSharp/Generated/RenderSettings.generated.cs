@@ -21,6 +21,28 @@ namespace bs
 			Internal_RenderSettings(this);
 		}
 
+		/// <summary>Parameters used for customizing the gaussian depth of field effect.</summary>
+		[ShowInInspector]
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public DepthOfFieldSettings DepthOfField
+		{
+			get { return Internal_getdepthOfField(mCachedPtr); }
+			set { Internal_setdepthOfField(mCachedPtr, value); }
+		}
+
+		/// <summary>Parameters used for customizing the chromatic aberration effect.</summary>
+		[ShowInInspector]
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public ChromaticAberrationSettings ChromaticAberration
+		{
+			get { return Internal_getchromaticAberration(mCachedPtr); }
+			set { Internal_setchromaticAberration(mCachedPtr, value); }
+		}
+
 		/// <summary>
 		/// Determines should automatic exposure be applied to the HDR image. When turned on the average scene brightness will be 
 		/// calculated and used to automatically expose the image to the optimal range. Use the parameters provided by 
@@ -100,17 +122,6 @@ namespace bs
 			set { Internal_setcolorGrading(mCachedPtr, value); }
 		}
 
-		/// <summary>Parameters used for customizing the depth of field effect.</summary>
-		[ShowInInspector]
-		[NotNull]
-		[PassByCopy]
-		[NativeWrapper]
-		public DepthOfFieldSettings DepthOfField
-		{
-			get { return Internal_getdepthOfField(mCachedPtr); }
-			set { Internal_setdepthOfField(mCachedPtr, value); }
-		}
-
 		/// <summary>Parameters used for customizing screen space ambient occlusion.</summary>
 		[ShowInInspector]
 		[NotNull]
@@ -144,6 +155,50 @@ namespace bs
 			set { Internal_setbloom(mCachedPtr, value); }
 		}
 
+		/// <summary>Parameters used for customizing the screen space lens flare effect.</summary>
+		[ShowInInspector]
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public ScreenSpaceLensFlareSettings ScreenSpaceLensFlare
+		{
+			get { return Internal_getscreenSpaceLensFlare(mCachedPtr); }
+			set { Internal_setscreenSpaceLensFlare(mCachedPtr, value); }
+		}
+
+		/// <summary>Parameters used for customizing the film grain effect.</summary>
+		[ShowInInspector]
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public FilmGrainSettings FilmGrain
+		{
+			get { return Internal_getfilmGrain(mCachedPtr); }
+			set { Internal_setfilmGrain(mCachedPtr, value); }
+		}
+
+		/// <summary>Parameters used for customizing the motion blur effect.</summary>
+		[ShowInInspector]
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public MotionBlurSettings MotionBlur
+		{
+			get { return Internal_getmotionBlur(mCachedPtr); }
+			set { Internal_setmotionBlur(mCachedPtr, value); }
+		}
+
+		/// <summary>Parameters used for customizing the temporal anti-aliasing effect.</summary>
+		[ShowInInspector]
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public TemporalAASettings TemporalAA
+		{
+			get { return Internal_gettemporalAA(mCachedPtr); }
+			set { Internal_settemporalAA(mCachedPtr, value); }
+		}
+
 		/// <summary>Enables the fast approximate anti-aliasing effect.</summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -159,6 +214,7 @@ namespace bs
 		/// enabled). In range [-8, 8].
 		/// </summary>
 		[ShowInInspector]
+		[Range(-8f, 8f, true)]
 		[NativeWrapper]
 		public float ExposureScale
 		{
@@ -172,6 +228,7 @@ namespace bs
 		/// tonemapping is turned off this is the exact value of the gamma curve that will be applied.
 		/// </summary>
 		[ShowInInspector]
+		[Range(1f, 3f, true)]
 		[NativeWrapper]
 		public float Gamma
 		{
@@ -181,7 +238,7 @@ namespace bs
 
 		/// <summary>
 		/// High dynamic range allows light intensity to be more correctly recorded when rendering by allowing for a larger range 
-		/// of values. The stored light is then converted into visible color range using exposure and a tone mapping  operator.
+		/// of values. The stored light is then converted into visible color range using exposure and a tone mapping operator.
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -212,6 +269,19 @@ namespace bs
 			set { Internal_setenableShadows(mCachedPtr, value); }
 		}
 
+		/// <summary>
+		/// Determines if the G-Buffer should contain per-pixel velocity information. This can be useful if you are rendering an 
+		/// effect that requires this information. Note that effects such as motion blur or temporal anti-aliasing might force 
+		/// the velocity buffer to be enabled regardless of this setting.
+		/// </summary>
+		[ShowInInspector]
+		[NativeWrapper]
+		public bool EnableVelocityBuffer
+		{
+			get { return Internal_getenableVelocityBuffer(mCachedPtr); }
+			set { Internal_setenableVelocityBuffer(mCachedPtr, value); }
+		}
+
 		/// <summary>Parameters used for customizing shadow rendering.</summary>
 		[ShowInInspector]
 		[NotNull]
@@ -233,9 +303,9 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Signals the renderer to only render overlays (like GUI), and not scene objects. Such rendering doesn't require depth 
-		/// buffer or multi-sampled render targets and will not render any scene objects. This can improve performance and memory 
-		/// usage for overlay-only views.
+		/// Signals the renderer to only render overlays (like GUI), and not scene objects. Such rendering doesn&apos;t require 
+		/// depth buffer or multi-sampled render targets and will not render any scene objects. This can improve performance and 
+		/// memory usage for overlay-only views.
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -258,7 +328,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// The absolute base cull-distance for objects rendered through this camera in world units. Objects will use this  
+		/// The absolute base cull-distance for objects rendered through this camera in world units. Objects will use this 
 		/// distance and apply their own factor to it to determine whether they should be visible.
 		/// </summary>
 		[ShowInInspector]
@@ -271,6 +341,14 @@ namespace bs
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_RenderSettings(RenderSettings managedInstance);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern DepthOfFieldSettings Internal_getdepthOfField(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setdepthOfField(IntPtr thisPtr, DepthOfFieldSettings value);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern ChromaticAberrationSettings Internal_getchromaticAberration(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setchromaticAberration(IntPtr thisPtr, ChromaticAberrationSettings value);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern bool Internal_getenableAutoExposure(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
@@ -296,10 +374,6 @@ namespace bs
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setcolorGrading(IntPtr thisPtr, ColorGradingSettings value);
 		[MethodImpl(MethodImplOptions.InternalCall)]
-		private static extern DepthOfFieldSettings Internal_getdepthOfField(IntPtr thisPtr);
-		[MethodImpl(MethodImplOptions.InternalCall)]
-		private static extern void Internal_setdepthOfField(IntPtr thisPtr, DepthOfFieldSettings value);
-		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern AmbientOcclusionSettings Internal_getambientOcclusion(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setambientOcclusion(IntPtr thisPtr, AmbientOcclusionSettings value);
@@ -311,6 +385,22 @@ namespace bs
 		private static extern BloomSettings Internal_getbloom(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setbloom(IntPtr thisPtr, BloomSettings value);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern ScreenSpaceLensFlareSettings Internal_getscreenSpaceLensFlare(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setscreenSpaceLensFlare(IntPtr thisPtr, ScreenSpaceLensFlareSettings value);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern FilmGrainSettings Internal_getfilmGrain(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setfilmGrain(IntPtr thisPtr, FilmGrainSettings value);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern MotionBlurSettings Internal_getmotionBlur(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setmotionBlur(IntPtr thisPtr, MotionBlurSettings value);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern TemporalAASettings Internal_gettemporalAA(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_settemporalAA(IntPtr thisPtr, TemporalAASettings value);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern bool Internal_getenableFXAA(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
@@ -335,6 +425,10 @@ namespace bs
 		private static extern bool Internal_getenableShadows(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setenableShadows(IntPtr thisPtr, bool value);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern bool Internal_getenableVelocityBuffer(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setenableVelocityBuffer(IntPtr thisPtr, bool value);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern ShadowSettings Internal_getshadowSettings(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]

@@ -86,7 +86,7 @@ namespace bs
 
 	}
 
-	AnimationClip::AnimationClip(const SPtr<AnimationCurves>& curves, bool isAdditive, UINT32 sampleRate, 
+	AnimationClip::AnimationClip(const SPtr<AnimationCurves>& curves, bool isAdditive, UINT32 sampleRate,
 		const SPtr<RootMotion>& rootMotion)
 		: Resource(false), mVersion(0), mCurves(curves), mRootMotion(rootMotion), mIsAdditive(isAdditive), mLength(0.0f)
 		, mSampleRate(sampleRate)
@@ -107,7 +107,7 @@ namespace bs
 			_createPtr(bs_shared_ptr_new<AnimationCurves>(), isAdditive)));
 	}
 
-	HAnimationClip AnimationClip::create(const SPtr<AnimationCurves>& curves, bool isAdditive, UINT32 sampleRate, 
+	HAnimationClip AnimationClip::create(const SPtr<AnimationCurves>& curves, bool isAdditive, UINT32 sampleRate,
 		const SPtr<RootMotion>& rootMotion)
 	{
 		return static_resource_cast<AnimationClip>(gResources()._createResourceHandle(
@@ -124,7 +124,7 @@ namespace bs
 		return newClip;
 	}
 
-	SPtr<AnimationClip> AnimationClip::_createPtr(const SPtr<AnimationCurves>& curves, bool isAdditive, UINT32 sampleRate, 
+	SPtr<AnimationClip> AnimationClip::_createPtr(const SPtr<AnimationCurves>& curves, bool isAdditive, UINT32 sampleRate,
 		const SPtr<RootMotion>& rootMotion)
 	{
 		AnimationClip* rawPtr = new (bs_alloc<AnimationClip>()) AnimationClip(curves, isAdditive, sampleRate, rootMotion);
@@ -147,7 +147,7 @@ namespace bs
 
 	bool AnimationClip::hasRootMotion() const
 	{
-		return mRootMotion != nullptr && 
+		return mRootMotion != nullptr &&
 			(mRootMotion->position.getNumKeyFrames() > 0 || mRootMotion->rotation.getNumKeyFrames() > 0);
 	}
 
@@ -183,7 +183,7 @@ namespace bs
 				auto iterFind = mNameMapping.find(entry.name);
 				if (iterFind == mNameMapping.end())
 				{
-					UINT32* indices = mNameMapping[entry.name];
+					UINT32* indices = mNameMapping[entry.name].data();
 					memset(indices, -1, sizeof(UINT32) * (int)CurveType::Count);
 
 					indices[typeIdx] = i;
@@ -215,7 +215,7 @@ namespace bs
 				auto iterFind = mNameMapping.find(entry.name);
 				if (iterFind == mNameMapping.end())
 				{
-					UINT32* indices = mNameMapping[entry.name];
+					UINT32* indices = mNameMapping[entry.name].data();
 					memset(indices, -1, sizeof(UINT32) * (int)CurveType::Count);
 
 					indices[typeIdx] = i;
@@ -249,7 +249,7 @@ namespace bs
 		auto iterFind = mNameMapping.find(name);
 		if (iterFind != mNameMapping.end())
 		{
-			const UINT32* indices = iterFind->second;
+			const UINT32* indices = iterFind->second.data();
 
 			mapping.position = indices[(UINT32)CurveType::Position];
 			mapping.rotation = indices[(UINT32)CurveType::Rotation];
@@ -264,7 +264,7 @@ namespace bs
 		auto iterFind = mNameMapping.find(name);
 		if (iterFind != mNameMapping.end())
 		{
-			const UINT32* indices = iterFind->second;
+			const UINT32* indices = iterFind->second.data();
 
 			frameIdx = indices[(UINT32)CurveType::MorphFrame];
 			weightIdx = indices[(UINT32)CurveType::MorphWeight];

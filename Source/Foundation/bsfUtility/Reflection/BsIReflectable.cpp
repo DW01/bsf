@@ -3,7 +3,7 @@
 #include "Reflection/BsIReflectable.h"
 #include "Reflection/BsRTTIType.h"
 #include "Error/BsException.h"
-#include "Private/RTTI/BsIReflectableRTTI.h"
+#include "RTTI/BsIReflectableRTTI.h"
 
 namespace bs
 {
@@ -11,7 +11,7 @@ namespace bs
 	{
 		if(_isTypeIdDuplicate(rttiType->getRTTIId()))
 		{
-			BS_EXCEPT(InternalErrorException, "RTTI type \"" + rttiType->getRTTIName() + 
+			BS_EXCEPT(InternalErrorException, "RTTI type \"" + rttiType->getRTTIName() +
 				"\" has a duplicate ID: " + toString(rttiType->getRTTIId()));
 		}
 
@@ -65,10 +65,10 @@ namespace bs
 			{
 				RTTIField* myField = myType->getField(i);
 
-				if (!myField->isReflectablePtrType())
+				if (myField->schema.type != SerializableFT_ReflectablePtr)
 					continue;
 
-				RTTIReflectablePtrFieldBase* myReflectablePtrField = static_cast<RTTIReflectablePtrFieldBase*>(myField);
+				auto* myReflectablePtrField = static_cast<RTTIReflectablePtrFieldBase*>(myField);
 				
 				RTTITypeBase* otherType = myReflectablePtrField->getType();
 				UINT32 otherNumFields = otherType->getNumFields();
@@ -76,17 +76,17 @@ namespace bs
 				{
 					RTTIField* otherField = otherType->getField(j);
 
-					if (!otherField->isReflectablePtrType())
+					if (otherField->schema.type != SerializableFT_ReflectablePtr)
 						continue;
 
-					RTTIReflectablePtrFieldBase* otherReflectablePtrField = static_cast<RTTIReflectablePtrFieldBase*>(otherField);
+					auto* otherReflectablePtrField = static_cast<RTTIReflectablePtrFieldBase*>(otherField);
 
 					if (myType->getRTTIId() == otherReflectablePtrField->getType()->getRTTIId() &&
-						(myReflectablePtrField->getFlags() & RTTI_Flag_WeakRef) == 0 &&
-						(otherReflectablePtrField->getFlags() & RTTI_Flag_WeakRef) == 0)
+						(!myReflectablePtrField->schema.info.flags.isSet(RTTIFieldFlag::WeakRef) &&
+						!otherReflectablePtrField->schema.info.flags.isSet(RTTIFieldFlag::WeakRef)))
 					{
 						BS_EXCEPT(InternalErrorException, "Found circular reference on RTTI type: " + myType->getRTTIName()
-							+ " to type: " + otherType->getRTTIName() + ". Either remove one of the references or mark it" 
+							+ " to type: " + otherType->getRTTIName() + ". Either remove one of the references or mark it"
 							+ " as a weak reference when defining the RTTI field.");
 					}
 				}
@@ -95,8 +95,8 @@ namespace bs
 	}
 
 	UINT32 IReflectable::getTypeId() const
-	{ 
-		return getRTTI()->getRTTIId(); 
+	{
+		return getRTTI()->getRTTIId();
 	}
 
 	const String& IReflectable::getTypeName() const

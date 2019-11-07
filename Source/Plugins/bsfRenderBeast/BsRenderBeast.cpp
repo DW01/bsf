@@ -33,6 +33,7 @@
 #include "BsRenderBeastIBLUtility.h"
 #include "BsRenderCompositor.h"
 #include "Shading/BsGpuParticleSimulation.h"
+#include "Resources/BsBuiltinResources.h"
 
 using namespace std::placeholders;
 
@@ -53,7 +54,12 @@ namespace bs { namespace ct
 	{
 		Renderer::initialize();
 
-		gCoreThread().queueCommand(std::bind(&RenderBeast::initializeCore, this), CTQF_InternalQueue);
+		LoadedRendererTextures textures;
+		HTexture bokehFlare = gBuiltinResources().getTexture(BuiltinTexture::BokehFlare);
+		if(bokehFlare.isLoaded(false))
+			textures.bokehFlare = bokehFlare->getCore();
+
+		gCoreThread().queueCommand([this, textures]() { initializeCore(textures); }, CTQF_InternalQueue);
 	}
 
 	void RenderBeast::destroy()
@@ -64,7 +70,7 @@ namespace bs { namespace ct
 		gCoreThread().submit(true);
 	}
 
-	void RenderBeast::initializeCore()
+	void RenderBeast::initializeCore(const LoadedRendererTextures& rendererTextures)
 	{
 		const RenderAPICapabilities& caps = gCaps();
 
@@ -83,9 +89,9 @@ namespace bs { namespace ct
 		GpuSort::startUp();
 		GpuResourcePool::startUp();
 		IBLUtility::startUp<RenderBeastIBLUtility>();
-		RendererTextures::startUp();
+		RendererTextures::startUp(rendererTextures);
 
-		mCoreOptions = bs_shared_ptr_new<RenderBeastOptions>(); 
+		mCoreOptions = bs_shared_ptr_new<RenderBeastOptions>();
 		mScene = bs_shared_ptr_new<RendererScene>(mCoreOptions);
 
 		mMainViewGroup = bs_new<RendererViewGroup>(nullptr, 0, true);
@@ -94,7 +100,7 @@ namespace bs { namespace ct
 		ParticleRenderer::startUp();
 		GpuParticleSimulation::startUp();
 
-		gProfilerGPU().endFrame();
+		gProfilerGPU().endFrame(true);
 
 		RenderCompositor::registerNodeType<RCNodeSceneDepth>();
 		RenderCompositor::registerNodeType<RCNodeBasePass>();
@@ -108,6 +114,7 @@ namespace bs { namespace ct
 		RenderCompositor::registerNodeType<RCNodePostProcess>();
 		RenderCompositor::registerNodeType<RCNodeTonemapping>();
 		RenderCompositor::registerNodeType<RCNodeGaussianDOF>();
+		RenderCompositor::registerNodeType<RCNodeBokehDOF>();
 		RenderCompositor::registerNodeType<RCNodeFXAA>();
 		RenderCompositor::registerNodeType<RCNodeResolvedSceneDepth>();
 		RenderCompositor::registerNodeType<RCNodeHiZ>();
@@ -120,6 +127,12 @@ namespace bs { namespace ct
 		RenderCompositor::registerNodeType<RCNodeHalfSceneColor>();
 		RenderCompositor::registerNodeType<RCNodeBloom>();
 		RenderCompositor::registerNodeType<RCNodeEyeAdaptation>();
+		RenderCompositor::registerNodeType<RCNodeScreenSpaceLensFlare>();
+		RenderCompositor::registerNodeType<RCNodeSceneColorDownsamples>();
+		RenderCompositor::registerNodeType<RCNodeMotionBlur>();
+		RenderCompositor::registerNodeType<RCNodeChromaticAberration>();
+		RenderCompositor::registerNodeType<RCNodeFilmGrain>();
+		RenderCompositor::registerNodeType<RCNodeTemporalAA>();
 	}
 
 	void RenderBeast::destroyCore()
@@ -335,7 +348,7 @@ namespace bs { namespace ct
 		gCoreThread().queueCommand(setShaderOverride);
 	}
 
-	void RenderBeast::renderAll(PerFrameData perFrameData) 
+	void RenderBeast::renderAll(PerFrameData perFrameData)
 	{
 		// Sync all dirty sim thread CoreObject data to core thread
 		PROFILE_CALL(CoreObjectManager::instance().syncToCore(), "Sync to core")
@@ -381,29 +394,20 @@ namespace bs { namespace ct
 		FrameInfo frameInfo(timings, perFrameData);
 
 		// Make sure any renderer tasks finish first, as rendering might depend on them
-		processTasks(false);
+		processTasks(false, timings.frameIdx);
 
 		// If any reflection probes were updated or added, we need to copy them over in the global reflection probe array
 		updateReflProbeArray();
 
-		// Update material parameters & animation times for all renderables
+		// Update per-frame data for all renderable objects
 		for (UINT32 i = 0; i < sceneInfo.renderables.size(); i++)
-		{
-			RendererRenderable* renderable = sceneInfo.renderables[i];
-			for (auto& element : renderable->elements)
-				element.materialAnimationTime += timings.timeDelta;
-		}
+			mScene->prepareRenderable(i, frameInfo);
 
 		for (UINT32 i = 0; i < sceneInfo.particleSystems.size(); i++)
 			mScene->prepareParticleSystem(i, frameInfo);
 
 		for (UINT32 i = 0; i < sceneInfo.decals.size(); i++)
-		{
-			const RendererDecal& decal = sceneInfo.decals[i];
-			decal.renderElement.materialAnimationTime += timings.timeDelta;
-
 			mScene->prepareDecal(i, frameInfo);
-		}
 
 		// Gather all views
 		for (auto& rtInfo : sceneInfo.renderTargets)
@@ -424,46 +428,87 @@ namespace bs { namespace ct
 			PROFILE_CALL(mMainViewGroup->determineVisibility(sceneInfo), "Determine visibility")
 
 			// Render everything
-			renderViews(*mMainViewGroup, frameInfo);
+			bool anythingDrawn = renderViews(*mMainViewGroup, frameInfo);
 
-			if(rtInfo.target->getProperties().isWindow)
+			if(rtInfo.target->getProperties().isWindow && anythingDrawn)
 				PROFILE_CALL(RenderAPI::instance().swapBuffers(rtInfo.target), "Swap buffers");
 		}
+
+		// Tick pool frame
+		GpuResourcePool::instance().update();
 
 		gProfilerGPU().endFrame();
 		gProfilerCPU().endSample("Render");
 	}
 
-	void RenderBeast::renderViews(RendererViewGroup& viewGroup, const FrameInfo& frameInfo)
+	bool RenderBeast::renderViews(RendererViewGroup& viewGroup, const FrameInfo& frameInfo)
 	{
-		const SceneInfo& sceneInfo = mScene->getSceneInfo();
-		const VisibilityInfo& visibility = viewGroup.getVisibilityInfo();
-
-		// Render shadow maps
-		ShadowRendering& shadowRenderer = viewGroup.getShadowRenderer();
-		shadowRenderer.renderShadowMaps(*mScene, viewGroup, frameInfo);
-
-		// Update various buffers required by each renderable
-		UINT32 numRenderables = (UINT32)sceneInfo.renderables.size();
-		for (UINT32 i = 0; i < numRenderables; i++)
-		{
-			if (!visibility.renderables[i])
-				continue;
-
-			mScene->prepareRenderable(i, frameInfo);
-		}
-
+		bool needs3DRender = false;
 		UINT32 numViews = viewGroup.getNumViews();
 		for (UINT32 i = 0; i < numViews; i++)
 		{
 			RendererView* view = viewGroup.getView(i);
-			const RenderSettings& settings = view->getRenderSettings();
 
-			if (settings.overlayOnly)
-				renderOverlay(*view);
-			else
-				renderView(viewGroup, *view, frameInfo);
+			if (view->shouldDraw3D())
+			{
+				needs3DRender = true;
+				break;
+			}
 		}
+		
+		if (needs3DRender)
+		{
+			const SceneInfo& sceneInfo = mScene->getSceneInfo();
+			const VisibilityInfo& visibility = viewGroup.getVisibilityInfo();
+
+			// Render shadow maps
+			ShadowRendering& shadowRenderer = viewGroup.getShadowRenderer();
+			shadowRenderer.renderShadowMaps(*mScene, viewGroup, frameInfo);
+
+			// Update various buffers required by each renderable
+			UINT32 numRenderables = (UINT32)sceneInfo.renderables.size();
+			for (UINT32 i = 0; i < numRenderables; i++)
+			{
+				if (!visibility.renderables[i])
+					continue;
+
+				mScene->prepareVisibleRenderable(i, frameInfo);
+			}
+		}
+
+		bool anythingDrawn = false;
+		for (UINT32 i = 0; i < numViews; i++)
+		{
+			RendererView* view = viewGroup.getView(i);
+			view->updateAsyncOperations();
+			
+			auto viewId = (UINT64)view;
+			const RendererViewTargetData& viewTarget = view->getProperties().target;
+			String title = StringUtil::format("({0} x {1})", viewTarget.targetWidth, viewTarget.targetHeight);
+			gProfilerGPU().beginView(viewId, ProfilerString(title.data(), title.size()));
+			
+			if (!view->shouldDraw())
+			{
+				gProfilerGPU().endView();
+				continue;
+			}
+			
+			const RenderSettings& settings = view->getRenderSettings();
+			if (settings.overlayOnly)
+			{
+				if (renderOverlay(*view, frameInfo))
+					anythingDrawn = true;
+			}
+			else
+			{
+				renderView(viewGroup, *view, frameInfo);
+				anythingDrawn = true;
+			}
+
+			gProfilerGPU().endView();
+		}
+
+		return anythingDrawn;
 	}
 
 	void RenderBeast::renderView(const RendererViewGroup& viewGroup, RendererView& view, const FrameInfo& frameInfo)
@@ -480,22 +525,28 @@ namespace bs { namespace ct
 		if(view.getRenderSettings().enableIndirectLighting)
 			mScene->updateLightProbes();
 
-		view.beginFrame();
+		view.beginFrame(frameInfo);
 
 		RenderCompositorNodeInputs inputs(viewGroup, view, sceneInfo, *mCoreOptions, frameInfo, mFeatureSet);
 
 		// Register callbacks
 		if (viewProps.triggerCallbacks)
 		{
-			for(auto& extension : mCallbacks)
+			const Camera* camera = view.getSceneCamera();
+			for (auto& extension : mCallbacks)
 			{
 				RenderLocation location = extension->getLocation();
+				RendererExtensionRequest request = extension->check(*camera);
+
+				if (request == RendererExtensionRequest::DontRender)
+					continue;
+
 				switch(location)
 				{
 				case RenderLocation::Prepare:
 					inputs.extPrepare.add(extension);
 					break;
-				case RenderLocation::PreBasePass: 
+				case RenderLocation::PreBasePass:
 					inputs.extPreBasePass.add(extension);
 					break;
 				case RenderLocation::PostBasePass:
@@ -506,6 +557,8 @@ namespace bs { namespace ct
 					break;
 				case RenderLocation::Overlay:
 					inputs.extOverlay.add(extension);
+					break;
+				default:
 					break;
 				}
 			}
@@ -519,12 +572,12 @@ namespace bs { namespace ct
 		gProfilerCPU().endSample("Render view");
 	}
 
-	void RenderBeast::renderOverlay(RendererView& view)
+	bool RenderBeast::renderOverlay(RendererView& view, const FrameInfo& frameInfo)
 	{
 		gProfilerCPU().beginSample("Render overlay");
 
 		view.getPerViewBuffer()->flushToGPU();
-		view.beginFrame();
+		view.beginFrame(frameInfo);
 
 		auto& viewProps = view.getProperties();
 		const Camera* camera = view.getSceneCamera();
@@ -542,37 +595,52 @@ namespace bs { namespace ct
 		if (clearFlags.isSet(ClearFlagBits::Stencil))
 			clearBuffers |= FBT_STENCIL;
 
+		RenderAPI& rapi = RenderAPI::instance();
 		if (clearBuffers != 0)
 		{
-			RenderAPI::instance().setRenderTarget(target);
-			RenderAPI::instance().clearViewport(clearBuffers, viewport->getClearColorValue(),
+			rapi.setRenderTarget(target);
+			rapi.clearViewport(clearBuffers, viewport->getClearColorValue(),
 				viewport->getClearDepthValue(), viewport->getClearStencilValue());
 		}
 		else
-			RenderAPI::instance().setRenderTarget(target, 0, RT_COLOR0);
+			rapi.setRenderTarget(target, 0, RT_COLOR0);
 
-		RenderAPI::instance().setViewport(viewport->getArea());
+		rapi.setViewport(viewport->getArea());
 
 		// Trigger overlay callbacks
-		auto iterRenderCallback = mCallbacks.begin();
-		while (iterRenderCallback != mCallbacks.end())
+		bool needsRedraw = false;
+		if(!mCallbacks.empty())
 		{
-			RendererExtension* extension = *iterRenderCallback;
-			if (extension->getLocation() != RenderLocation::Overlay)
+			view._notifyCompositorTargetChanged(target);
+
+			mOverlayExtensions.clear();
+
+			for(auto& entry : mCallbacks)
 			{
-				++iterRenderCallback;
-				continue;
+				if (entry->getLocation() != RenderLocation::Overlay)
+					continue;
+
+				RendererExtensionRequest request = entry->check(*camera);
+				if (request == RendererExtensionRequest::DontRender)
+					continue;
+
+				if (request == RendererExtensionRequest::ForceRender)
+					needsRedraw = true;
+
+				mOverlayExtensions.push_back(entry);
 			}
 
-			if (extension->check(*camera))
-				extension->render(*camera);
+			if (!needsRedraw)
+				mOverlayExtensions.clear();
 
-			++iterRenderCallback;
+			for (auto& entry : mOverlayExtensions)
+				entry->render(*camera, view.getContext());
 		}
 
 		view.endFrame();
 
 		gProfilerCPU().endSample("Render overlay");
+		return needsRedraw;
 	}
 	
 	void RenderBeast::updateReflProbeArray()
@@ -620,7 +688,7 @@ namespace bs { namespace ct
 						continue;
 
 					auto& srcProps = texture->getProperties();
-					bool isValid = srcProps.getWidth() == IBLUtility::REFLECTION_CUBEMAP_SIZE && 
+					bool isValid = srcProps.getWidth() == IBLUtility::REFLECTION_CUBEMAP_SIZE &&
 						srcProps.getHeight() == IBLUtility::REFLECTION_CUBEMAP_SIZE &&
 						srcProps.getNumMipmaps() == cubemapArrayProps.getNumMipmaps() &&
 						srcProps.getTextureType() == TEX_TYPE_CUBE_MAP;
@@ -629,11 +697,10 @@ namespace bs { namespace ct
 					{
 						if (!probeInfo.errorFlagged)
 						{
-							String errMsg = StringUtil::format("Cubemap texture invalid to use as a reflection cubemap. " 
-								"Check texture size (must be {0}x{0}) and mip-map count", 
+							BS_LOG(Error, Renderer, "Cubemap texture invalid to use as a reflection cubemap. "
+								"Check texture size (must be {0}x{0}) and mip-map count",
 								IBLUtility::REFLECTION_CUBEMAP_SIZE);
 
-							LOGERR(errMsg);
 							probeInfo.errorFlagged = true;
 						}
 					}
@@ -663,7 +730,7 @@ namespace bs { namespace ct
 		bs_frame_clear();
 	}
 
-	void RenderBeast::captureSceneCubeMap(const SPtr<Texture>& cubemap, const Vector3& position, 
+	void RenderBeast::captureSceneCubeMap(const SPtr<Texture>& cubemap, const Vector3& position,
 		const CaptureSettings& settings)
 	{
 		const SceneInfo& sceneInfo = mScene->getSceneInfo();
@@ -689,6 +756,7 @@ namespace bs { namespace ct
 		viewDesc.triggerCallbacks = false;
 		viewDesc.runPostProcessing = false;
 		viewDesc.capturingReflections = true;
+		viewDesc.onDemand = false;
 		viewDesc.encodeDepth = settings.encodeDepth;
 		viewDesc.depthEncodeNear = settings.depthEncodeNear;
 		viewDesc.depthEncodeFar = settings.depthEncodeFar;

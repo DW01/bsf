@@ -6,7 +6,7 @@
 
 namespace bs
 {
-	void setStepTangent(const TKeyframe<Vector3>& lhsIn, const TKeyframe<Vector3>& rhsIn, 
+	void setStepTangent(const TKeyframe<Vector3>& lhsIn, const TKeyframe<Vector3>& rhsIn,
 		TKeyframe<Quaternion>& lhsOut, TKeyframe<Quaternion>& rhsOut)
 	{
 		for (UINT32 i = 0; i < 3; i++)
@@ -20,7 +20,7 @@ namespace bs
 		}
 	}
 
-	void setStepTangent(const TKeyframe<Quaternion>& lhsIn, const TKeyframe<Quaternion>& rhsIn, 
+	void setStepTangent(const TKeyframe<Quaternion>& lhsIn, const TKeyframe<Quaternion>& rhsIn,
 		TKeyframe<Vector3>& lhsOut, TKeyframe<Vector3>& rhsOut)
 	{
 		for (UINT32 i = 0; i < 4; i++)
@@ -69,21 +69,8 @@ namespace bs
 	SPtr<TAnimationCurve<Quaternion>> AnimationUtility::eulerToQuaternionCurve(
 		const SPtr<TAnimationCurve<Vector3>>& eulerCurve, EulerAngleOrder order)
 	{
-		// TODO: We calculate tangents by sampling which can introduce error in the tangents. The error can be exacerbated
-		// by the fact we constantly switch between the two representations, possibly losing precision every time. Instead 
-		// there must be an analytical way to calculate tangents when converting a curve, or a better way of dealing with
-		// tangents.
-		// Consider: 
-		//  - Sampling multiple points to calculate tangents to improve precision
-		//  - Store the original quaternion curve with the euler curve
-		//    - This way conversion from euler to quaternion can be done while individual keyframes are being modified
-		//      ensuring the conversion results are immediately visible, and that no accumulation error happens are curves
-		//		are converted between two formats back and forth.
-		//  - Don't store rotation tangents directly, instead store tangent parameters (TCB) which can be shared between
-		//    both curves, and used for tangent calculation.
-		//
-		// If we decide to keep tangents in the current form, then we should also enforce that all euler curve tangents are
-		// the same.
+		// TODO: We calculate tangents by sampling. There must be an analytical way to calculate tangents when converting
+		// a curve.
 		const float FIT_TIME = 0.001f;
 
 		auto eulerToQuaternion = [&](INT32 keyIdx, Vector3& angles, const Quaternion& lastQuat)
@@ -105,33 +92,81 @@ namespace bs
 		};
 
 		INT32 numKeys = (INT32)eulerCurve->getNumKeyFrames();
-		Vector<TKeyframe<Quaternion>> quatKeyframes(numKeys);
+		Vector<TKeyframe<Quaternion>> quatKeyframes;
+		quatKeyframes.reserve(numKeys);
+
+		auto addKeyframe = [&quatKeyframes](float time, const Quaternion& quat)
+		{
+			quatKeyframes.emplace_back();
+			TKeyframe<Quaternion>& keyframe = quatKeyframes.back();
+
+			keyframe.time = time;
+			keyframe.value = quat;
+			keyframe.inTangent = Quaternion::ZERO;
+			keyframe.outTangent = Quaternion::ZERO;
+		};
 
 		// Calculate key values
 		Quaternion lastQuat(BsZero);
+		Vector3 lastAngles(BsZero);
+		float lastTime = 0.0f;
 		for (INT32 i = 0; i < numKeys; i++)
 		{
 			float time = eulerCurve->getKeyFrame(i).time;
 			Vector3 angles = eulerCurve->getKeyFrame(i).value;
-			Quaternion quat = eulerToQuaternion(i, angles, lastQuat);
 
-			quatKeyframes[i].time = time;
-			quatKeyframes[i].value = quat;
-			quatKeyframes[i].inTangent = Quaternion::ZERO;
-			quatKeyframes[i].outTangent = Quaternion::ZERO;
+			Vector3 diff = angles - lastAngles;
+			float maxAngle = Math::max(
+				Math::abs(diff.x),
+				Math::abs(diff.y),
+				Math::abs(diff.z)
+			);
 
-			lastQuat = quat;
+			// Is the angle greater than 180? In which case we need multiple keyframes to represent it via quaternions
+			if(i > 0 && maxAngle > 180.0f)
+			{
+				constexpr float SPLIT_INTERVAL = 175.0f; // Not exactly 180 to ensure no precision issues
+				INT32 numSplits = Math::floorToPosInt(maxAngle / SPLIT_INTERVAL) + 1;
+
+				Vector3 partAngles = diff / (float)numSplits;
+				float partTime = (time - lastTime) / numSplits;
+				for (INT32 j = 0; j < numSplits; j++)
+				{
+					Quaternion partQuat(
+						Degree(partAngles.x),
+						Degree(partAngles.y),
+						Degree(partAngles.z), order);
+
+					float curTime = (j == (numSplits - 1)) ? time : lastTime + partTime;
+					Quaternion curQuat = lastQuat * partQuat;
+
+					// Ensure rotation is not over 180 degrees
+					assert(curQuat.dot(lastQuat) >= 0.0f);
+
+					addKeyframe(curTime, curQuat);
+					lastTime = curTime;
+					lastQuat = curQuat;
+				}
+			}
+			else
+			{
+				Quaternion quat = eulerToQuaternion(i, angles, lastQuat);
+				addKeyframe(time, quat);
+				
+				lastTime = time;
+				lastQuat = quat;
+			}
+
+			lastAngles = angles;
 		}
 
 		// Calculate extra values between keys so we can approximate tangents. If we're sampling very close to the key
 		// the values should pretty much exactly match the tangent (assuming the curves are cubic hermite)
-		for (INT32 i = 0; i < numKeys - 1; i++)
+		INT32 numQuatKeys = (INT32)quatKeyframes.size();
+		for (INT32 i = 0; i < numQuatKeys - 1; i++)
 		{
 			TKeyframe<Quaternion>& currentKey = quatKeyframes[i];
 			TKeyframe<Quaternion>& nextKey = quatKeyframes[i + 1];
-
-			const TKeyframe<Vector3>& currentEulerKey = eulerCurve->getKeyFrame(i);
-			const TKeyframe<Vector3>& nextEulerKey = eulerCurve->getKeyFrame(i + 1);
 
 			float dt = nextKey.time - currentKey.time;
 			float startFitTime = currentKey.time + dt * FIT_TIME;
@@ -146,6 +181,8 @@ namespace bs
 			currentKey.outTangent = (startFitValue - currentKey.value) * invFitTime;
 			nextKey.inTangent = (nextKey.value - endFitValue) * invFitTime;
 
+			const TKeyframe<Vector3>& currentEulerKey = eulerCurve->evaluateKey(currentKey.time, false);
+			const TKeyframe<Vector3>& nextEulerKey = eulerCurve->evaluateKey(nextKey.time, false);
 			setStepTangent(currentEulerKey, nextEulerKey, currentKey, nextKey);
 		}
 
@@ -226,7 +263,7 @@ namespace bs
 
 	template <class T>
 	void splitCurve(
-		const TAnimationCurve<T>& compoundCurve, 
+		const TAnimationCurve<T>& compoundCurve,
 		Vector<TKeyframe<float>> (&keyFrames)[TCurveProperties<T>::NumComponents])
 	{
 		constexpr UINT32 NUM_COMPONENTS = TCurveProperties<T>::NumComponents;
@@ -266,7 +303,7 @@ namespace bs
 
 	template <class T>
 	void combineCurve(
-		const TAnimationCurve<float>* (& curveComponents)[TCurveProperties<T>::NumComponents], 
+		const TAnimationCurve<float>* (& curveComponents)[TCurveProperties<T>::NumComponents],
 		Vector<TKeyframe<T>>& output)
 	{
 		constexpr UINT32 NUM_COMPONENTS = TCurveProperties<T>::NumComponents;
@@ -368,7 +405,7 @@ namespace bs
 	}
 
 	template <class T>
-	void AnimationUtility::splitCurve(const TAnimationCurve<T>& compoundCurve, 
+	void AnimationUtility::splitCurve(const TAnimationCurve<T>& compoundCurve,
 		TAnimationCurve<float> (& output)[TCurveProperties<T>::NumComponents])
 	{
 		constexpr UINT32 NUM_COMPONENTS = TCurveProperties<T>::NumComponents;
@@ -382,7 +419,7 @@ namespace bs
 
 	template <class T>
 	void AnimationUtility::combineCurve(
-		const TAnimationCurve<float> (& curveComponents)[TCurveProperties<T>::NumComponents], 
+		const TAnimationCurve<float> (& curveComponents)[TCurveProperties<T>::NumComponents],
 		TAnimationCurve<T>& output)
 	{
 		constexpr UINT32 NUM_COMPONENTS = TCurveProperties<T>::NumComponents;
@@ -397,7 +434,7 @@ namespace bs
 		output = TAnimationCurve<T>(keyFrames);
 	}
 
-	void AnimationUtility::calculateRange(const Vector<TAnimationCurve<float>>& curves, float& xMin, float& xMax, 
+	void AnimationUtility::calculateRange(const Vector<TAnimationCurve<float>>& curves, float& xMin, float& xMax,
 		float& yMin, float& yMax)
 	{
 		xMin = std::numeric_limits<float>::infinity();
@@ -429,7 +466,7 @@ namespace bs
 			yMax = 0.0f;
 	}
 
-	void AnimationUtility::calculateRange(const Vector<SPtr<TAnimationCurve<float>>>& curves, float& xMin, float& xMax, 
+	void AnimationUtility::calculateRange(const Vector<SPtr<TAnimationCurve<float>>>& curves, float& xMin, float& xMax,
 		float& yMin, float& yMax)
 	{
 		xMin = std::numeric_limits<float>::infinity();

@@ -29,15 +29,11 @@ namespace bs
 			return !operator==(rhs);
 		}
 
-		INT32 left = 0; 
-		INT32 right = 0; 
-		INT32 top = 0; 
+		INT32 left = 0;
+		INT32 right = 0;
+		INT32 top = 0;
 		INT32 bottom = 0;
 	};
 
 	/** @} */
-
-	/** @cond SPECIALIZATIONS */
-	BS_ALLOW_MEMCPY_SERIALIZATION(RectOffset);
-	/** @endcond */
 }

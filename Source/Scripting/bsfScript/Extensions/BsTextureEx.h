@@ -9,8 +9,6 @@
 
 namespace bs
 {
-	class AsyncOpEx;
-
 	/** @addtogroup ScriptInteropEngine
 	 *  @{
 	 */
@@ -21,7 +19,7 @@ namespace bs
 	{
 	public:
 		BS_SCRIPT_EXPORT(ec:Texture,v:private)
-		static HTexture create(PixelFormat format, UINT32 width, UINT32 height, UINT32 depth, TextureType texType, 
+		static HTexture create(PixelFormat format, UINT32 width, UINT32 height, UINT32 depth, TextureType texType,
 			TextureUsage usage, UINT32 numSamples, bool hasMipmaps, bool gammaCorrection);
 
 		/** @copydoc TextureProperties::getFormat */
@@ -64,7 +62,7 @@ namespace bs
 		 * Returns pixels for the specified mip level & face. Pixels will be read from system memory, which means the
 		 * texture has to be created with TextureUsage.CPUCached. If the texture was updated from the GPU the
 		 * pixels retrieved from this method will not reflect that, and you should use GetGPUPixels instead.
-		 * 
+		 *
 		 * @param mipLevel	Mip level to retrieve pixels for. Top level (0) is the highest quality.
 		 * @param face		Face to read the pixels from. Cubemap textures have six faces whose face indices are as
 		 *					specified in the CubeFace enum. Array textures can have an arbitrary number of faces (if it's a
@@ -73,21 +71,6 @@ namespace bs
 		 */
 		BS_SCRIPT_EXPORT(e:Texture,n:GetPixels)
 		static SPtr<PixelData> getPixels(const HTexture& thisPtr, UINT32 face = 0, UINT32 mipLevel = 0);
-
-		/**
-		 * Reads texture pixels directly from the GPU. This is similar to GetPixels but the texture doesn't
-		 * need to be created with TextureUsage.CPUCached, and the data will contain any updates performed by
-		 * the GPU. This method can be potentially slow as it introduces a CPU-GPU synchronization point. Additionally
-		 * this method is asynchronous which means the data is not available immediately.
-		 *
-		 * @param mipLevel	Mip level to retrieve pixels for. Top level (0) is the highest quality.
-		 * @param face		Face to read the pixels from. Cubemap textures have six faces whose face indices are as
-		 *					specified in the CubeFace enum. Array textures can have an arbitrary number of faces (if it's a
-		 *					cubemap array it has to be a multiple of 6).
-		 * @return			AsyncOp object that will contain a PixelData object when the operation completes.
-		 */
-		BS_SCRIPT_EXPORT(e:Texture,n:GetGPUPixels)
-		static SPtr<AsyncOpEx> getGPUPixels(const HTexture& thisPtr, UINT32 face = 0, UINT32 mipLevel = 0);
 
 		/**
 		 * Sets pixels for the specified mip level and face.

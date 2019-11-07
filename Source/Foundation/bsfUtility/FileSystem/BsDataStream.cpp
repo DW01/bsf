@@ -3,6 +3,7 @@
 #include "FileSystem/BsDataStream.h"
 #include "Debug/BsDebug.h"
 #include "String/BsUnicode.h"
+#include "Math/BsMath.h"
 
 namespace bs
 {
@@ -105,7 +106,7 @@ namespace bs
 				dataOffset = 4;
 			else if (isUTF32BE(headerBytes))
 			{
-				LOGWRN("UTF-32 big endian decoding not supported");
+				BS_LOG(Warning, Generic, "UTF-32 big endian decoding not supported");
 				return u8"";
 			}
 		}
@@ -122,7 +123,7 @@ namespace bs
 				dataOffset = 2;
 			else if (isUTF16BE(headerBytes))
 			{
-				LOGWRN("UTF-16 big endian decoding not supported");
+				BS_LOG(Warning, Generic, "UTF-16 big endian decoding not supported");
 				return u8"";
 			}
 		}
@@ -177,52 +178,55 @@ namespace bs
 		return UTF8::toWide(u8string);
 	}
 
-	MemoryDataStream::MemoryDataStream(size_t size)
-		: DataStream(READ | WRITE), mData(nullptr), mFreeOnClose(true)
+	MemoryDataStream::MemoryDataStream()
+		: DataStream(READ | WRITE)
 	{
-		mData = mPos = (UINT8*)bs_alloc((UINT32)size);
+		
+	}
+
+	MemoryDataStream::MemoryDataStream(size_t capacity)
+		: DataStream(READ | WRITE)
+	{
+		realloc(capacity);
+		mCursor = mData;
+		mEnd = mCursor + capacity;
+	}
+
+	MemoryDataStream::MemoryDataStream(void* memory, size_t size)
+		: DataStream(READ | WRITE), mOwnsMemory(false)
+	{
+		mData = mCursor = static_cast<uint8_t*>(memory);
 		mSize = size;
 		mEnd = mData + mSize;
-
-		assert(mEnd >= mPos);
 	}
 
-	MemoryDataStream::MemoryDataStream(void* memory, size_t inSize, bool freeOnClose)
-		: DataStream(READ | WRITE), mData(nullptr), mFreeOnClose(freeOnClose)
-	{
-		mData = mPos = static_cast<UINT8*>(memory);
-		mSize = inSize;
-		mEnd = mData + mSize;
-
-		assert(mEnd >= mPos);
-	}
-
-	MemoryDataStream::MemoryDataStream(DataStream& sourceStream)
-		: DataStream(READ | WRITE), mData(nullptr)
+	MemoryDataStream::MemoryDataStream(const MemoryDataStream& sourceStream)
+		: DataStream(READ | WRITE)
 	{
 		// Copy data from incoming stream
 		mSize = sourceStream.size();
 
-		mData = (UINT8*)bs_alloc((UINT32)mSize);
-		mPos = mData;
+		mData = mCursor = static_cast<uint8_t*>(bs_alloc(mSize));
 		mEnd = mData + sourceStream.read(mData, mSize);
-		mFreeOnClose = true;
 
-		assert(mEnd >= mPos);
+		assert(mEnd >= mCursor);
 	}
 
 	MemoryDataStream::MemoryDataStream(const SPtr<DataStream>& sourceStream)
-		:DataStream(READ | WRITE), mData(nullptr)
+		: DataStream(READ | WRITE)
 	{
 		// Copy data from incoming stream
 		mSize = sourceStream->size();
 
-		mData = (UINT8*)bs_alloc((UINT32)mSize);
-		mPos = mData;
+		mData = mCursor = static_cast<uint8_t*>(bs_alloc(mSize));
 		mEnd = mData + sourceStream->read(mData, mSize);
-		mFreeOnClose = true;
 
-		assert(mEnd >= mPos);
+		assert(mEnd >= mCursor);
+	}
+
+	MemoryDataStream::MemoryDataStream(MemoryDataStream&& other)
+	{
+		*this = std::move(other);
 	}
 
 	MemoryDataStream::~MemoryDataStream()
@@ -230,19 +234,78 @@ namespace bs
 		close();
 	}
 
-	size_t MemoryDataStream::read(void* buf, size_t count)
+	MemoryDataStream& MemoryDataStream::operator= (const MemoryDataStream& other)
+	{
+		if (this == &other)
+			return *this;
+
+		this->mName = other.mName;
+		this->mAccess = other.mAccess;
+		
+		if (!other.mOwnsMemory)
+		{
+			this->mSize = other.mSize;
+			this->mData = other.mData;
+			this->mCursor = other.mCursor;
+			this->mEnd = other.mEnd;
+			this->mOwnsMemory = false;
+		}
+		else
+		{
+			if (mData && mOwnsMemory)
+				bs_free(mData);
+
+			mSize = 0;
+			mData = nullptr;
+			mCursor = nullptr;
+			mEnd = nullptr;
+
+			this->mOwnsMemory = true;
+
+			realloc(other.mSize);
+			mEnd = mData + mSize;
+			mCursor = mData + (other.mCursor - other.mData);
+
+			if (mSize > 0)
+				memcpy(mData, other.mData, mSize);
+		}
+
+		return *this;
+	}
+
+	MemoryDataStream& MemoryDataStream::operator= (MemoryDataStream&& other)
+	{
+		if (this == &other)
+			return *this;
+
+		if (mData && mOwnsMemory)
+			bs_free(mData);
+
+		this->mName = std::move(other.mName);
+		this->mAccess = std::exchange(other.mAccess, 0);
+		this->mCursor = std::exchange(other.mCursor, nullptr);
+		this->mEnd = std::exchange(other.mEnd, nullptr);
+		this->mData = std::exchange(other.mData, nullptr);
+		this->mSize = std::exchange(other.mSize, 0);
+		this->mOwnsMemory = std::exchange(other.mOwnsMemory, false);
+
+		return *this;
+	}
+
+	size_t MemoryDataStream::read(void* buf, size_t count) const
 	{
 		size_t cnt = count;
 
-		if (mPos + cnt > mEnd)
-			cnt = mEnd - mPos;
+		if (mCursor + cnt > mEnd)
+			cnt = mEnd - mCursor;
+		
 		if (cnt == 0)
 			return 0;
 
 		assert (cnt <= count);
 
-		memcpy(buf, mPos, cnt);
-		mPos += cnt;
+		memcpy(buf, mCursor, cnt);
+		mCursor += cnt;
 
 		return cnt;
 	}
@@ -254,46 +317,75 @@ namespace bs
 		{
 			written = count;
 
-			if (mPos + written > mEnd)
-				written = mEnd - mPos;
+			size_t numUsedBytes = (mCursor - mData);
+			size_t newSize = numUsedBytes + count;
+			if(newSize > mSize)
+			{
+				if (mOwnsMemory)
+					realloc(newSize);
+				else
+					written = mSize - numUsedBytes;
+			}
+
 			if (written == 0)
 				return 0;
 
-			memcpy(mPos, buf, written);
-			mPos += written;
+			memcpy(mCursor, buf, written);
+			mCursor += written;
+
+			mEnd = std::max(mCursor, mEnd);
 		}
 
 		return written;
 	}
 
+	size_t DataStream::readBits(uint8_t* data, uint32_t count)
+	{
+		uint32_t numBytes = Math::divideAndRoundUp(count, 8U);
+		return read(data, numBytes) * 8;
+	}
+
+	size_t DataStream::writeBits(const uint8_t* data, uint32_t count)
+	{
+		uint32_t numBytes = Math::divideAndRoundUp(count, 8U);
+		return write(data, numBytes) * 8;
+	}
+
 	void MemoryDataStream::skip(size_t count)
 	{
-		size_t newpos = (size_t)( (mPos - mData) + count );
-		assert(mData + newpos <= mEnd);
-
-		mPos = mData + newpos;
+		assert((mCursor + count) <= mEnd);
+		mCursor = std::min(mCursor + count, mEnd);
 	}
 
 	void MemoryDataStream::seek(size_t pos)
 	{
-		assert(mData + pos <= mEnd);
-		mPos = mData + pos;
+		assert((mData + pos) <= mEnd);
+		mCursor = std::min(mData + pos, mEnd);
+	}
+
+	void DataStream::align(uint32_t count)
+	{
+		if (count <= 1)
+			return;
+
+		UINT32 alignOffset = (count - (tell() & (count - 1))) & (count - 1);
+		skip(alignOffset);
 	}
 
 	size_t MemoryDataStream::tell() const
 	{
-		return mPos - mData;
+		return mCursor - mData;
 	}
 
 	bool MemoryDataStream::eof() const
 	{
-		return mPos >= mEnd;
+		return mCursor >= mEnd;
 	}
 
 	SPtr<DataStream> MemoryDataStream::clone(bool copyData) const
 	{
 		if (!copyData)
-			return bs_shared_ptr_new<MemoryDataStream>(mData, mSize, false);
+			return bs_shared_ptr_new<MemoryDataStream>(mData, mSize);
 
 		return bs_shared_ptr_new<MemoryDataStream>(*this);
 	}
@@ -302,10 +394,37 @@ namespace bs
 	{
 		if (mData != nullptr)
 		{
-			if(mFreeOnClose)
+			if(mOwnsMemory)
 				bs_free(mData);
 
 			mData = nullptr;
+		}
+	}
+
+	void MemoryDataStream::realloc(size_t numBytes)
+	{
+		if (numBytes != mSize)
+		{
+			assert(numBytes > mSize);
+
+			// Note: Eventually add support for custom allocators
+			auto buffer = bs_allocN<uint8_t>(numBytes);
+			if (mData)
+			{
+				mCursor = buffer + (mCursor - mData);
+				mEnd = buffer + (mEnd - mData);
+
+				memcpy(buffer, mData, mSize);
+				bs_free(mData);
+			}
+			else
+			{
+				mCursor = buffer;
+				mEnd = buffer;
+			}
+
+			mData = buffer;
+			mSize = numBytes;
 		}
 	}
 
@@ -336,7 +455,7 @@ namespace bs
 		// Should check ensure open succeeded, in case fail for some reason.
 		if (mInStream->fail())
 		{
-			LOGWRN("Cannot open file: " + path.toString());
+			BS_LOG(Warning, FileSystem, "Cannot open file: " + path.toString());
 			return;
 		}
 
@@ -350,7 +469,7 @@ namespace bs
 		close();
 	}
 
-	size_t FileDataStream::read(void* buf, size_t count)
+	size_t FileDataStream::read(void* buf, size_t count) const
 	{
 		mInStream->read(static_cast<char*>(buf), static_cast<std::streamsize>(count));
 
@@ -371,18 +490,29 @@ namespace bs
 	void FileDataStream::skip(size_t count)
 	{
 		mInStream->clear(); // Clear fail status in case eof was set
-		mInStream->seekg(static_cast<std::ifstream::pos_type>(count), std::ios::cur);
+
+		if (((mAccess & WRITE) != 0))
+			mFStream->seekp(static_cast<std::ifstream::pos_type>(count), std::ios::cur);
+		else
+			mInStream->seekg(static_cast<std::ifstream::pos_type>(count), std::ios::cur);
 	}
 
 	void FileDataStream::seek(size_t pos)
 	{
 		mInStream->clear(); // Clear fail status in case eof was set
-		mInStream->seekg(static_cast<std::streamoff>(pos), std::ios::beg);
+
+		if (((mAccess & WRITE) != 0))
+			mFStream->seekp(static_cast<std::ifstream::pos_type>(pos), std::ios::beg);
+		else
+			mInStream->seekg(static_cast<std::streamoff>(pos), std::ios::beg);
 	}
 
 	size_t FileDataStream::tell() const
 	{
 		mInStream->clear(); // Clear fail status in case eof was set
+
+		if (((mAccess & WRITE) != 0))
+			return (size_t)mFStream->tellp();
 
 		return (size_t)mInStream->tellg();
 	}

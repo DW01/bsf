@@ -24,7 +24,7 @@ namespace bs
 
 	void ScriptComponentBase::destroy(bool assemblyRefresh)
 	{
-		// It's possible that managed component is destroyed but a reference to it is still kept during assembly refresh. 
+		// It's possible that managed component is destroyed but a reference to it is still kept during assembly refresh.
 		// Such components shouldn't be restored so we delete them.
 
 		HComponent component = getComponent();
@@ -36,7 +36,7 @@ namespace bs
 	{
 		if (handle.isDestroyed())
 		{
-			LOGWRN("Trying to access a destroyed GameObject with instance ID: " + toString(handle.getInstanceId()));
+			BS_LOG(Warning, Scene, "Trying to access a destroyed GameObject with instance ID: {0}", handle.getInstanceId());
 			return true;
 		}
 
@@ -45,13 +45,12 @@ namespace bs
 
 	ScriptComponent::ScriptComponent(MonoObject* instance)
 		:ScriptObject(instance)
-	{ 
+	{
 		assert(instance != nullptr);
 	}
 
 	void ScriptComponent::initRuntimeData()
 	{
-		metaData.scriptClass->addInternalCall("Internal_GetUUID", (void*)&ScriptComponent::internal_getUUID);
 		metaData.scriptClass->addInternalCall("Internal_AddComponent", (void*)&ScriptComponent::internal_addComponent);
 		metaData.scriptClass->addInternalCall("Internal_GetComponent", (void*)&ScriptComponent::internal_getComponent);
 		metaData.scriptClass->addInternalCall("Internal_GetComponents", (void*)&ScriptComponent::internal_getComponents);
@@ -61,18 +60,6 @@ namespace bs
 		metaData.scriptClass->addInternalCall("Internal_GetNotifyFlags", (void*)&ScriptComponent::internal_getNotifyFlags);
 		metaData.scriptClass->addInternalCall("Internal_SetNotifyFlags", (void*)&ScriptComponent::internal_setNotifyFlags);
 		metaData.scriptClass->addInternalCall("Internal_Destroy", (void*)&ScriptComponent::internal_destroy);
-	}
-
-	void ScriptComponent::internal_getUUID(ScriptComponentBase* nativeInstance, UUID* uuid)
-	{
-		HComponent component = nativeInstance->getComponent();
-		if (checkIfDestroyed(component))
-		{
-			*uuid = UUID::EMPTY;
-			return;
-		}
-
-		*uuid = component->getUUID();
 	}
 
 	MonoObject* ScriptComponent::internal_addComponent(MonoObject* parentSceneObject, MonoReflectionType* type)
@@ -101,7 +88,7 @@ namespace bs
 				return nullptr;
 
 			HComponent component = so->addComponent(info->typeId);
-			ScriptComponentBase* scriptComponent = 
+			ScriptComponentBase* scriptComponent =
 				ScriptGameObjectManager::instance().createBuiltinScriptComponent(component);
 
 			return scriptComponent->getManagedInstance();
@@ -275,7 +262,7 @@ namespace bs
 			}
 		}
 
-		LOGWRN("Attempting to remove a component that doesn't exists on SceneObject \"" + so->getName() + "\"");
+		BS_LOG(Warning, Scene, "Attempting to remove a component that doesn't exists on SceneObject \"{0}\"", so->getName());
 	}
 
 	MonoObject* ScriptComponent::internal_getSceneObject(ScriptComponentBase* nativeInstance)

@@ -38,8 +38,12 @@ namespace bs
 		exit(signal);
 	}
 
-	CrashHandler::CrashHandler()
+	CrashHandler::CrashHandler(const CrashHandlerSettings& settings) :
+		mSettings(settings)
 	{
+		if(mSettings.disableCrashSignalHandler)
+			return;
+
 		struct sigaction action;
 		sigemptyset(&action.sa_mask);
 		action.sa_sigaction = &signalHandler;
@@ -174,7 +178,20 @@ namespace bs
 								   const String& file,
 								   UINT32 line) const
 	{
+		if(mSettings.onBeforeReportCrash)
+		{
+			if(mSettings.onBeforeReportCrash(type, description, function, file, line))
+				return;
+		}
+
 		logErrorAndStackTrace(type, description, function, file, line);
+
+		if(mSettings.onCrashPrintedToLog)
+		{
+			if(mSettings.onCrashPrintedToLog())
+				return;
+		}
+
 		saveCrashLog();
 
 		// Allow the debugger a chance to attach

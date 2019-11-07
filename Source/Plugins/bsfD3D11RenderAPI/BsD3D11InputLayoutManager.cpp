@@ -34,12 +34,6 @@ namespace bs { namespace ct
 		return true;
 	}
 
-	D3D11InputLayoutManager::D3D11InputLayoutManager()
-		:mLastUsedCounter(0), mWarningShown(false)
-	{
-
-	}
-
 	D3D11InputLayoutManager::~D3D11InputLayoutManager()
 	{
 		while(mInputLayoutMap.begin() != mInputLayoutMap.end())
@@ -54,7 +48,7 @@ namespace bs { namespace ct
 		}
 	}
 
-	ID3D11InputLayout* D3D11InputLayoutManager::retrieveInputLayout(const SPtr<VertexDeclaration>& vertexShaderDecl, 
+	ID3D11InputLayout* D3D11InputLayoutManager::retrieveInputLayout(const SPtr<VertexDeclaration>& vertexShaderDecl,
 		const SPtr<VertexDeclaration>& vertexBufferDecl, D3D11GpuProgram& vertexProgram)
 	{
 		VertexDeclarationKey pair;
@@ -79,7 +73,7 @@ namespace bs { namespace ct
 		return iterFind->second->inputLayout;
 	}
 
-	void D3D11InputLayoutManager::addNewInputLayout(const SPtr<VertexDeclaration>& vertexShaderDecl, 
+	void D3D11InputLayoutManager::addNewInputLayout(const SPtr<VertexDeclaration>& vertexShaderDecl,
 		const SPtr<VertexDeclaration>& vertexBufferDecl, D3D11GpuProgram& vertexProgram)
 	{
 		const VertexDeclarationProperties& bufferDeclProps = vertexBufferDecl->getProperties();
@@ -151,11 +145,11 @@ namespace bs { namespace ct
 
 		InputLayoutEntry* newEntry = bs_new<InputLayoutEntry>();
 		newEntry->lastUsedIdx = ++mLastUsedCounter;
-		newEntry->inputLayout = nullptr; 
-		HRESULT hr = device.getD3D11Device()->CreateInputLayout( 
-			&declElements[0], 
+		newEntry->inputLayout = nullptr;
+		HRESULT hr = device.getD3D11Device()->CreateInputLayout(
+			&declElements[0],
 			(UINT32)declElements.size(),
-			microcode.data, 
+			microcode.data,
 			microcode.size,
 			&newEntry->inputLayout);
 
@@ -176,8 +170,10 @@ namespace bs { namespace ct
 	{
 		if(!mWarningShown)
 		{
-			LOGWRN("Input layout buffer is full, pruning last " + toString(NUM_ELEMENTS_TO_PRUNE) + " elements. This is probably okay unless you are creating a massive amount of input layouts" \
-				" as they will get re-created every frame. In that case you should increase the layout buffer size. This warning won't be shown again.");
+			BS_LOG(Warning, RenderBackend, "Input layout buffer is full, pruning last {0} elements. This is probably okay "
+				"unless you are creating a massive amount of input layouts as they will get re-created every frame. "
+				"In that case you should increase the layout buffer size. This warning won't be shown again.",
+				NUM_ELEMENTS_TO_PRUNE);
 
 			mWarningShown = true;
 		}

@@ -9,11 +9,12 @@
 #include "BsManagedResourceManager.h"
 #include "Serialization/BsManagedSerializableObject.h"
 #include "Wrappers/BsScriptManagedResource.h"
-#include "Serialization/BsMemorySerializer.h"
 #include "BsScriptResourceManager.h"
 #include "BsMonoUtil.h"
 #include "Serialization/BsScriptAssemblyManager.h"
 #include "Debug/BsDebug.h"
+#include "Serialization/BsBinarySerializer.h"
+#include "FileSystem/BsDataStream.h"
 
 namespace bs
 {
@@ -32,7 +33,8 @@ namespace bs
 		MonoClass* managedClass = MonoManager::instance().findClass(metaData->typeNamespace, metaData->typeName);
 		if (managedClass == nullptr)
 		{
-			LOGWRN("Cannot create managed component: " + metaData->typeNamespace + "." + metaData->typeName + " because that type doesn't exist.");
+			BS_LOG(Warning, Script, "Cannot create managed component: {0}.{1} because that type doesn't exist.",
+				metaData->typeNamespace, metaData->typeName);
 			return;
 		}
 	}
@@ -53,10 +55,13 @@ namespace bs
 		ResourceBackupData backupData;
 		if (serializableObject != nullptr)
 		{
-			MemorySerializer ms;
+			SPtr<MemoryDataStream> stream = bs_shared_ptr_new<MemoryDataStream>();
+			BinarySerializer bs;
 
-			backupData.size = 0;
-			backupData.data = ms.encode(serializableObject.get(), backupData.size);
+			bs.encode(serializableObject.get(), stream);
+
+			backupData.size = (UINT32)stream->size();
+			backupData.data = stream->disownMemory();
 		}
 		else
 		{
@@ -74,8 +79,9 @@ namespace bs
 		{
 			if (data.data != nullptr)
 			{
-				MemorySerializer ms;
-				SPtr<ManagedSerializableObject> serializableObject = std::static_pointer_cast<ManagedSerializableObject>(ms.decode(data.data, data.size));
+				BinarySerializer bs;
+				SPtr<ManagedSerializableObject> serializableObject = std::static_pointer_cast<ManagedSerializableObject>(
+					bs.decode(bs_shared_ptr_new<MemoryDataStream>(data.data, data.size), data.size));
 				
 				SPtr<ManagedResourceMetaData> managedResMetaData = std::static_pointer_cast<ManagedResourceMetaData>(mMetaData);
 				SPtr<ManagedSerializableObjectInfo> currentObjInfo = nullptr;

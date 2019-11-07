@@ -14,7 +14,10 @@ add_library(bsfGLRenderAPI SHARED ${BS_GLRENDERAPI_SRC})
 add_common_flags(bsfGLRenderAPI)
 
 # Includes
-target_include_directories(bsfGLRenderAPI PRIVATE "./")
+target_include_directories(bsfGLRenderAPI PRIVATE
+	"./"
+	"../Shared/"
+)
 
 # Defines
 target_compile_definitions(bsfGLRenderAPI PRIVATE -DBS_RSGL_EXPORTS -DGLEW_STATIC)
@@ -42,7 +45,7 @@ target_link_libraries(bsfGLRenderAPI PUBLIC bsf)
 set_property(TARGET bsfGLRenderAPI PROPERTY FOLDER Plugins)
 
 # Install
-if(RENDER_API_MODULE MATCHES "OpenGL")
+if(RENDER_API_MODULE MATCHES "OpenGL" OR BUILD_ALL_RENDER_API)
 	install_bsf_target(bsfGLRenderAPI)
 endif()
 

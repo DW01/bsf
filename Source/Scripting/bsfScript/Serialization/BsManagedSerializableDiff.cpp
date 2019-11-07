@@ -14,9 +14,7 @@ namespace bs
 	ManagedSerializableDiff::ModifiedField::ModifiedField(const SPtr<ManagedSerializableTypeInfo>& parentType,
 		const SPtr<ManagedSerializableMemberInfo>& fieldType, const SPtr<Modification>& modification)
 		:parentType(parentType), fieldType(fieldType), modification(modification)
-	{
-
-	}
+	{ }
 
 	RTTITypeBase* ManagedSerializableDiff::ModifiedField::getRTTIStatic()
 	{
@@ -30,9 +28,7 @@ namespace bs
 
 	ManagedSerializableDiff::ModifiedArrayEntry::ModifiedArrayEntry(UINT32 idx, const SPtr<Modification>& modification)
 		:idx(idx), modification(modification)
-	{
-
-	}
+	{ }
 
 	RTTITypeBase* ManagedSerializableDiff::ModifiedArrayEntry::getRTTIStatic()
 	{
@@ -47,9 +43,7 @@ namespace bs
 	ManagedSerializableDiff::ModifiedDictionaryEntry::ModifiedDictionaryEntry(
 		const SPtr<ManagedSerializableFieldData>& key, const SPtr<Modification>& modification)
 		:key(key), modification(modification)
-	{
-
-	}
+	{ }
 
 	RTTITypeBase* ManagedSerializableDiff::ModifiedDictionaryEntry::getRTTIStatic()
 	{
@@ -59,11 +53,6 @@ namespace bs
 	RTTITypeBase* ManagedSerializableDiff::ModifiedDictionaryEntry::getRTTI() const
 	{
 		return getRTTIStatic();
-	}
-
-	ManagedSerializableDiff::Modification::~Modification()
-	{
-		
 	}
 
 	RTTITypeBase* ManagedSerializableDiff::Modification::getRTTIStatic()
@@ -123,9 +112,7 @@ namespace bs
 
 	ManagedSerializableDiff::ModifiedEntry::ModifiedEntry(const SPtr<ManagedSerializableFieldData>& value)
 		:value(value)
-	{
-		
-	}
+	{ }
 
 	SPtr<ManagedSerializableDiff::ModifiedEntry> ManagedSerializableDiff::ModifiedEntry::create(const SPtr<ManagedSerializableFieldData>& value)
 	{
@@ -148,12 +135,8 @@ namespace bs
 		
 	}
 
-	ManagedSerializableDiff::~ManagedSerializableDiff()
-	{
-	}
-
-	SPtr<ManagedSerializableDiff> ManagedSerializableDiff::create(const SPtr<ManagedSerializableObject>& oldObj, 
-		const SPtr<ManagedSerializableObject>& newObj)
+	SPtr<ManagedSerializableDiff> ManagedSerializableDiff::create(const ManagedSerializableObject* oldObj,
+		const ManagedSerializableObject* newObj)
 	{
 		assert(oldObj != nullptr && newObj != nullptr);
 
@@ -176,7 +159,7 @@ namespace bs
 	}
 
 	SPtr<ManagedSerializableDiff::ModifiedObject> ManagedSerializableDiff::generateDiff
-		(const SPtr<ManagedSerializableObject>& oldObj, const SPtr<ManagedSerializableObject>& newObj)
+		(const ManagedSerializableObject* oldObj, const ManagedSerializableObject* newObj)
 	{
 		SPtr<ModifiedObject> output = nullptr;
 
@@ -213,7 +196,10 @@ namespace bs
 		const SPtr<ManagedSerializableFieldData>& oldData, const SPtr<ManagedSerializableFieldData>& newData,
 		UINT32 entryTypeId)
 	{
-		bool isPrimitive = entryTypeId == TID_SerializableTypeInfoPrimitive || entryTypeId == TID_SerializableTypeInfoRef;
+		bool isPrimitive = entryTypeId == TID_SerializableTypeInfoPrimitive ||
+			entryTypeId == TID_SerializableTypeInfoRef ||
+			entryTypeId == TID_SerializableTypeInfoEnum ||
+			entryTypeId == TID_SerializableTypeInfoRRef;
 
 		// It's possible the field data is null if the class structure changed (i.e. new field was added that is not present
 		// in serialized data). Check for this case first to ensure field data is valid for the remainder of the method.
@@ -249,7 +235,7 @@ namespace bs
 
 				if (oldObjData->value != nullptr && newObjData->value != nullptr)
 				{
-					newMod = generateDiff(oldObjData->value, newObjData->value);
+					newMod = generateDiff(oldObjData->value.get(), newObjData->value.get());
 				}
 				else if (oldObjData->value == nullptr && newObjData->value == nullptr)
 				{
@@ -408,7 +394,7 @@ namespace bs
 						{
 							UINT32 dictElemTypeId = newDictData->value->getTypeInfo()->mValueType->getTypeId();
 
-							dictElemMod = generateDiff(oldDictData->value->getFieldData(key), 
+							dictElemMod = generateDiff(oldDictData->value->getFieldData(key),
 								newEnumerator.getValue(), dictElemTypeId);
 						}
 						else

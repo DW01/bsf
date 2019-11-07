@@ -17,7 +17,8 @@ static const char* sMiniDumpName = "minidump.dmp";
 
 namespace bs
 {
-	CrashHandler::CrashHandler()
+	CrashHandler::CrashHandler(const CrashHandlerSettings& settings) :
+		mSettings(settings)
 	{
 		m = bs_new<Data>();
 	}
@@ -30,7 +31,7 @@ namespace bs
 	/**
 	 * Returns the raw stack trace using the provided context. Raw stack trace contains only function addresses.
 	 * 			
-	 * @param[in]	context		Processor context from which to start the stack trace. 
+	 * @param[in]	context		Processor context from which to start the stack trace.
 	 * @param[in]	stackTrace	Output parameter that will contain the function addresses. First address is the deepest
 	 * 							called function and following address is its caller and so on.
 	 * @return					Number of functions in the call stack.
@@ -87,7 +88,7 @@ namespace bs
 	 * Returns a string containing a stack trace using the provided context. If function can be found in the symbol table
 	 * its readable name will be present in the stack trace, otherwise just its address.
 	 * 			
-	 * @param[in]	context		Processor context from which to start the stack trace. 
+	 * @param[in]	context		Processor context from which to start the stack trace.
 	 * @param[in]	skip		Number of bottom-most call stack entries to skip.
 	 * @return					String containing the call stack with each function on its own line.
 	 */
@@ -131,8 +132,8 @@ namespace bs
 			{
 				Path filePath = lineData.FileName;
 
-				outputStream << StringUtil::format("0x{0} File[{1}:{2} ({3})]", addressString, 
-					filePath.getFilename(), lineData.LineNumber, column);
+				outputStream << StringUtil::format("0x{0} File[{1}:{2} ({3})]", addressString,
+					filePath.getFilename(), (UINT32)lineData.LineNumber, (UINT32)column);
 			}
 			else
 			{
@@ -215,7 +216,7 @@ namespace bs
 		SymSetOptions(options);
 		if(!SymInitialize(hProcess, nullptr, false))
 		{
-			LOGERR("SymInitialize failed. Error code: " + toString((UINT32)GetLastError()));
+			BS_LOG(Error, Generic, "SymInitialize failed. Error code: {0}", + (UINT32)GetLastError());
 			return;
 		}
 
@@ -255,21 +256,22 @@ namespace bs
 
 				if(!SymGetModuleInfo64(GetCurrentProcess(), moduleAddress, &imageInfo))
 				{
-					LOGWRN("Failed retrieving module info for module: " + String(moduleName) + ". Error code: " + toString((UINT32)GetLastError()));
+					BS_LOG(Warning, Platform, "Failed retrieving module info for module: {0}. Error code: {1}",
+						moduleName, (UINT32)GetLastError());
 				}
 				else
 				{
 					// Disabled because too much spam in the log, enable as needed
 #if 0
 					if (imageInfo.SymType == SymNone)
-						LOGWRN("Failed loading symbols for module: " + String(moduleName));
+						BS_LOG(Warning, Platform, "Failed loading symbols for module: {0}", moduleName);
 #endif
 				}
 			}
 			else
 			{
-				LOGWRN("Failed loading module " + String(moduleName) + ".Error code: " + toString((UINT32)GetLastError()) +
-					". Search path: " + String(pdbSearchPath) + ". Image name: " + String(imageName));
+				BS_LOG(Warning, Platform, "Failed loading module {0}.Error code: {1}. Search path: {2}. Image name: {3}",
+					moduleName, (UINT32)GetLastError(), pdbSearchPath, imageName);
 			}
 		}
 
@@ -414,7 +416,7 @@ namespace bs
 		MiniDumpParams* params = (MiniDumpParams*)data;
 
 		WString pathString = UTF8::toWide(params->filePath.toString());
-		HANDLE hFile = CreateFileW(pathString.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 
+		HANDLE hFile = CreateFileW(pathString.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
 			nullptr);
 
 		if (hFile != INVALID_HANDLE_VALUE)
@@ -463,13 +465,26 @@ namespace bs
 #endif
 
 	}
-	void CrashHandler::reportCrash(const String& type, const String& description, const String& function, 
+	void CrashHandler::reportCrash(const String& type, const String& description, const String& function,
 		const String& file, UINT32 line) const
 	{
+		if(mSettings.onBeforeReportCrash)
+		{
+			if(mSettings.onBeforeReportCrash(type, description, function, file, line))
+				return;
+		}
+
 		// Win32 debug methods are not thread safe
 		Lock lock(m->mutex);
 
 		logErrorAndStackTrace(type, description, function, file, line);
+
+		if(mSettings.onCrashPrintedToLog)
+		{
+			if(mSettings.onCrashPrintedToLog())
+				return;
+		}
+
 		saveCrashLog();
 
 		win32_writeMiniDump(getCrashFolder() + String(sMiniDumpName), nullptr);
@@ -482,6 +497,12 @@ namespace bs
 
 	int CrashHandler::reportCrash(void* exceptionDataPtr) const
 	{
+		if(mSettings.onBeforeWindowsSEHReportCrash)
+		{
+			if(mSettings.onBeforeWindowsSEHReportCrash(exceptionDataPtr))
+				return EXCEPTION_EXECUTE_HANDLER;
+		}
+
 		EXCEPTION_POINTERS* exceptionData = (EXCEPTION_POINTERS*)exceptionDataPtr;
 
 		// Win32 debug methods are not thread safe
@@ -492,6 +513,13 @@ namespace bs
 
 		logErrorAndStackTrace(win32_getExceptionMessage(exceptionData->ExceptionRecord),
 			win32_getStackTrace(*exceptionData->ContextRecord, 0));
+
+		if(mSettings.onCrashPrintedToLog)
+		{
+			if(mSettings.onCrashPrintedToLog())
+				return EXCEPTION_EXECUTE_HANDLER;
+		}
+
 		saveCrashLog();
 
 		win32_writeMiniDump(getCrashFolder() + String(sMiniDumpName), exceptionData);

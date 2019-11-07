@@ -18,10 +18,12 @@ namespace bs
 		/** Types of sprite materials accessible by default. */
 		enum class BuiltinSpriteMaterialType
 		{
-			ImageTransparent,
 			ImageOpaque,
-			ImageTransparentAnimated,
+			ImageTransparentAlpha,
+			ImageTransparentPremultiplied,
 			ImageOpaqueAnimated,
+			ImageTransparentAlphaAnimated,
+			ImageTransparentPremultipliedAnimated,
 			Text,
 			Line,
 			Count // Keep at end
@@ -31,27 +33,39 @@ namespace bs
 		SpriteManager();
 		~SpriteManager();
 
-		/** Returns the material used for rendering image sprites. 
+		/** Returns the material used for rendering image sprites.
 		 *
-		 * @param[in]	transparent		True if the material should be able to render transparecy.
+		 * @param[in]	transparency	Transparency mode the material should support.
 		 * @param[in]	animation		True if the material should be able to perform sprite sheet animation.
 		 * @return						Requested sprite material.
 		 */
-		SpriteMaterial* getImageMaterial(bool transparent, bool animation = false) const
+		SpriteMaterial* getImageMaterial(SpriteMaterialTransparency transparency, bool animation = false) const
 		{
 			if(!animation)
 			{
-				if(transparent)
-					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageTransparent]);
-
-				return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageOpaque]);
+				switch(transparency)
+				{
+				default:
+				case SpriteMaterialTransparency::Opaque:
+					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageOpaque]);
+				case SpriteMaterialTransparency::Alpha: 
+					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageTransparentAlpha]);
+				case SpriteMaterialTransparency::Premultiplied:
+					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageTransparentPremultiplied]);
+				}
 			}
 			else
 			{
-				if(transparent)
-					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageTransparentAnimated]);
-
-				return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageOpaqueAnimated]);
+				switch(transparency)
+				{
+				default:
+				case SpriteMaterialTransparency::Opaque:
+					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageOpaqueAnimated]);
+				case SpriteMaterialTransparency::Alpha: 
+					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageTransparentAlphaAnimated]);
+				case SpriteMaterialTransparency::Premultiplied:
+					return getMaterial(builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::ImageTransparentPremultipliedAnimated]);
+				}
 			}
 		}
 
@@ -66,7 +80,7 @@ namespace bs
 		/** Returns a sprite material with the specified ID. Returns null if one cannot be found. */
 		SpriteMaterial* getMaterial(UINT32 id) const;
 
-		/** 
+		/**
 		 * Registers a new material in the sprite manager. Caller must ensure the material has a unique ID that doesn't
 		 * already exist in the sprite manager, otherwise the call will be ignored.
 		 *
@@ -82,7 +96,7 @@ namespace bs
 			if (iterFind != mMaterials.end())
 			{
 				// Already exists
-				LOGWRN("Attempting to register a sprite material that already exists, ignoring request.");
+				BS_LOG(Warning, Generic, "Attempting to register a sprite material that already exists, ignoring request.");
 				bs_delete(newMaterial);
 				return iterFind->second;
 			}
@@ -92,7 +106,7 @@ namespace bs
 		}
 	private:
 		UnorderedMap<UINT32, SpriteMaterial*> mMaterials;
-		UINT32 builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::Count];
+		UINT32 builtinMaterialIds[(UINT32)BuiltinSpriteMaterialType::Count]{};
 	};
 
 	/** @} */

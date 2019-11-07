@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Scene/BsGameObjectHandle.h"
 #include "Scene/BsGameObjectManager.h"
 #include "Utility/BsUtility.h"
@@ -28,7 +29,7 @@ namespace bs
 			return invalidId;
 		}
 
-		void setInstanceId(GameObjectHandleBase* obj, UINT64& value) { mOriginalInstanceId = value; } 
+		void setInstanceId(GameObjectHandleBase* obj, UINT64& value) { mOriginalInstanceId = value; }
 
 	public:
 		GameObjectHandleRTTI()

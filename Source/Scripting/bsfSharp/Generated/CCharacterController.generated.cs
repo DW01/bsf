@@ -11,9 +11,9 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Special physics controller meant to be used for game characters. Uses the "slide-and-collide" physics instead of of 
-	/// the standard physics model to handle various issues with manually moving kinematic objects. Uses a capsule to 
-	/// represent the character's bounds.
+	/// Special physics controller meant to be used for game characters. Uses the &quot;slide-and-collide&quot; physics 
+	/// instead of of the standard physics model to handle various issues with manually moving kinematic objects. Uses a 
+	/// capsule to represent the character&apos;s bounds.
 	/// </summary>
 	[ShowInInspector]
 	public partial class CharacterController : Component
@@ -25,7 +25,6 @@ namespace bs
 		/// Determines the position of the bottom of the controller. Position takes contact offset into account. Changing this 
 		/// will teleport the character to the location. Use move() for movement that includes physics.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public Vector3 FootPosition
 		{
@@ -125,10 +124,11 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Controls which slopes should the character consider too steep and won't be able to move over. See nonWalkableMode for 
-		/// more information.
+		/// Controls which slopes should the character consider too steep and won&apos;t be able to move over. See 
+		/// nonWalkableMode for more information.
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 180f, true)]
 		[NativeWrapper]
 		public Radian SlopeLimit
 		{
@@ -143,6 +143,7 @@ namespace bs
 
 		/// <summary>Determines the layer that controls what can the controller collide with.</summary>
 		[ShowInInspector]
+		[LayerMask]
 		[NativeWrapper]
 		public ulong Layer
 		{

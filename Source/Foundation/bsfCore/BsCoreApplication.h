@@ -29,9 +29,28 @@ namespace bs
 		 */
 		bool physicsCooking = true;
 
+		/**
+		 * True if animation should be evaluated at the same time while rendering is happening. This introduces a one
+		 * frame delay to all animations but can result in better performance. If false the animation will be forced
+		 * to finish evaluating before rendering starts, ensuring up-to-date frame but potentially blocking the rendering
+		 * thread from moving forward until the animation finishes.
+		 */
+		bool asyncAnimation = true;
+
 		RENDER_WINDOW_DESC primaryWindowDesc; /**< Describes the window to create during start-up. */
 
 		Vector<String> importers; /**< A list of importer plugins to load. */
+
+		/**
+		 *If specified Log will call this function whenever a new log message is added. If this returns true then
+		 * the default action of the log will be skipped.
+		 */
+		BS_SCRIPT_EXPORT(ex:true)
+		std::function<bool(const String& message, LogVerbosity verbosity, UINT32 category)> logCallback;
+
+		/** Crash handling customization */
+		BS_SCRIPT_EXPORT(ex:true)
+		CrashHandlerSettings crashHandling;
 	};
 
 	/**
@@ -57,6 +76,8 @@ namespace bs
 		/**	Stops the (infinite) main loop from running. The loop will complete its current cycle before stopping. */
 		void stopMainLoop();
 
+		bool isMainLoopRunning() const { return mRunMainLoop; }
+
 		/** Changes the maximum FPS the application is allowed to run in. Zero means unlimited. */
 		void setFPSLimit(UINT32 limit);
 
@@ -65,6 +86,18 @@ namespace bs
 		 * circumstances and the implementation.
 		 */
 		virtual void quitRequested();
+
+		/** Call before the first time runMainLoopFrame is called */
+		virtual void beginMainLoop();
+
+		/** Call after the last time runMainLoopFrame is called */
+		virtual void endMainLoop();
+
+		/** Alternative to runMainLoop, processes one step at a time */
+		void runMainLoopFrame();
+
+		/** Waits until previous frame is complete */
+		void waitUntilFrameFinished();
 
 		/**	Returns the main window that was created on application start-up. */
 		SPtr<RenderWindow> getPrimaryWindow() const { return mPrimaryWindow; }
@@ -111,7 +144,6 @@ namespace bs
 		/**	Returns a handler that is used for resolving shader include file paths. */
 		virtual SPtr<IShaderIncludeHandler> getShaderIncludeHandler() const;
 
-	private:
 		/**	Called when the frame finishes rendering. */
 		void frameRenderingFinishedCallback();
 

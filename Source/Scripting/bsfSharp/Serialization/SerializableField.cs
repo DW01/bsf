@@ -94,7 +94,12 @@ namespace bs
         /// <summary>
         /// Signifies that a <see cref="RRef{T}"/> should be loaded when assigned to field through the inspector.
         /// </summary>
-        LoadOnAssign        = 1 << 14
+        LoadOnAssign        = 1 << 14,
+
+        /// <summary>
+        /// Field containing a color that supports high dynamic range.
+        /// </summary>
+        HDR                 = 1 << 15,
     }
 
     /// <summary>
@@ -168,7 +173,7 @@ namespace bs
         }
 
         /// <summary>
-        /// Returns a serializable property for the field. 
+        /// Returns a serializable property for the field.
         /// </summary>
         /// <returns>Serializable property that allows you to manipulate contents of the field.</returns>
         public SerializableProperty GetProperty()
@@ -176,7 +181,7 @@ namespace bs
             SerializableProperty.Getter getter = () =>
             {
                 object parentObject = parent.GetReferencedObject();
-                
+
                 if (parentObject != null)
                     return Internal_GetValue(mCachedPtr, parentObject);
                 else
@@ -200,7 +205,7 @@ namespace bs
             };
 
             bool applyOnChildChanges = Flags.HasFlag(SerializableFieldAttributes.ApplyOnDirty) ||
-                                       Flags.HasFlag(SerializableFieldAttributes.PassByCopy) || 
+                                       Flags.HasFlag(SerializableFieldAttributes.PassByCopy) ||
                                        parentApplyOnChildChanges;
 
             SerializableProperty newProperty = Internal_CreateProperty(mCachedPtr);
@@ -246,7 +251,7 @@ namespace bs
         /// <summary>
         /// If true, number fields will be displayed as sliders instead of regular input boxes.
         /// </summary>
-        public bool DisplayAsSlider; 
+        public bool DisplayAsSlider;
 
         /// <summary>
         /// Name of the category to display in inspector, if the member is part of one.

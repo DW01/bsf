@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringRTTI.h"
 #include "Animation/BsSkeleton.h"
 
 namespace bs
@@ -83,40 +84,39 @@ namespace bs
 		enum { id = TID_SkeletonBoneInfo }; enum { hasDynamicSize = 1 };
 
 		/** @copydoc RTTIPlainType::toMemory */
-		static void toMemory(const SkeletonBoneInfo& data, char* memory)
+		static BitLength toMemory(const SkeletonBoneInfo& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = sizeof(UINT32);
-			char* memoryStart = memory;
-			memory += sizeof(UINT32);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+			{
+				BitLength size = 0;
+				size += rtti_write(data.name, stream);
+				size += rtti_write(data.parent, stream);
 
-			memory = rttiWriteElem(data.name, memory, size);
-			memory = rttiWriteElem(data.parent, memory, size);
-
-			memcpy(memoryStart, &size, sizeof(UINT32));
+				return size;
+			});
 		}
 
 		/** @copydoc RTTIPlainType::fromMemory */
-		static UINT32 fromMemory(SkeletonBoneInfo& data, char* memory)
+		static BitLength fromMemory(SkeletonBoneInfo& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = 0;
-			memory = rttiReadElem(size, memory);
+			BitLength size;
+			rtti_read_size_header(stream, compress, size);
 
-			memory = rttiReadElem(data.name, memory);
-			rttiReadElem(data.parent, memory);
+			rtti_read(data.name, stream);
+			rtti_read(data.parent, stream);
 
 			return size;
 		}
 
-		/** @copydoc RTTIPlainType::getDynamicSize */
-		static UINT32 getDynamicSize(const SkeletonBoneInfo& data)
+		/** @copydoc RTTIPlainType::getSize */
+		static BitLength getSize(const SkeletonBoneInfo& data, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT64 dataSize = sizeof(UINT32);
-			dataSize += rttiGetElemSize(data.name);
-			dataSize += rttiGetElemSize(data.parent);
+			BitLength dataSize;
+			dataSize += rtti_size(data.name);
+			dataSize += rtti_size(data.parent);
 
-			assert(dataSize <= std::numeric_limits<UINT32>::max());
-
-			return (UINT32)dataSize;
+			rtti_add_header_size(dataSize, compress);
+			return dataSize;
 		}
 	};
 

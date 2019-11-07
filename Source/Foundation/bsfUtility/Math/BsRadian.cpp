@@ -1,6 +1,5 @@
 //************************************ bs::framework - Copyright 2018 Marko Pintera **************************************//
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
-#include "Prerequisites/BsPrerequisitesUtil.h"
 #include "Math/BsRadian.h"
 #include "Math/BsMath.h"
 
@@ -21,7 +20,7 @@ namespace bs
 
 	Radian& Radian::operator= (const Degree& d)
 	{
-		mRad = d.valueRadians(); 
+		mRad = d.valueRadians();
 		return *this;
 	}
 

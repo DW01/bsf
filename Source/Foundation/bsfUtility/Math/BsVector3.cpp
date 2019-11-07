@@ -26,26 +26,6 @@ namespace bs
 		return Math::acos(f);
 	}
 
-	Vector3 Vector3::normalize(const Vector3& val)
-	{
-		float len = Math::sqrt(val.x * val.x + val.y * val.y + val.z * val.z);
-
-		// Will also work for zero-sized vectors, but will change nothing
-		if (len > 1e-08)
-		{
-			float invLen = 1.0f / len;
-
-			Vector3 normalizedVec;
-			normalizedVec.x = val.x * invLen;
-			normalizedVec.y = val.y * invLen;
-			normalizedVec.z = val.z * invLen;
-
-			return normalizedVec;
-		}
-		else
-			return val;
-	}
-
 	bool Vector3::isNaN() const
 	{
 		return Math::isNaN(x) || Math::isNaN(y) || Math::isNaN(z);
@@ -58,5 +38,5 @@ namespace bs
 
 	const Vector3 Vector3::UNIT_X(1, 0, 0);
 	const Vector3 Vector3::UNIT_Y(0, 1, 0);
-	const Vector3 Vector3::UNIT_Z(0, 0, 1);    
+	const Vector3 Vector3::UNIT_Z(0, 0, 1);
 }

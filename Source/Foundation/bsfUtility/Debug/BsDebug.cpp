@@ -8,12 +8,19 @@
 #include "FileSystem/BsDataStream.h"
 #include "Utility/BsTime.h"
 
+#if BS_IS_BANSHEE3D
+#include "BsEngineConfig.h"
+#endif
+
 #if BS_PLATFORM == BS_PLATFORM_WIN32 && BS_COMPILER == BS_COMPILER_MSVC
 #include <windows.h>
 #include <iostream>
 
 void logToIDEConsole(const bs::String& message, const char* channel)
 {
+	static bs::Mutex mutex;
+
+	bs::Lock lock(mutex);
 	OutputDebugString("[");
 	OutputDebugString(channel);
 	OutputDebugString("] ");
@@ -32,36 +39,51 @@ void logToIDEConsole(const bs::String& message, const char* channel)
 
 namespace bs
 {
-	void Debug::logDebug(const String& msg)
+	BS_LOG_CATEGORY_IMPL(Uncategorized)
+	BS_LOG_CATEGORY_IMPL(FileSystem)
+	BS_LOG_CATEGORY_IMPL(RTTI)
+	BS_LOG_CATEGORY_IMPL(Generic)
+	BS_LOG_CATEGORY_IMPL(Platform)
+
+	void Debug::log(const String& message, LogVerbosity verbosity, UINT32 category)
 	{
-		mLog.logMsg(msg, (UINT32)DebugChannel::Debug);
-		logToIDEConsole(msg, "DEBUG");
+		if(mCustomLogCallback)
+		{
+			// Run the custom callback and if it returns true skip the default action
+			if(mCustomLogCallback(message, verbosity, category))
+				return;
+		}
+
+		mLog.logMsg(message, verbosity, category);
+
+		if(verbosity != LogVerbosity::Log)
+		{
+			switch(verbosity)
+			{
+			case LogVerbosity::Fatal:
+				logToIDEConsole(message, "FATAL");
+				break;
+			case LogVerbosity::Error:
+				logToIDEConsole(message, "ERROR");
+				break;
+			case LogVerbosity::Warning:
+				logToIDEConsole(message, "WARNING");
+				break;
+			default:
+			case LogVerbosity::Info:
+				logToIDEConsole(message, "INFO");
+				break;
+			case LogVerbosity::Verbose:
+				logToIDEConsole(message, "VERBOSE");
+				break;
+			case LogVerbosity::VeryVerbose:
+				logToIDEConsole(message, "VERY_VERBOSE");
+				break;
+			}
+		}
 	}
 
-	void Debug::logWarning(const String& msg)
-	{
-		mLog.logMsg(msg, (UINT32)DebugChannel::Warning);
-		logToIDEConsole(msg, "WARNING");
-	}
-
-	void Debug::logError(const String& msg)
-	{
-		mLog.logMsg(msg, (UINT32)DebugChannel::Error);
-		logToIDEConsole(msg, "ERROR");
-	}
-
-	void Debug::log(const String& msg, UINT32 channel)
-	{
-		mLog.logMsg(msg, channel);
-		if (channel == (UINT32)DebugChannel::Debug)
-			logToIDEConsole(msg, "DEBUG");
-		if (channel == (UINT32)DebugChannel::Warning || channel == (UINT32)DebugChannel::CompilerWarning)
-			logToIDEConsole(msg, "WARNING");
-		if (channel == (UINT32)DebugChannel::Error || channel == (UINT32)DebugChannel::CompilerError)
-			logToIDEConsole(msg, "ERROR");
-	}
-
-	void Debug::writeAsBMP(UINT8* rawPixels, UINT32 bytesPerPixel, UINT32 width, UINT32 height, const Path& filePath, 
+	void Debug::writeAsBMP(UINT8* rawPixels, UINT32 bytesPerPixel, UINT32 width, UINT32 height, const Path& filePath,
 		bool overwrite) const
 	{
 		if(FileSystem::isFile(filePath))
@@ -101,12 +123,26 @@ namespace bs
 		}
 	}
 
-	void Debug::saveLog(const Path& path) const
+	void Debug::saveLog(const Path& path, SavedLogType type) const
+	{
+		switch (type)
+		{
+		default:
+		case SavedLogType::HTML:
+			saveHtmlLog(path);
+			break;
+		case SavedLogType::Textual:
+			saveTextLog(path);
+			break;
+		}
+	}
+	
+	void Debug::saveHtmlLog(const Path& path) const
 	{
 		static const char* style =
 			R"(html {
   font-family: sans-serif;
-} 
+}
 			
 table
 {
@@ -118,7 +154,7 @@ table
 	table-layout:fixed;
 }
 
-table caption 
+table caption
 {
 	color: #000;
 	font: italic 85%/1 arial, sans-serif;
@@ -127,7 +163,7 @@ table caption
 }
 
 table td,
-table th 
+table th
 {
 	border-left: 1px solid #cbcbcb;/*  inner column border */
 	border-width: 0 0 0 1px;
@@ -138,12 +174,12 @@ table th
 }
 
 table td:first-child,
-table th:first-child 
+table th:first-child
 {
 	border-left-width: 0;
 }
 
-table thead 
+table thead
 {
 	background-color: #e0e0e0;
 	color: #000;
@@ -151,7 +187,7 @@ table thead
 	vertical-align: bottom;
 }
 
-table td 
+table td
 {
 	background-color: transparent;
 	word-wrap:break-word;
@@ -215,8 +251,9 @@ table td
 			R"(<table border="1" cellpadding="1" cellspacing="1">
 	<thead>
 		<tr>
-			<th scope="col" style="width:60px">Type</th>
+			<th scope="col" style="width:85px">Type</th>
 			<th scope="col" style="width:70px">Time</th>
+			<th scope="col" style="width:160px">Category</th>
 			<th scope="col">Description</th>
 		</tr>
 	</thead>
@@ -273,35 +310,42 @@ table td
 		for (auto& entry : entries)
 		{
 			String channelName;
-			if (entry.getChannel() == (UINT32)DebugChannel::Error || entry.getChannel() == (UINT32)DebugChannel::CompilerError)
+
+			LogVerbosity verbosity = entry.getVerbosity();
+			switch(verbosity)
 			{
+			case LogVerbosity::Fatal:
+			case LogVerbosity::Error:
 				if (!alternate)
 					stream << R"(		<tr class="error-row">)" << std::endl;
 				else
 					stream << R"(		<tr class="error-alt-row">)" << std::endl;
-
-				stream << R"(			<td>Error</td>)" << std::endl;
-			}
-			else if (entry.getChannel() == (UINT32)DebugChannel::Warning || entry.getChannel() == (UINT32)DebugChannel::CompilerWarning)
-			{
+				break;
+			case LogVerbosity::Warning:
 				if (!alternate)
 					stream << R"(		<tr class="warn-row">)" << std::endl;
 				else
 					stream << R"(		<tr class="warn-alt-row">)" << std::endl;
-
-				stream << R"(			<td>Warning</td>)" << std::endl;
-			}
-			else
-			{
+				break;
+			default:
+			case LogVerbosity::Info:
+			case LogVerbosity::Log:
+			case LogVerbosity::Verbose:
+			case LogVerbosity::VeryVerbose:
 				if (!alternate)
 					stream << R"(		<tr class="debug-row">)" << std::endl;
 				else
 					stream << R"(		<tr class="debug-alt-row">)" << std::endl;
-
-				stream << R"(			<td>Debug</td>)" << std::endl;
+				break;
 			}
+			stream << R"(			<td>)" << toString(verbosity)<< R"(</td>)" << std::endl;
 
-			stream << R"(			<td>)" << entry.getLocalTime() << "</td>" << std::endl;
+			stream << R"(			<td>)" << toString(entry.getLocalTime(), false, false, TimeToStringConversionType::Time)
+			       << "</td>" << std::endl;
+
+			String categoryName;
+			mLog.getCategoryName(entry.getCategory(), categoryName);
+			stream << R"(			<td>)" << categoryName << "</td>" << std::endl;
 
 			String parsedMessage = StringUtil::replaceAll(entry.getMessage(), "\n", "<br>\n");
 
@@ -316,7 +360,114 @@ table td
 		SPtr<DataStream> fileStream = FileSystem::createAndOpenFile(path);
 		fileStream->writeString(stream.str());
 	}
+	
+	/* Internal function to get the given number of spaces, so that the log looks properly indented */
+	String _getSpacesIndentation(size_t numSpaces)
+	{
+		String tmp;
+		for (UINT8 i = 0; i < numSpaces; i++)
+			tmp.append(" ");
+		return tmp;
+	}
 
+	void Debug::saveTextLog(const Path& path) const
+	{
+		#if BS_IS_BANSHEE3D
+		static const char* engineHeader = "This is Banshee Engine ";
+		static const char* bsfBasedHeader = "Based on bs::framework ";
+		#else
+		static const char* bsfOnlyHeader = "This is bs::framework ";
+		#endif
+		
+		StringStream stream;
+		#if BS_IS_BANSHEE3D
+		stream << engineHeader << BS_B3D_VERSION_MAJOR << "." << BS_B3D_VERSION_MINOR << "." << BS_B3D_VERSION_PATCH << "\n";
+		stream << bsfBasedHeader << BS_VERSION_MAJOR << "." << BS_VERSION_MINOR <<"." << BS_VERSION_PATCH << "\n";
+		#else
+		stream << bsfOnlyHeader << BS_VERSION_MAJOR << "." << BS_VERSION_MINOR <<"." << BS_VERSION_PATCH << "\n";
+		#endif
+		if (Time::isStarted())
+			stream << "Started on: " << gTime().getAppStartUpDateString(false) << "\n";
+		
+		stream << "\n";
+		stream << "System information:\n" <<
+				  "================================================================================\n";
+		
+		SystemInfo systemInfo = PlatformUtility::getSystemInfo();
+		stream << "OS version: " << systemInfo.osName << " " << (systemInfo.osIs64Bit ? "64-bit" : "32-bit") << "\n";
+		stream << "CPU information:\n";
+		stream << "CPU vendor: " << systemInfo.cpuManufacturer << "\n";
+		stream << "CPU name: " << systemInfo.cpuModel << "\n";
+		stream << "CPU clock speed: " << systemInfo.cpuClockSpeedMhz << "Mhz\n";
+		stream << "CPU core count: " << systemInfo.cpuNumCores << "\n";
+		
+		stream << "\n";
+		stream << "GPU List:\n" <<
+				  "================================================================================\n";
+		
+		if(systemInfo.gpuInfo.numGPUs == 1)
+			stream << "GPU: " << systemInfo.gpuInfo.names[0] << "\n";
+		else
+		{
+			for(UINT32 i = 0; i < systemInfo.gpuInfo.numGPUs; i++)
+				stream << "GPU #" << i << ": " << systemInfo.gpuInfo.names[i] << "\n";
+		}
+		
+		stream << "\n";
+		stream << "Log entries:\n" <<
+				  "================================================================================\n";
+		
+		Vector<LogEntry> entries = mLog.getAllEntries();
+		for (auto& entry : entries)
+		{
+			String builtMsg;
+			builtMsg.append(toString(entry.getLocalTime(), false, true, TimeToStringConversionType::Full));
+			builtMsg.append(" ");
+			
+			switch(entry.getVerbosity())
+			{
+			case LogVerbosity::Fatal:
+				builtMsg.append("[FATAL]");
+				break;
+			case LogVerbosity::Error:
+				builtMsg.append("[ERROR]");
+				break;
+			case LogVerbosity::Warning:
+				builtMsg.append("[WARNING]");
+				break;
+			case LogVerbosity::Info:
+				builtMsg.append("[INFO]");
+				break;
+			case LogVerbosity::Log:
+				builtMsg.append("[LOG]");
+				break;
+			case LogVerbosity::Verbose:
+				builtMsg.append("[VERBOSE]");
+				break;
+			case LogVerbosity::VeryVerbose:
+				builtMsg.append("[VERY_VERBOSE]");
+				break;
+			}
+			
+			String categoryName;
+			mLog.getCategoryName(entry.getCategory(), categoryName);
+			builtMsg.append(" <" + categoryName + ">");
+
+			builtMsg.append(" | ");
+			
+			String tmpSpaces = _getSpacesIndentation(builtMsg.length());
+			
+			String parsedMessage = StringUtil::replaceAll(entry.getMessage(), "\n\t\t", "\n" + tmpSpaces);
+			builtMsg.append(parsedMessage);
+			
+			stream << builtMsg << "\n";
+		}
+		
+		SPtr<DataStream> fileStream = FileSystem::createAndOpenFile(path);
+		fileStream->writeString(stream.str());
+		
+	}
+	
 	BS_UTILITY_EXPORT Debug& gDebug()
 	{
 		static Debug debug;

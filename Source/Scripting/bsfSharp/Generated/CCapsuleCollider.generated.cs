@@ -31,7 +31,7 @@ namespace bs
 			set { Internal_setNormal(mCachedPtr, ref value); }
 		}
 
-		/// <summary>Determines the position of the capsule shape, relative to the component's scene object.</summary>
+		/// <summary>Determines the position of the capsule shape, relative to the component&apos;s scene object.</summary>
 		[ShowInInspector]
 		[NativeWrapper]
 		public Vector3 Center
@@ -46,7 +46,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the half height of the capsule, from the origin to one of the hemispherical centers, along the normal  
+		/// Determines the half height of the capsule, from the origin to one of the hemispherical centers, along the normal 
 		/// vector.
 		/// </summary>
 		[ShowInInspector]

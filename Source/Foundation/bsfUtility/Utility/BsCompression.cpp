@@ -42,7 +42,7 @@ namespace bs
 				SPtr<MemoryDataStream> memStream = std::static_pointer_cast<MemoryDataStream>(mStream);
 
 				*len = Available();
-				return (char*)memStream->getPtr() + mBufferOffset;
+				return (char*)memStream->data() + mBufferOffset;
 			}
 			else
 			{
@@ -69,7 +69,7 @@ namespace bs
 				mReportProgress(1.0f - mRemaining / (float)mTotal);
 		}
 	private:
-		SPtr<DataStream> mStream; 
+		SPtr<DataStream> mStream;
 		std::function<void(float)> mReportProgress;
 
 		size_t mRemaining;
@@ -173,7 +173,7 @@ namespace bs
 		Vector<BufferPiece> mBufferPieces;
 	};
 
-	SPtr<MemoryDataStream> Compression::compress(SPtr<DataStream>& input, std::function<void(float)> reportProgress)
+	SPtr<MemoryDataStream> Compression::compress(const SPtr<DataStream>& input, std::function<void(float)> reportProgress)
 	{
 		DataStreamSource src(input, std::move(reportProgress));
 		DataStreamSink dst;
@@ -185,14 +185,14 @@ namespace bs
 		return output;
 	}
 
-	SPtr<MemoryDataStream> Compression::decompress(SPtr<DataStream>& input, std::function<void(float)> reportProgress)
+	SPtr<MemoryDataStream> Compression::decompress(const SPtr<DataStream>& input, std::function<void(float)> reportProgress)
 	{
 		DataStreamSource src(input, std::move(reportProgress));
 		DataStreamSink dst;
 
 		if (!snappy::Uncompress(&src, &dst))
 		{
-			LOGERR("Decompression failed, corrupt data.");
+			BS_LOG(Error, Generic, "Decompression failed, corrupt data.");
 			return nullptr;
 		}
 

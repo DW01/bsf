@@ -18,9 +18,9 @@ namespace bs
 		UINT8 keyBuffer[256];
 	};
 
-	/** 
-	 * Initializes DirectInput keyboard device for a window with the specified handle. Only input from that window will be 
-	 * reported. 
+	/**
+	 * Initializes DirectInput keyboard device for a window with the specified handle. Only input from that window will be
+	 * reported.
 	 */
 	void initializeDirectInput(Keyboard::Pimpl* m, HWND hWnd)
 	{
@@ -108,7 +108,7 @@ namespace bs
 
 		if (FAILED(hr))
 		{
-			LOGERR("Failed to read keyboard input. Internal error. ");
+			BS_LOG(Error, Platform, "Failed to read keyboard input. Internal error. ");
 			return;
 		}
 

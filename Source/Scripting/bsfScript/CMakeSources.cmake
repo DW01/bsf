@@ -9,7 +9,7 @@ set(BS_SCRIPT_INC_NOFILTER
 	"BsManagedResourceManager.h"
 	"BsScriptObjectManager.h"
 	"BsEngineScriptLibrary.h"
-	"BsPlayInEditorManager.h"
+	"BsPlayInEditor.h"
 )
 
 set(BS_SCRIPT_SRC_WRAPPERS_GUI
@@ -87,6 +87,7 @@ set(BS_SCRIPT_INC_WRAPPERS
 	"Wrappers/BsScriptPlane.h"
 	"Wrappers/BsScriptCategory.h"
 	"Wrappers/BsScriptOrder.h"
+	"Wrappers/BsScriptAsyncOp.h"
 )
 
 set(BS_SCRIPT_INC_WRAPPERS_GUI
@@ -124,6 +125,7 @@ set(BS_SCRIPT_SRC_SERIALIZATION
 	"Serialization/BsScriptAssemblyManager.cpp"
 	"Serialization/BsManagedSerializableDiff.cpp"
 	"Serialization/BsManagedDiff.cpp"
+	"Serialization/BsManagedCompare.cpp"
 )
 
 set(BS_SCRIPT_SRC_WRAPPERS
@@ -166,6 +168,7 @@ set(BS_SCRIPT_SRC_WRAPPERS
 	"Wrappers/BsScriptPlane.cpp"
 	"Wrappers/BsScriptCategory.cpp"
 	"Wrappers/BsScriptOrder.cpp"
+	"Wrappers/BsScriptAsyncOp.cpp"
 )
 
 set(BS_SCRIPT_INC_SERIALIZATION
@@ -181,6 +184,7 @@ set(BS_SCRIPT_INC_SERIALIZATION
 	"Serialization/BsBuiltinComponentLookup.h"
 	"Serialization/BsBuiltinResourceLookup.h"
 	"Serialization/BsBuiltinReflectableTypesLookup.h"
+	"Serialization/BsManagedCompare.h"
 )
 
 set(BS_SCRIPT_SRC_NOFILTER
@@ -193,7 +197,7 @@ set(BS_SCRIPT_SRC_NOFILTER
 	"BsManagedResourceManager.cpp"
 	"BsScriptObjectManager.cpp"
 	"BsEngineScriptLibrary.cpp"
-	"BsPlayInEditorManager.cpp"
+	"BsPlayInEditor.cpp"
 )
 
 set(BS_SCRIPT_INC_RTTI
@@ -204,7 +208,6 @@ set(BS_SCRIPT_INC_RTTI
 
 set(BS_SCRIPT_INC_EXTENSIONS
 	"Extensions/BsPixelDataEx.h"
-	"Extensions/BsAsyncOpEx.h"
 	"Extensions/BsTextureEx.h"
 	"Extensions/BsMeshDataEx.h"
 	"Extensions/BsMeshEx.h"
@@ -221,7 +224,6 @@ set(BS_SCRIPT_INC_EXTENSIONS
 
 set(BS_SCRIPT_SRC_EXTENSIONS
 	"Extensions/BsPixelDataEx.cpp"
-	"Extensions/BsAsyncOpEx.cpp"
 	"Extensions/BsTextureEx.cpp"
 	"Extensions/BsMeshDataEx.cpp"
 	"Extensions/BsMeshEx.cpp"

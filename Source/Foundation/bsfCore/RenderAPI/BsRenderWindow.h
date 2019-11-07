@@ -46,7 +46,7 @@ namespace bs
 
 	/** Structure that is used for initializing a render window. */
 	struct BS_CORE_EXPORT BS_SCRIPT_EXPORT(m:RenderAPI,pl:true,api:bsf) RENDER_WINDOW_DESC
-	{ 
+	{
 		/** Output monitor, frame buffer resize and refresh rate. */
 		VideoMode videoMode;
 
@@ -54,7 +54,7 @@ namespace bs
 		bool fullscreen = false;
 
 		/** Should the window wait for vertical sync before swapping buffers. */
-		bool vsync = false; 
+		bool vsync = false;
 
 		/** Determines how many vsync intervals occur per frame. FPS = refreshRate/interval. Usually 1 when vsync active. */
 		UINT32 vsyncInterval = 1;
@@ -63,7 +63,7 @@ namespace bs
 		bool hidden = false;
 
 		/** Should the window be created with a depth/stencil buffer. */
-		bool depthBuffer = true;
+		bool depthBuffer = false;
 
 		/** If higher than 1, texture containing multiple samples per pixel is created. */
 		UINT32 multisampleCount = 0;
@@ -99,7 +99,7 @@ namespace bs
 		bool modal = false;
 
 		/** Window will be created as hidden and only be shown when the first framebuffer swap happens. */
-		bool hideUntilSwap = false; 
+		bool hideUntilSwap = false;
 
 		/** Platform-specific creation options. */
 		BS_SCRIPT_EXPORT(ex:true)
@@ -151,7 +151,7 @@ namespace bs
 		virtual Vector2I windowToScreenPos(const Vector2I& windowPos) const = 0;
 
 		/**	
-		 * Resize the window to specified width and height in pixels. 
+		 * Resize the window to specified width and height in pixels.
 		 *
 		 * @param[in]	width		Width of the window in pixels.
 		 * @param[in]	height		Height of the window in pixels.
@@ -159,67 +159,67 @@ namespace bs
 		virtual void resize(UINT32 width, UINT32 height);
 
 		/**	
-		 * Move the window to specified screen coordinates. 
+		 * Move the window to specified screen coordinates.
 		 *
 		 * @param[in]	left		Position of the left border of the window on the screen.
 		 * @param[in]	top			Position of the top border of the window on the screen.
-		 * 
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void move(INT32 left, INT32 top);
 
-		/** 
-		 * Hides the window. 
-		 * 
+		/**
+		 * Hides the window.
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void hide();
 
-		/** 
-		 * Shows a previously hidden window. 
-		 * 
+		/**
+		 * Shows a previously hidden window.
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void show();
 
-		/** 
-		 * @copydoc ct::RenderWindow::minimize  
-		 * 
+		/**
+		 * @copydoc ct::RenderWindow::minimize
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void minimize();
 
-		/** 
-		 * @copydoc ct::RenderWindow::maximize 
-		 * 
+		/**
+		 * @copydoc ct::RenderWindow::maximize
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void maximize();
 
-		/** 
-		 * @copydoc ct::RenderWindow::restore  
-		 * 
+		/**
+		 * @copydoc ct::RenderWindow::restore
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void restore();
 
-		/** 
-		 * @copydoc ct::RenderWindow::setFullscreen(UINT32, UINT32, float, UINT32) 
-		 * 
+		/**
+		 * @copydoc ct::RenderWindow::setFullscreen(UINT32, UINT32, float, UINT32)
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void setFullscreen(UINT32 width, UINT32 height, float refreshRate = 60.0f, UINT32 monitorIdx = 0);
 
-		/** 
-		 * @copydoc ct::RenderWindow::setFullscreen(const VideoMode&) 
-		 * 
+		/**
+		 * @copydoc ct::RenderWindow::setFullscreen(const VideoMode&)
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void setFullscreen(const VideoMode& videoMode);
 
-		/** 
-		 * @copydoc ct::RenderWindow::setWindowed 
-		 * 
+		/**
+		 * @copydoc ct::RenderWindow::setWindowed
+		 *
 		 * @note This is an @ref asyncMethod "asynchronous method".
 		 */
 		virtual void setWindowed(UINT32 width, UINT32 height);
@@ -234,7 +234,7 @@ namespace bs
 		void destroy() override;
 
 		/**
-		 * Creates a new render window using the specified options. Optionally makes the created window a child of another 
+		 * Creates a new render window using the specified options. Optionally makes the created window a child of another
 		 * window.
 		 */
 		static SPtr<RenderWindow> create(RENDER_WINDOW_DESC& desc, SPtr<RenderWindow> parentWindow = nullptr);
@@ -248,6 +248,13 @@ namespace bs
 
 		/** Notifies the window that a specific event occurred. Usually called by the platform specific main event loop. */
 		void _notifyWindowEvent(WindowEventType type);
+
+		// Methods to notify this window of external events that change the properties.
+		// These are useful when using "externalWindowHandle"
+		void _onExternalResize(UINT32 width, UINT32 height);
+		void _onExternalMove(INT32 top, INT32 left);
+		void _onExternalFocus(bool focused);
+		void _onExternalMaximized(bool maximized);
 
 		/** Method that triggers whenever the window changes size or position. */
 		virtual void _windowMovedOrResized() { }
@@ -293,7 +300,7 @@ namespace bs
 		RenderWindow(const RENDER_WINDOW_DESC& desc, UINT32 windowId);
 		virtual ~RenderWindow();
 
-		/** 
+		/**
 		 * Switches the window to fullscreen mode. Child windows cannot go into fullscreen mode.
 		 *
 		 * @param[in]	width		Width of the window frame buffer in pixels.
@@ -325,7 +332,7 @@ namespace bs
 
 		/**
 		 * Makes the render target active or inactive. (for example in the case of a window, it will hide or restore the
-		 * window). 
+		 * window).
 		 */
 		virtual void setActive(bool state);
 

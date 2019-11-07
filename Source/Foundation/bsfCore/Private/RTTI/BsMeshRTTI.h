@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "BsCoreApplication.h"
 #include "Mesh/BsMesh.h"
 #include "Animation/BsSkeleton.h"
@@ -27,8 +28,8 @@ namespace bs
 			BS_RTTI_MEMBER_REFLPTR(mMorphShapes, 5)
 		BS_END_RTTI_MEMBERS
 
-		SPtr<MeshData> getMeshData(Mesh* obj) 
-		{ 
+		SPtr<MeshData> getMeshData(Mesh* obj)
+		{
 			SPtr<MeshData> meshData = obj->allocBuffer();
 
 			obj->readData(meshData);
@@ -37,8 +38,8 @@ namespace bs
 			return meshData;
 		}
 
-		void setMeshData(Mesh* obj, SPtr<MeshData> meshData) 
-		{ 
+		void setMeshData(Mesh* obj, SPtr<MeshData> meshData)
+		{
 			obj->mCPUData = meshData;
 		}
 

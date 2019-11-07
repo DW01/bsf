@@ -75,7 +75,7 @@ namespace bs
 	{
 		mWidth = 0;
 		mHeight = 0;
-		mIsEmpty = true; 
+		mIsEmpty = true;
 		mTextData = textData;
 		mWordsStart = mWordsEnd = 0;
 	}
@@ -200,7 +200,7 @@ namespace bs
 				// We store invisible space quads in the first page. Even though they aren't needed
 				// for rendering and we could just leave an empty space, they are needed for intersection tests
 				// for things like determining caret placement and selection areas
-				if(page == 0) 
+				if(page == 0)
 				{
 					INT32 curX = penX;
 					INT32 curY = 0;
@@ -250,11 +250,6 @@ namespace bs
 
 					INT32 curX = penX + curChar.xOffset;
 					INT32 curY = ((INT32) mTextData->getBaselineOffset() - curChar.yOffset);
-
-					// If index is negative, offset it so the text always begins at X=0. This works under the assumption
-					// that only the first character on a line can have a negative offset.
-					if (curX < 0)
-						penNegativeXOffset = penX - curChar.xOffset;
 
 					curX += penNegativeXOffset;
 					penX += curChar.xAdvance + kerning;
@@ -350,7 +345,7 @@ namespace bs
 		}
 	}
 
-	TextDataBase::TextDataBase(const U32String& text, const HFont& font, UINT32 fontSize, UINT32 width, UINT32 height, 
+	TextDataBase::TextDataBase(const U32String& text, const HFont& font, UINT32 fontSize, UINT32 width, UINT32 height,
 		bool wordWrap, bool wordBreak)
 		: mChars(nullptr), mNumChars(0), mWords(nullptr), mNumWords(0), mLines(nullptr), mNumLines(0), mPageInfos(nullptr)
 		, mNumPageInfos(0), mFont(font), mFontData(nullptr)
@@ -369,7 +364,8 @@ namespace bs
 
 		if(mFontData->size != fontSize)
 		{
-			LOGWRN("Unable to find font with specified size (" + toString(fontSize) + "). Using nearest available size: " + toString(mFontData->size));
+			BS_LOG(Warning, GUI, "Unable to find font with specified size ({0}). Using nearest available size: {1}",
+				fontSize, mFontData->size);
 		}
 
 		bool widthIsLimited = width > 0;
@@ -549,24 +545,24 @@ namespace bs
 			MemBuffer->deallocAll();
 	}
 
-	const HTexture& TextDataBase::getTextureForPage(UINT32 page) const 
-	{ 
-		return mFontData->texturePages[page]; 
+	const HTexture& TextDataBase::getTextureForPage(UINT32 page) const
+	{
+		return mFontData->texturePages[page];
 	}
 
-	INT32 TextDataBase::getBaselineOffset() const 
-	{ 
-		return mFontData->baselineOffset; 
+	INT32 TextDataBase::getBaselineOffset() const
+	{
+		return mFontData->baselineOffset;
 	}
 
-	UINT32 TextDataBase::getLineHeight() const 
-	{ 
-		return mFontData->lineHeight; 
+	UINT32 TextDataBase::getLineHeight() const
+	{
+		return mFontData->lineHeight;
 	}
 
-	UINT32 TextDataBase::getSpaceWidth() const 
-	{ 
-		return mFontData->spaceWidth; 
+	UINT32 TextDataBase::getSpaceWidth() const
+	{
+		return mFontData->spaceWidth;
 	}
 
 	void TextDataBase::initAlloc()

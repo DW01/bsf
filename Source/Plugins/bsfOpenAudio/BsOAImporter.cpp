@@ -18,11 +18,6 @@ namespace bs
 
 	}
 
-	OAImporter::~OAImporter()
-	{
-
-	}
-
 	bool OAImporter::isExtensionSupported(const String& ext) const
 	{
 		String lowerCaseExt = ext;
@@ -47,7 +42,7 @@ namespace bs
 		AudioDataInfo info;
 		UINT32 bytesPerSample;
 		UINT32 bufferSize;
-		UINT8* sampleBuffer;
+		SPtr<MemoryDataStream> sampleStream;
 		{
 			Lock fileLock = FileScheduler::getLock(filePath);
 			SPtr<DataStream> stream = FileSystem::openFile(filePath);
@@ -55,13 +50,13 @@ namespace bs
 			String extension = filePath.getExtension();
 			StringUtil::toLowerCase(extension);
 
-			UPtr<AudioDecoder> reader(nullptr, nullptr);
+			UPtr<AudioDecoder> reader;
 			if (extension == u8".wav")
-				reader = bs_unique_ptr<AudioDecoder>(bs_new<WaveDecoder>());
+				reader = bs_unique_ptr_new<WaveDecoder>();
 			else if (extension == u8".flac")
-				reader = bs_unique_ptr<AudioDecoder>(bs_new<FLACDecoder>());
+				reader = bs_unique_ptr_new<FLACDecoder>();
 			else if (extension == u8".ogg")
-				reader = bs_unique_ptr<AudioDecoder>(bs_new<OggVorbisDecoder>());
+				reader = bs_unique_ptr_new<OggVorbisDecoder>();
 
 			if (reader == nullptr)
 				return nullptr;
@@ -74,9 +69,9 @@ namespace bs
 
 			bytesPerSample = info.bitDepth / 8;
 			bufferSize = info.numSamples * bytesPerSample;
-			sampleBuffer = (UINT8*)bs_alloc(bufferSize);
 
-			reader->read(sampleBuffer, info.numSamples);
+			sampleStream = bs_shared_ptr_new<MemoryDataStream>(bufferSize);
+			reader->read(sampleStream->data(), info.numSamples);
 		}
 
 		SPtr<const AudioClipImportOptions> clipIO = std::static_pointer_cast<const AudioClipImportOptions>(importOptions);
@@ -87,16 +82,14 @@ namespace bs
 			UINT32 numSamplesPerChannel = info.numSamples / info.numChannels;
 
 			UINT32 monoBufferSize = numSamplesPerChannel * bytesPerSample;
-			UINT8* monoBuffer = (UINT8*)bs_alloc(monoBufferSize);
+			auto monoStream = bs_shared_ptr_new<MemoryDataStream>(monoBufferSize);
 
-			AudioUtility::convertToMono(sampleBuffer, monoBuffer, info.bitDepth, numSamplesPerChannel, info.numChannels);
+			AudioUtility::convertToMono(sampleStream->data(), monoStream->data(), info.bitDepth, numSamplesPerChannel, info.numChannels);
 
 			info.numSamples = numSamplesPerChannel;
 			info.numChannels = 1;
 
-			bs_free(sampleBuffer);
-
-			sampleBuffer = monoBuffer;
+			sampleStream = monoStream;
 			bufferSize = monoBufferSize;
 		}
 
@@ -104,15 +97,13 @@ namespace bs
 		if(clipIO->bitDepth != info.bitDepth)
 		{
 			UINT32 outBufferSize = info.numSamples * (clipIO->bitDepth / 8);
-			UINT8* outBuffer = (UINT8*)bs_alloc(outBufferSize);
+			auto outStream = bs_shared_ptr_new<MemoryDataStream>(outBufferSize);
 
-			AudioUtility::convertBitDepth(sampleBuffer, info.bitDepth, outBuffer, clipIO->bitDepth, info.numSamples);
+			AudioUtility::convertBitDepth(sampleStream->data(), info.bitDepth, outStream->data(), clipIO->bitDepth, info.numSamples);
 
 			info.bitDepth = clipIO->bitDepth;
 
-			bs_free(sampleBuffer);
-
-			sampleBuffer = outBuffer;
+			sampleStream = outStream;
 			bufferSize = outBufferSize;
 		}
 
@@ -122,13 +113,8 @@ namespace bs
 			// Note: If the original source was in Ogg Vorbis we could just copy it here, but instead we decode to PCM and
 			// then re-encode which is redundant. If later we decide to copy be aware that the engine encodes Ogg in a
 			// specific quality, and the the import source might have lower or higher bitrate/quality.
-			UINT8* encodedSamples = OggVorbisEncoder::PCMToOggVorbis(sampleBuffer, info, bufferSize);
-
-			bs_free(sampleBuffer);
-			sampleBuffer = encodedSamples;
+			sampleStream = OggVorbisEncoder::PCMToOggVorbis(sampleStream->data(), info, bufferSize);
 		}
-
-		SPtr<MemoryDataStream> sampleStream = bs_shared_ptr_new<MemoryDataStream>(sampleBuffer, bufferSize);
 
 		AUDIO_CLIP_DESC clipDesc;
 		clipDesc.bitDepth = info.bitDepth;

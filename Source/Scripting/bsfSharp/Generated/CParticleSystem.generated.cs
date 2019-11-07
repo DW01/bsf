@@ -72,7 +72,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the layer bitfield that controls whether a system is considered visible in a specific camera.  Layer must 
+		/// Determines the layer bitfield that controls whether a system is considered visible in a specific camera. Layer must 
 		/// match camera layer in order for the camera to render the component.
 		/// </summary>
 		[ShowInInspector]
@@ -85,7 +85,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Enables or disabled preview mode. Preview mode allows the particle system to play while the game is not running,  
+		/// Enables or disabled preview mode. Preview mode allows the particle system to play while the game is not running, 
 		/// primarily for preview purposes in the editor. Returns true if the preview mode was enabled, false if it was disabled 
 		/// or enabling preview failed.
 		/// </summary>

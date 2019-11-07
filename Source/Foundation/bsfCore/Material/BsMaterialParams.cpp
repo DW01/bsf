@@ -36,8 +36,10 @@ namespace bs
 		const Map<String, SHADER_DATA_PARAM_DESC>& dataParams,
 		const Map<String, SHADER_OBJECT_PARAM_DESC>& textureParams,
 		const Map<String, SHADER_OBJECT_PARAM_DESC>& bufferParams,
-		const Map<String, SHADER_OBJECT_PARAM_DESC>& samplerParams
+		const Map<String, SHADER_OBJECT_PARAM_DESC>& samplerParams,
+		UINT64 initialParamVersion
 	)
+		: mParamVersion(initialParamVersion)
 	{
 		mDataSize = 0;
 
@@ -46,11 +48,11 @@ namespace bs
 			if(param.second.type == GPDT_UNKNOWN)
 				continue;
 
+			UINT32 arraySize = param.second.arraySize > 1 ? param.second.arraySize : 1;
 			if(param.second.type == GPDT_STRUCT)
-				mNumStructParams++;
+				mNumStructParams += arraySize;
 			else
 			{
-				UINT32 arraySize = param.second.arraySize > 1 ? param.second.arraySize : 1;
 				const GpuParamDataTypeInfo& typeInfo = GpuParams::PARAM_SIZES.lookup[(int)param.second.type];
 				UINT32 paramSize = typeInfo.numColumns * typeInfo.numRows * typeInfo.baseTypeSize;
 
@@ -192,9 +194,9 @@ namespace bs
 		mAlloc.clear();
 	}
 
-	const ColorGradient& MaterialParamsBase::getColorGradientParam(const String& name, UINT32 arrayIdx) const
+	const ColorGradientHDR& MaterialParamsBase::getColorGradientParam(const String& name, UINT32 arrayIdx) const
 	{
-		static ColorGradient EMPTY_GRADIENT;
+		static ColorGradientHDR EMPTY_GRADIENT;
 
 		const ParamData* param = nullptr;
 		auto result = getParamData(name, ParamType::Data, GPDT_COLOR, arrayIdx, &param);
@@ -204,7 +206,7 @@ namespace bs
 		return getColorGradientParam(*param, arrayIdx);
 	}
 
-	void MaterialParamsBase::setColorGradientParam(const String& name, UINT32 arrayIdx, const ColorGradient& input) const
+	void MaterialParamsBase::setColorGradientParam(const String& name, UINT32 arrayIdx, const ColorGradientHDR& input) const
 	{
 		const ParamData* param = nullptr;
 		auto result = getParamData(name, ParamType::Data, GPDT_COLOR, arrayIdx, &param);
@@ -214,23 +216,23 @@ namespace bs
 		setColorGradientParam(*param, arrayIdx, input);
 	}
 
-	const ColorGradient& MaterialParamsBase::getColorGradientParam(const ParamData& param, UINT32 arrayIdx) const
+	const ColorGradientHDR& MaterialParamsBase::getColorGradientParam(const ParamData& param, UINT32 arrayIdx) const
 	{
 		const DataParamInfo& paramInfo = mDataParams[param.index + arrayIdx];
 		if (paramInfo.colorGradient)
 			return *paramInfo.colorGradient;
 
-		static ColorGradient EMPTY_GRADIENT;
+		static ColorGradientHDR EMPTY_GRADIENT;
 		return EMPTY_GRADIENT;
 	}
 
-	void MaterialParamsBase::setColorGradientParam(const ParamData& param, UINT32 arrayIdx, const ColorGradient& input) const
+	void MaterialParamsBase::setColorGradientParam(const ParamData& param, UINT32 arrayIdx, const ColorGradientHDR& input) const
 	{
 		DataParamInfo& paramInfo = mDataParams[param.index + arrayIdx];
 		if (paramInfo.colorGradient)
 			bs_pool_free(paramInfo.colorGradient);
 
-		paramInfo.colorGradient = bs_pool_new<ColorGradient>(input);
+		paramInfo.colorGradient = bs_pool_new<ColorGradientHDR>(input);
 
 		param.version = ++mParamVersion;
 	}
@@ -264,7 +266,7 @@ namespace bs
 		return GetParamResult::Success;
 	}
 
-	MaterialParamsBase::GetParamResult MaterialParamsBase::getParamData(const String& name, ParamType type, 
+	MaterialParamsBase::GetParamResult MaterialParamsBase::getParamData(const String& name, ParamType type,
 		GpuParamDataType dataType, UINT32 arrayIdx, const ParamData** output) const
 	{
 		auto iterFind = mParamLookup.find(name);
@@ -289,13 +291,13 @@ namespace bs
 		switch (errorCode)
 		{
 		case GetParamResult::NotFound:
-			LOGWRN("Material doesn't have a parameter named " + name + ".");
+			BS_LOG(Warning, Material, "Material doesn't have a parameter named {0}.", name);
 			break;
 		case GetParamResult::InvalidType:
-			LOGWRN("Parameter \"" + name + "\" is not of the requested type.");
+			BS_LOG(Warning, Material, "Parameter \"{0}\" is not of the requested type.", name);
 			break;
 		case GetParamResult::IndexOutOfBounds:
-			LOGWRN("Parameter \"" + name + "\" array index " + toString(arrayIdx) + " out of range.");
+			BS_LOG(Warning, Material, "Parameter \"{0}\" array index {1} out of range.", name, arrayIdx);
 			break;
 		default:
 			break;
@@ -323,12 +325,13 @@ namespace bs
 	}
 
 	template<bool Core>
-	TMaterialParams<Core>::TMaterialParams(const ShaderType& shader)
+	TMaterialParams<Core>::TMaterialParams(const ShaderType& shader, UINT64 initialParamVersion)
 		:MaterialParamsBase(
 			shader->getDataParams(),
 			shader->getTextureParams(),
 			shader->getBufferParams(),
-			shader->getSamplerParams()
+			shader->getSamplerParams(),
+			initialParamVersion
 		)
 	{
 		mStructParams = mAlloc.construct<ParamStructDataType>(mNumStructParams);
@@ -620,8 +623,8 @@ namespace bs
 		const ParamStructDataType& structParam = mStructParams[param.index + arrayIdx];
 		if (structParam.dataSize != size)
 		{
-			LOGWRN("Size mismatch when writing to a struct. Provided size was " + toString(size) + " bytes but the "
-				"struct size is" + toString(structParam.dataSize) + " bytes");
+			BS_LOG(Warning, Material, "Size mismatch when writing to a struct. Provided size was {0} bytes but the struct "
+				"size is {1} bytes", size, structParam.dataSize);
 			return;
 		}
 
@@ -634,8 +637,8 @@ namespace bs
 		const ParamStructDataType& structParam = mStructParams[param.index + arrayIdx];
 		if (structParam.dataSize != size)
 		{
-			LOGWRN("Size mismatch when writing to a struct. Provided size was " + toString(size) + " bytes but the "
-				"struct size is" + toString(structParam.dataSize) + " bytes");
+			BS_LOG(Warning, Material, "Size mismatch when writing to a struct. Provided size was {0} bytes but the struct "
+				"size is {1} bytes", size, structParam.dataSize);
 			return;
 		}
 
@@ -793,8 +796,8 @@ namespace bs
 	template class TMaterialParams<true>;
 	template class TMaterialParams<false>;
 
-	MaterialParams::MaterialParams(const HShader& shader)
-		:TMaterialParams(shader), mLastSyncVersion(1)
+	MaterialParams::MaterialParams(const HShader& shader, UINT64 initialParamVersion)
+		:TMaterialParams(shader, initialParamVersion), mLastSyncVersion(1)
 	{ }
 
 	void MaterialParams::getSyncData(UINT8* buffer, UINT32& size, bool forceAll)
@@ -852,7 +855,7 @@ namespace bs
 							dataParamSize += sizeof(UINT32);
 
 							// Curve data
-							dataParamSize += rttiGetElemSize(*paramInfo.floatCurve);
+							dataParamSize += rtti_size(*paramInfo.floatCurve).bytes;
 						}
 						else if (paramInfo.colorGradient && param.dataType == GPDT_COLOR)
 						{
@@ -860,7 +863,7 @@ namespace bs
 							dataParamSize += sizeof(UINT32);
 
 							// Curve data
-							dataParamSize += rttiGetElemSize(*paramInfo.colorGradient);
+							dataParamSize += rtti_size(*paramInfo.colorGradient).bytes;
 						}
 					}
 
@@ -880,17 +883,17 @@ namespace bs
 			}
 		}
 
-		const UINT32 textureEntrySize = sizeof(MaterialParamTextureDataCore) + sizeof(UINT32);
-		const UINT32 bufferEntrySize = sizeof(MaterialParamBufferDataCore) + sizeof(UINT32);
-		const UINT32 samplerStateEntrySize = sizeof(MaterialParamSamplerStateDataCore) + sizeof(UINT32);
+		const UINT64 textureEntrySize = sizeof(MaterialParamTextureDataCore) + sizeof(UINT32);
+		const UINT64 bufferEntrySize = sizeof(MaterialParamBufferDataCore) + sizeof(UINT32);
+		const UINT64 samplerStateEntrySize = sizeof(MaterialParamSamplerStateDataCore) + sizeof(UINT32);
 
-		const UINT32 dataParamsOffset = sizeof(UINT32) * 5;
-		const UINT32 textureParamsOffset = dataParamsOffset + dataParamSize;
-		const UINT32 bufferParamsOffset = textureParamsOffset + textureEntrySize * numDirtyTextureParams;
-		const UINT32 samplerStateParamsOffset = bufferParamsOffset + bufferEntrySize * numDirtyBufferParams;
-		const UINT32 structParamsOffset = samplerStateParamsOffset + samplerStateEntrySize * numDirtySamplerParams;
+		const UINT64 dataParamsOffset = sizeof(UINT32) * 5;
+		const UINT64 textureParamsOffset = dataParamsOffset + dataParamSize;
+		const UINT64 bufferParamsOffset = textureParamsOffset + textureEntrySize * numDirtyTextureParams;
+		const UINT64 samplerStateParamsOffset = bufferParamsOffset + bufferEntrySize * numDirtyBufferParams;
+		const UINT64 structParamsOffset = samplerStateParamsOffset + samplerStateEntrySize * numDirtySamplerParams;
 
-		const UINT32 totalSize = structParamsOffset + structParamSize;
+		const UINT32 totalSize = (UINT32)structParamsOffset + structParamSize;
 
 		if (buffer == nullptr)
 		{
@@ -900,24 +903,24 @@ namespace bs
 
 		if(size != totalSize)
 		{
-			LOGERR("Invalid buffer size provided, ignoring.");
+			BS_LOG(Error, Material, "Invalid buffer size provided, ignoring.");
 			return;
 		}
 
-		char* writeDest = (char*)buffer;
+		Bitstream stream((uint8_t*)buffer, size);
 
 		// Dirty counts for each parameter type
-		writeDest = rttiWriteElem(numDirtyDataParams, writeDest);
-		writeDest = rttiWriteElem(numDirtyTextureParams, writeDest);
-		writeDest = rttiWriteElem(numDirtyBufferParams, writeDest);
-		writeDest = rttiWriteElem(numDirtySamplerParams, writeDest);
-		writeDest = rttiWriteElem(numDirtyStructParams, writeDest);
+		rtti_write(numDirtyDataParams, stream);
+		rtti_write(numDirtyTextureParams, stream);
+		rtti_write(numDirtyBufferParams, stream);
+		rtti_write(numDirtySamplerParams, stream);
+		rtti_write(numDirtyStructParams, stream);
 
-		UINT32 dirtyDataParamOffset = 0;
-		UINT32 dirtyTextureParamIdx = 0;
-		UINT32 dirtyBufferParamIdx = 0;
-		UINT32 dirtySamplerParamIdx = 0;
-		UINT32 dirtyStructParamOffset = 0;
+		UINT64 dirtyDataParamOffset = 0;
+		UINT64 dirtyTextureParamIdx = 0;
+		UINT64 dirtyBufferParamIdx = 0;
+		UINT64 dirtySamplerParamIdx = 0;
+		UINT64 dirtyStructParamOffset = 0;
 
 		for(UINT32 i = 0; i < (UINT32)mParams.size(); i++)
 		{
@@ -935,17 +938,15 @@ namespace bs
 				{
 					const ParamStructDataType& paramData = mStructParams[param.index];
 
-					writeDest = (char*)buffer + structParamsOffset + dirtyStructParamOffset;
-
 					// Param index
-					writeDest = rttiWriteElem(i, writeDest, dirtyStructParamOffset);
+					stream.seek((structParamsOffset + dirtyStructParamOffset) * 8);
+					dirtyStructParamOffset += rtti_write(i, stream).bytes;
 
 					// Param data
 					for (UINT32 j = 0; j < arraySize; j++)
 					{
-						memcpy(writeDest, mStructParams[param.index + j].data, paramData.dataSize);
-						writeDest += paramData.dataSize;
-						dirtyDataParamOffset += paramData.dataSize;
+						stream.writeBytes(mStructParams[param.index + j].data, paramData.dataSize);
+						dirtyStructParamOffset += paramData.dataSize;
 					}
 				}
 				else
@@ -956,20 +957,18 @@ namespace bs
 					const UINT32 dataSize = arraySize * paramSize;
 					const DataParamInfo& paramInfo = mDataParams[param.index];
 
-					writeDest = (char*)buffer + dataParamsOffset + dirtyDataParamOffset;
-
 					// Param index
-					writeDest = rttiWriteElem(i, writeDest, dirtyDataParamOffset);
+					stream.seek((dataParamsOffset + dirtyDataParamOffset) * 8);
+					dirtyDataParamOffset += rtti_write(i, stream).bytes;
 
 					// Param data
 					// Note: This relies on the fact that all data params in the array are sequential
-					memcpy(writeDest, &mDataParamsBuffer[paramInfo.offset], dataSize);
-					writeDest += dataSize;
+					stream.writeBytes((uint8_t*)&mDataParamsBuffer[paramInfo.offset], dataSize);
 					dirtyDataParamOffset += dataSize;
 
 					// Param curves
-					UINT32* numDirtyCurvesWriteDst = (UINT32*)writeDest;
-					writeDest += sizeof(UINT32);
+					UINT64 numDirtyCurvesWriteDst = stream.tell();
+					stream.writeBytes(0);
 					dirtyDataParamOffset += sizeof(UINT32);
 
 					UINT32 numDirtyCurves = 0;
@@ -979,36 +978,37 @@ namespace bs
 						if (arrParamInfo.floatCurve && param.dataType == GPDT_FLOAT1)
 						{
 							// Array index
-							writeDest = rttiWriteElem(j, writeDest, dirtyDataParamOffset);
+							dirtyDataParamOffset += rtti_write(j, stream).bytes;
 
 							// Curve data
-							writeDest = rttiWriteElem(*arrParamInfo.floatCurve, writeDest, dirtyDataParamOffset);
+							dirtyDataParamOffset += rtti_write(*arrParamInfo.floatCurve, stream).bytes;
 
 							numDirtyCurves++;
 						}
 						else if (arrParamInfo.colorGradient && param.dataType == GPDT_COLOR)
 						{
 							// Array index
-							writeDest = rttiWriteElem(j, writeDest, dirtyDataParamOffset);
+							dirtyDataParamOffset += rtti_write(j, stream).bytes;
 
 							// Curve data
-							writeDest = rttiWriteElem(*arrParamInfo.colorGradient, writeDest, dirtyDataParamOffset);
+							dirtyDataParamOffset += rtti_write(*arrParamInfo.colorGradient, stream).bytes;
 
 							numDirtyCurves++;
 						}
 					}
 
-					*numDirtyCurvesWriteDst = numDirtyCurves;
+					stream.seek(numDirtyCurvesWriteDst);
+					stream.writeBytes(numDirtyCurves);
 				}
 			}
 			break;
 			case ParamType::Texture:
 			{
-				writeDest = (char*)buffer + textureParamsOffset + dirtyTextureParamIdx * textureEntrySize;
-				writeDest = rttiWriteElem(i, writeDest);
+				stream.seek((textureParamsOffset + dirtyTextureParamIdx * textureEntrySize) * 8);
+				rtti_write(i, stream);
 
 				const MaterialParamTextureData& textureData = mTextureParams[param.index];
-				MaterialParamTextureDataCore* coreTexData = (MaterialParamTextureDataCore*)writeDest;
+				MaterialParamTextureDataCore* coreTexData = (MaterialParamTextureDataCore*)stream.cursor();
 				new (coreTexData) MaterialParamTextureDataCore();
 
 				coreTexData->isLoadStore = textureData.isLoadStore;
@@ -1025,11 +1025,11 @@ namespace bs
 				break;
 			case ParamType::Buffer:
 			{
-				writeDest = (char*)buffer + bufferParamsOffset + dirtyBufferParamIdx * bufferEntrySize;
-				writeDest = rttiWriteElem(i, writeDest);
+				stream.seek((bufferParamsOffset + dirtyBufferParamIdx * bufferEntrySize) * 8);
+				rtti_write(i, stream);
 
 				const MaterialParamBufferData& bufferData = mBufferParams[param.index];
-				MaterialParamBufferDataCore* coreBufferData = (MaterialParamBufferDataCore*)writeDest;
+				MaterialParamBufferDataCore* coreBufferData = (MaterialParamBufferDataCore*)stream.cursor();
 				new (coreBufferData) MaterialParamBufferDataCore();
 
 				if(bufferData.value != nullptr)
@@ -1040,11 +1040,11 @@ namespace bs
 				break;
 			case ParamType::Sampler:
 			{
-				writeDest = (char*)buffer + samplerStateParamsOffset + dirtySamplerParamIdx * samplerStateEntrySize;
-				writeDest = rttiWriteElem(i, writeDest);
+				stream.seek((samplerStateParamsOffset + dirtySamplerParamIdx * samplerStateEntrySize) * 8);
+				rtti_write(i, stream);
 
 				const MaterialParamSamplerStateData& samplerData = mSamplerStateParams[param.index];
-				MaterialParamSamplerStateDataCore* coreSamplerData = (MaterialParamSamplerStateDataCore*)writeDest;
+				MaterialParamSamplerStateDataCore* coreSamplerData = (MaterialParamSamplerStateDataCore*)stream.cursor();
 				new (coreSamplerData) MaterialParamSamplerStateDataCore();
 
 				if (samplerData.value != nullptr)
@@ -1130,12 +1130,12 @@ namespace bs
 
 	namespace ct
 	{
-	MaterialParams::MaterialParams(const SPtr<Shader>& shader)
-		:TMaterialParams(shader)
+	MaterialParams::MaterialParams(const SPtr<Shader>& shader, UINT64 initialParamVersion)
+		:TMaterialParams(shader, initialParamVersion)
 	{ }
 
 	MaterialParams::MaterialParams(const SPtr<Shader>& shader, const SPtr<bs::MaterialParams>& params)
-		: TMaterialParams(shader)
+		: TMaterialParams(shader, 1)
 	{
 		memcpy(mDataParamsBuffer, params->mDataParamsBuffer, mDataSize);
 
@@ -1168,7 +1168,7 @@ namespace bs
 								dstParamInfo.floatCurve = bs_pool_new<TAnimationCurve<float>>(*srcParamInfo.floatCurve);
 
 							if (srcParamInfo.colorGradient)
-								dstParamInfo.colorGradient = bs_pool_new<ColorGradient>(*srcParamInfo.colorGradient);
+								dstParamInfo.colorGradient = bs_pool_new<ColorGradientHDR>(*srcParamInfo.colorGradient);
 						}
 					}
 				}
@@ -1221,7 +1221,7 @@ namespace bs
 
 	void MaterialParams::setSyncData(UINT8* buffer, UINT32 size)
 	{
-		char* sourceData = (char*)buffer;
+		Bitstream stream((uint8_t*)buffer, size);
 
 		UINT32 numDirtyDataParams = 0;
 		UINT32 numDirtyTextureParams = 0;
@@ -1229,11 +1229,11 @@ namespace bs
 		UINT32 numDirtySamplerParams = 0;
 		UINT32 numDirtyStructParams = 0;
 
-		sourceData = rttiReadElem(numDirtyDataParams, sourceData);
-		sourceData = rttiReadElem(numDirtyTextureParams, sourceData);
-		sourceData = rttiReadElem(numDirtyBufferParams, sourceData);
-		sourceData = rttiReadElem(numDirtySamplerParams, sourceData);
-		sourceData = rttiReadElem(numDirtyStructParams, sourceData);
+		rtti_read(numDirtyDataParams, stream);
+		rtti_read(numDirtyTextureParams, stream);
+		rtti_read(numDirtyBufferParams, stream);
+		rtti_read(numDirtySamplerParams, stream);
+		rtti_read(numDirtyStructParams, stream);
 
 		mParamVersion++;
 
@@ -1241,7 +1241,7 @@ namespace bs
 		{
 			// Param index
 			UINT32 paramIdx = 0;
-			sourceData = rttiReadElem(paramIdx, sourceData);
+			rtti_read(paramIdx, stream);
 
 			ParamData& param = mParams[paramIdx];
 			param.version = mParamVersion;
@@ -1256,16 +1256,15 @@ namespace bs
 
 			// Param data
 			// Note: This relies on the fact that all data params in the array are sequential
-			memcpy(&mDataParamsBuffer[paramInfo.offset], sourceData, dataParamSize);
-			sourceData += dataParamSize;
+			stream.readBytes(&mDataParamsBuffer[paramInfo.offset], dataParamSize);
 
 			// Param curves
 			UINT32 numDirtyCurves = 0;
-			sourceData = rttiReadElem(numDirtyCurves, sourceData);
+			rtti_read(numDirtyCurves, stream);
 			for(UINT32 j = 0; j < numDirtyCurves; j++)
 			{
 				UINT32 localIdx = 0;
-				sourceData = rttiReadElem(localIdx, sourceData);
+				rtti_read(localIdx, stream);
 
 				DataParamInfo& arrParamInfo = mDataParams[param.index + localIdx];
 				if (param.dataType == GPDT_FLOAT1)
@@ -1274,15 +1273,15 @@ namespace bs
 						bs_pool_free(arrParamInfo.floatCurve);
 
 					arrParamInfo.floatCurve = bs_pool_new<TAnimationCurve<float>>();
-					sourceData = rttiReadElem(*arrParamInfo.floatCurve, sourceData);
+					rtti_read(*arrParamInfo.floatCurve, stream);
 				}
 				else if (param.dataType == GPDT_COLOR)
 				{
 					if(arrParamInfo.colorGradient)
 						bs_pool_free(arrParamInfo.colorGradient);
 
-					arrParamInfo.colorGradient = bs_pool_new<ColorGradient>();
-					sourceData = rttiReadElem(*arrParamInfo.colorGradient, sourceData);
+					arrParamInfo.colorGradient = bs_pool_new<ColorGradientHDR>();
+					rtti_read(*arrParamInfo.colorGradient, stream);
 				}
 			}
 		}
@@ -1290,13 +1289,13 @@ namespace bs
 		for(UINT32 i = 0; i < numDirtyTextureParams; i++)
 		{
 			UINT32 paramIdx = 0;
-			sourceData = rttiReadElem(paramIdx, sourceData);
+			rtti_read(paramIdx, stream);
 
 			ParamData& param = mParams[paramIdx];
 			param.version = mParamVersion;
 
-			MaterialParamTextureDataCore* sourceTexData = (MaterialParamTextureDataCore*)sourceData;
-			sourceData += sizeof(MaterialParamTextureDataCore);
+			MaterialParamTextureDataCore* sourceTexData = (MaterialParamTextureDataCore*)stream.cursor();
+			stream.skipBytes(sizeof(MaterialParamTextureDataCore));
 
 			mTextureParams[param.index] = *sourceTexData;
 			sourceTexData->~MaterialParamTextureDataCore();
@@ -1305,13 +1304,13 @@ namespace bs
 		for (UINT32 i = 0; i < numDirtyBufferParams; i++)
 		{
 			UINT32 paramIdx = 0;
-			sourceData = rttiReadElem(paramIdx, sourceData);
+			rtti_read(paramIdx, stream);
 
 			ParamData& param = mParams[paramIdx];
 			param.version = mParamVersion;
 
-			MaterialParamBufferDataCore* sourceBufferData = (MaterialParamBufferDataCore*)sourceData;
-			sourceData += sizeof(MaterialParamBufferDataCore);
+			MaterialParamBufferDataCore* sourceBufferData = (MaterialParamBufferDataCore*)stream.cursor();
+			stream.skipBytes(sizeof(MaterialParamBufferDataCore));
 
 			mBufferParams[param.index] = *sourceBufferData;
 			sourceBufferData->~MaterialParamBufferDataCore();
@@ -1320,13 +1319,13 @@ namespace bs
 		for (UINT32 i = 0; i < numDirtySamplerParams; i++)
 		{
 			UINT32 paramIdx = 0;
-			sourceData = rttiReadElem(paramIdx, sourceData);
+			rtti_read(paramIdx, stream);
 
 			ParamData& param = mParams[paramIdx];
 			param.version = mParamVersion;
 
-			MaterialParamSamplerStateDataCore* sourceSamplerStateData = (MaterialParamSamplerStateDataCore*)sourceData;
-			sourceData += sizeof(MaterialParamSamplerStateDataCore);
+			MaterialParamSamplerStateDataCore* sourceSamplerStateData = (MaterialParamSamplerStateDataCore*)stream.cursor();
+			stream.skipBytes(sizeof(MaterialParamSamplerStateDataCore));
 
 			mSamplerStateParams[param.index] = *sourceSamplerStateData;
 			sourceSamplerStateData->~MaterialParamSamplerStateDataCore();
@@ -1336,7 +1335,7 @@ namespace bs
 		{
 			// Param index
 			UINT32 paramIdx = 0;
-			sourceData = rttiReadElem(paramIdx, sourceData);
+			rtti_read(paramIdx, stream);
 
 			ParamData& param = mParams[paramIdx];
 			param.version = mParamVersion;
@@ -1346,10 +1345,7 @@ namespace bs
 
 			// Param data
 			for (UINT32 j = 0; j < arraySize; j++)
-			{
-				memcpy(mStructParams[param.index + j].data, sourceData, paramData.dataSize);
-				sourceData += paramData.dataSize;
-			}
+				stream.readBytes(mStructParams[param.index + j].data, paramData.dataSize);
 		}
 	}
 	}

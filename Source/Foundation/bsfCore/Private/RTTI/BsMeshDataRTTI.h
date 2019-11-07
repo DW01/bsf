@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Mesh/BsMeshData.h"
 #include "RenderAPI/BsVertexDeclaration.h"
 #include "FileSystem/BsDataStream.h"
@@ -36,7 +37,7 @@ namespace bs
 		{
 			size = obj->getInternalBufferSize();
 
-			return bs_shared_ptr_new<MemoryDataStream>(obj->getData(), size, false);
+			return bs_shared_ptr_new<MemoryDataStream>(obj->getData(), size);
 		}
 
 		void setData(MeshData* obj, const SPtr<DataStream>& value, UINT32 size)
@@ -54,7 +55,7 @@ namespace bs
 			addPlainField("mNumVertices", 2, &MeshDataRTTI::getNumVertices, &MeshDataRTTI::setNumVertices);
 			addPlainField("mNumIndices", 3, &MeshDataRTTI::getNumIndices, &MeshDataRTTI::setNumIndices);
 
-			addDataBlockField("data", 4, &MeshDataRTTI::getData, &MeshDataRTTI::setData, 0);
+			addDataBlockField("data", 4, &MeshDataRTTI::getData, &MeshDataRTTI::setData);
 		}
 
 		SPtr<IReflectable> newRTTIObject() override

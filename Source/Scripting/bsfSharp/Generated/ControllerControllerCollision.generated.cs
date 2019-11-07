@@ -40,7 +40,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Component of the controller that was touched. Can be null if the controller has no component parent, in which  case 
+		/// Component of the controller that was touched. Can be null if the controller has no component parent, in which case 
 		/// check #controllerRaw.
 		/// </summary>
 		public CharacterController controller;

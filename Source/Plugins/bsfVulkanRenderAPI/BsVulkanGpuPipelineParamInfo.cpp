@@ -9,8 +9,7 @@
 namespace bs { namespace ct
 {
 	VulkanGpuPipelineParamInfo::VulkanGpuPipelineParamInfo(const GPU_PIPELINE_PARAMS_DESC& desc, GpuDeviceFlags deviceMask)
-		: GpuPipelineParamInfo(desc, deviceMask), mDeviceMask(deviceMask), mSetExtraInfos(nullptr), mLayouts()
-		, mLayoutInfos()
+		: GpuPipelineParamInfo(desc, deviceMask), mDeviceMask(deviceMask), mLayouts(), mLayoutInfos()
 	{ }
 
 	void VulkanGpuPipelineParamInfo::initialize()
@@ -33,6 +32,7 @@ namespace bs { namespace ct
 
 		mAlloc.reserve<VkDescriptorSetLayoutBinding>(mNumElements)
 			.reserve<GpuParamObjectType>(mNumElements)
+			.reserve<GpuBufferFormat>(mNumElements)
 			.reserve<LayoutInfo>(mNumSets)
 			.reserve<VulkanDescriptorLayout*>(mNumSets * numDevices)
 			.reserve<SetExtraInfo>(mNumSets)
@@ -42,6 +42,7 @@ namespace bs { namespace ct
 		mLayoutInfos = mAlloc.alloc<LayoutInfo>(mNumSets);
 		VkDescriptorSetLayoutBinding* bindings = mAlloc.alloc<VkDescriptorSetLayoutBinding>(mNumElements);
 		GpuParamObjectType* types = mAlloc.alloc<GpuParamObjectType>(mNumElements);
+		GpuBufferFormat* elementTypes = mAlloc.alloc<GpuBufferFormat>(mNumElements);
 
 		for (UINT32 i = 0; i < BS_MAX_DEVICES; i++)
 		{
@@ -62,6 +63,9 @@ namespace bs { namespace ct
 		if (types != nullptr)
 			bs_zero_out(types, mNumElements);
 
+		if (elementTypes != nullptr)
+			bs_zero_out(elementTypes, mNumElements);
+
 		UINT32 globalBindingIdx = 0;
 		for (UINT32 i = 0; i < mNumSets; i++)
 		{
@@ -70,6 +74,7 @@ namespace bs { namespace ct
 			mLayoutInfos[i].numBindings = 0;
 			mLayoutInfos[i].bindings = nullptr;
 			mLayoutInfos[i].types = nullptr;
+			mLayoutInfos[i].elementTypes = nullptr;
 
 			for (UINT32 j = 0; j < mSetInfos[i].numSlots; j++)
 			{
@@ -93,6 +98,7 @@ namespace bs { namespace ct
 		{
 			mLayoutInfos[i].bindings = &bindings[offset];
 			mLayoutInfos[i].types = &types[offset];
+			mLayoutInfos[i].elementTypes = &elementTypes[offset];
 			offset += mLayoutInfos[i].numBindings;
 		}
 
@@ -118,8 +124,7 @@ namespace bs { namespace ct
 					UINT32 bindingIdx = getBindingIdx(entry.second.set, entry.second.slot);
 					assert(bindingIdx != (UINT32)-1);
 
-					LayoutInfo& layoutInfo = mLayoutInfos[entry.second.set];
-					VkDescriptorSetLayoutBinding& binding = layoutInfo.bindings[bindingIdx];
+					VkDescriptorSetLayoutBinding& binding = bindings[bindingIdx];
 					binding.descriptorCount = 1;
 					binding.stageFlags |= stageFlagsLookup[i];
 					binding.descriptorType = descType;
@@ -133,21 +138,41 @@ namespace bs { namespace ct
 					UINT32 bindingIdx = getBindingIdx(entry.second.set, entry.second.slot);
 					assert(bindingIdx != (UINT32)-1);
 
-					LayoutInfo& layoutInfo = mLayoutInfos[entry.second.set];
-					VkDescriptorSetLayoutBinding& binding = layoutInfo.bindings[bindingIdx];
+					VkDescriptorSetLayoutBinding& binding = bindings[bindingIdx];
 					binding.descriptorCount = 1;
 					binding.stageFlags |= stageFlagsLookup[i];
 					binding.descriptorType = descType;
 
-					layoutInfo.types[bindingIdx] = entry.second.type;
+					types[bindingIdx] = entry.second.type;
+					elementTypes[bindingIdx] = entry.second.elementType;
 				}
 			};
 
-			// Note: Assuming all textures and samplers use the same set/slot combination, and that they're combined
 			setUpBlockBindings(paramDesc->paramBlocks, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-			setUpBindings(paramDesc->textures, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			setUpBindings(paramDesc->textures, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
 			setUpBindings(paramDesc->loadStoreTextures, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-			//setUpBindings(paramDesc->samplers, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+			// Set up sampler bindings
+			for (auto& entry : paramDesc->samplers)
+			{
+				UINT32 bindingIdx = getBindingIdx(entry.second.set, entry.second.slot);
+				assert(bindingIdx != (UINT32)-1);
+
+				VkDescriptorSetLayoutBinding& binding = bindings[bindingIdx];
+
+				// If we already assigned an image to this binding slot, then it's a combined image/sampler
+				if(binding.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+					binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				else
+				{
+					binding.descriptorCount = 1;
+					binding.stageFlags |= stageFlagsLookup[i];
+					binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+
+					types[bindingIdx] = entry.second.type;
+					elementTypes[bindingIdx] = entry.second.elementType;
+				}
+			}
 
 			// Set up buffer bindings
 			for (auto& entry : paramDesc->buffers)
@@ -155,8 +180,7 @@ namespace bs { namespace ct
 				UINT32 bindingIdx = getBindingIdx(entry.second.set, entry.second.slot);
 				assert(bindingIdx != (UINT32)-1);
 
-				LayoutInfo& layoutInfo = mLayoutInfos[entry.second.set];
-				VkDescriptorSetLayoutBinding& binding = layoutInfo.bindings[bindingIdx];
+				VkDescriptorSetLayoutBinding& binding = bindings[bindingIdx];
 				binding.descriptorCount = 1;
 				binding.stageFlags |= stageFlagsLookup[i];
 
@@ -175,7 +199,8 @@ namespace bs { namespace ct
 					break;
 				}
 
-				layoutInfo.types[bindingIdx] = entry.second.type;
+				types[bindingIdx] = entry.second.type;
+				elementTypes[bindingIdx] = entry.second.elementType;
 			}
 		}
 

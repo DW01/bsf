@@ -68,7 +68,7 @@ namespace bs
 			desc.depth = entry.depth;
 			desc.numArraySlices = entry.arraySize;
 			desc.format = PF_RGBA8;
-			desc.usage = TU_STATIC;
+			desc.usage = TU_STATIC | TU_MUTABLEFORMAT;
 
 			mDummyReadTextures[idx] = std::static_pointer_cast<VulkanTexture>(createTexture(desc));
 			mDummyReadTextures[idx]->writeData(*pixelData);
@@ -80,56 +80,80 @@ namespace bs
 		}
 	}
 
-	VkImageView VulkanTextureManager::getDummyImageView(GpuParamObjectType type, UINT32 deviceIdx) const
+	VulkanTexture* VulkanTextureManager::getDummyTexture(GpuParamObjectType type) const
 	{
-		SPtr<VulkanTexture> texture;
 		switch(type)
 		{
 		case GPOT_TEXTURE2DMS:
 		case GPOT_TEXTURE2D:
-			texture = mDummyReadTextures[2];
-			break;
+			return mDummyReadTextures[2].get();
 		case GPOT_RWTEXTURE2D:
 		case GPOT_RWTEXTURE2DMS:
-			texture = mDummyStorageTextures[2];
-			break;
+			return mDummyStorageTextures[2].get();
 		case GPOT_TEXTURECUBE:
-			texture = mDummyReadTextures[5];
-			break;
+			return mDummyReadTextures[5].get();
 		case GPOT_TEXTURECUBEARRAY:
-			texture = mDummyReadTextures[6];
-			break;
+			return mDummyReadTextures[6].get();
 		case GPOT_TEXTURE2DARRAY:
 		case GPOT_TEXTURE2DMSARRAY:
-			texture = mDummyReadTextures[3];
-			break;
+			return mDummyReadTextures[3].get();
 		case GPOT_RWTEXTURE2DARRAY:
 		case GPOT_RWTEXTURE2DMSARRAY:
-			texture = mDummyStorageTextures[3];
-			break;
+			return mDummyStorageTextures[3].get();
 		case GPOT_TEXTURE3D:
-			texture = mDummyReadTextures[4];
-			break;
+			return mDummyReadTextures[4].get();
 		case GPOT_RWTEXTURE3D:
-			texture = mDummyStorageTextures[4];
-			break;
+			return mDummyStorageTextures[4].get();
 		case GPOT_TEXTURE1D:
-			texture = mDummyReadTextures[0];
-			break;
+			return mDummyReadTextures[0].get();
 		case GPOT_TEXTURE1DARRAY:
-			texture = mDummyReadTextures[1];
-			break;
+			return mDummyReadTextures[1].get();
 		case GPOT_RWTEXTURE1D:
-			texture = mDummyStorageTextures[0];
-			break;
+			return mDummyStorageTextures[0].get();
 		case GPOT_RWTEXTURE1DARRAY:
-			texture = mDummyStorageTextures[1];
-			break;
+			return mDummyStorageTextures[1].get();
 		default:
-			break;
+			return nullptr;
 		}
+	}
 
-		return texture->getResource(deviceIdx)->getView(false);
+	VkFormat VulkanTextureManager::getDummyViewFormat(GpuBufferFormat format)
+	{
+		switch(format)
+		{
+		case BF_16X1F:
+		case BF_32X1F:
+			return VK_FORMAT_R32_SFLOAT;
+		case BF_16X2F:
+		case BF_32X2F:
+			return VK_FORMAT_R16G16_UNORM;
+		case BF_32X3F:
+		case BF_32X4F:
+		case BF_16X4F:
+			return VK_FORMAT_R8G8B8A8_UNORM;
+		case BF_16X1U:
+		case BF_32X1U:
+			return VK_FORMAT_R32_UINT;
+		case BF_16X2U:
+		case BF_32X2U:
+			return VK_FORMAT_R16G16_UINT;
+		case BF_32X3U:
+		case BF_32X4U:
+		case BF_16X4U:
+			return VK_FORMAT_R8G8B8A8_UINT;
+		case BF_16X1S:
+		case BF_32X1S:
+			return VK_FORMAT_R32_SINT;
+		case BF_16X2S:
+		case BF_32X2S:
+			return VK_FORMAT_R16G16_SINT;
+		case BF_32X3S:
+		case BF_32X4S:
+		case BF_16X4S:
+			return VK_FORMAT_R8G8B8A8_SINT;
+		default:
+			return VK_FORMAT_UNDEFINED;
+		}
 	}
 
 	SPtr<Texture> VulkanTextureManager::createTextureInternal(const TEXTURE_DESC& desc,

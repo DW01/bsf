@@ -11,8 +11,7 @@
 namespace bs { namespace ct
 {
 	D3D11TextureView::D3D11TextureView(const D3D11Texture* texture, const TEXTURE_VIEW_DESC& desc)
-		: TextureView(desc), mSRV(nullptr), mUAV(nullptr), mRTV(nullptr), mWDepthWStencilView(nullptr)
-		, mRODepthWStencilView(nullptr), mRODepthROStencilView(nullptr), mWDepthROStencilView(nullptr)
+		: TextureView(desc)
 	{
 		if ((mDesc.usage & GVU_RANDOMWRITE) != 0)
 			mUAV = createUAV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices);
@@ -20,13 +19,13 @@ namespace bs { namespace ct
 			mRTV = createRTV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices);
 		else if ((mDesc.usage & GVU_DEPTHSTENCIL) != 0)
 		{
-			mWDepthWStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices, 
+			mWDepthWStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices,
 				false, false);
-			mRODepthWStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices, 
+			mRODepthWStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices,
 				true, false);
-			mRODepthROStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices, 
+			mRODepthROStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices,
 				true, true);
-			mWDepthROStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices, 
+			mWDepthROStencilView = createDSV(texture, mDesc.mostDetailMip, mDesc.firstArraySlice, mDesc.numArraySlices,
 				false, true);
 		}
 		else

@@ -8,35 +8,27 @@
 #include "BsRendererView.h"
 #include "BsRendererScene.h"
 
-namespace bs 
-{ 
+namespace bs
+{
 	struct EvaluatedAnimationData;
 
 	namespace ct
 	{
 	class LightGrid;
+	struct LoadedRendererTextures;
 
 	/** @addtogroup RenderBeast
 	 *  @{
 	 */
 
-	/** Information about current time and frame index. */
-	struct FrameTimings
-	{
-		float time;
-		float timeDelta;
-		UINT64 frameIdx;
-	};
-
 	/** Contains information global to an entire frame. */
 	struct FrameInfo
 	{
 		FrameInfo(const FrameTimings& timings, PerFrameData perFrameData)
-			:timeDelta(timings.timeDelta), frameIdx(timings.frameIdx), perFrameData(perFrameData)
+			:timings(timings), perFrameData(perFrameData)
 		{ }
 
-		float timeDelta;
-		UINT64 frameIdx;
+		FrameTimings timings;
 		PerFrameData perFrameData;
 	};
 
@@ -79,7 +71,7 @@ namespace bs
 		void destroy() override;
 
 		/** @copydoc Renderer::captureSceneCubeMap */
-		void captureSceneCubeMap(const SPtr<Texture>& cubemap, const Vector3& position, 
+		void captureSceneCubeMap(const SPtr<Texture>& cubemap, const Vector3& position,
 			const CaptureSettings& settings) override;
 
 		/** @copydoc Renderer::getShaderExtensionPointInfo */
@@ -95,7 +87,7 @@ namespace bs
 		/** @copydoc Renderer::notifyCameraUpdated */
 		void notifyCameraUpdated(Camera* camera, UINT32 updateFlag) override;
 
-		/** @copydocRenderer::notifyCameraRemoved */
+		/** @copydoc Renderer::notifyCameraRemoved */
 		void notifyCameraRemoved(Camera* camera) override;
 
 		/** @copydoc Renderer::notifyLightAdded */
@@ -176,11 +168,11 @@ namespace bs
 		void renderAllCore(FrameTimings timings, PerFrameData perFrameData);
 
 		/**
-		 * Renders all views in the provided view group.
-		 * 
-		 * @note	Core thread only. 
+		 * Renders all views in the provided view group. Returns true if anything has been draw to any of the views.
+		 *
+		 * @note	Core thread only.
 		 */
-		void renderViews(RendererViewGroup& viewGroup, const FrameInfo& frameInfo);
+		bool renderViews(RendererViewGroup& viewGroup, const FrameInfo& frameInfo);
 
 		/**
 		 * Renders all objects visible by the provided view.
@@ -190,14 +182,14 @@ namespace bs
 		void renderView(const RendererViewGroup& viewGroup, RendererView& view, const FrameInfo& frameInfo);
 
 		/**
-		 * Renders all overlay callbacks of the provided view.
+		 * Renders all overlay callbacks of the provided view. Returns true if anything has been rendered in any of the views.
 		 * 					
 		 * @note	Core thread only.
 		 */
-		void renderOverlay(RendererView& view);
+		bool renderOverlay(RendererView& view, const FrameInfo& frameInfo);
 
 		/**	Creates data used by the renderer on the core thread. */
-		void initializeCore();
+		void initializeCore(const LoadedRendererTextures& rendererTextures);
 
 		/**	Destroys data used by the renderer on the core thread. */
 		void destroyCore();
@@ -219,6 +211,9 @@ namespace bs
 		// Sim thread only fields
 		SPtr<RenderBeastOptions> mOptions;
 		bool mOptionsDirty = true;
+
+		// Transient
+		Vector<RendererExtension*> mOverlayExtensions;
 	};
 
 	/**	Provides easy access to the RenderBeast renderer. */

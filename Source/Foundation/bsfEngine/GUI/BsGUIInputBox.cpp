@@ -103,46 +103,6 @@ namespace bs
 		}
 	}
 
-	UINT32 GUIInputBox::_getNumRenderElements() const
-	{
-		UINT32 numElements = mImageSprite->getNumRenderElements();
-		numElements += mTextSprite->getNumRenderElements();
-
-		if(mCaretShown && gGUIManager().getCaretBlinkState())
-			numElements += gGUIManager().getInputCaretTool()->getSprite()->getNumRenderElements();
-
-		if(mSelectionShown)
-		{
-			const Vector<ImageSprite*>& sprites = gGUIManager().getInputSelectionTool()->getSprites();
-			for(auto& selectionSprite : sprites)
-			{
-				numElements += selectionSprite->getNumRenderElements();
-			}
-		}
-
-		return numElements;
-	}
-
-	const SpriteMaterialInfo& GUIInputBox::_getMaterial(UINT32 renderElementIdx, SpriteMaterial** material) const
-	{
-		UINT32 localRenderElementIdx;
-		Sprite* sprite = renderElemToSprite(renderElementIdx, localRenderElementIdx);
-
-		*material = sprite->getMaterial(localRenderElementIdx);
-		return sprite->getMaterialInfo(localRenderElementIdx);
-	}
-
-	void GUIInputBox::_getMeshInfo(UINT32 renderElementIdx, UINT32& numVertices, UINT32& numIndices, GUIMeshType& type) const
-	{
-		UINT32 localRenderElementIdx;
-		Sprite* sprite = renderElemToSprite(renderElementIdx, localRenderElementIdx);
-
-		UINT32 numQuads = sprite->getNumQuads(localRenderElementIdx);
-		numVertices = numQuads * 4;
-		numIndices = numQuads * 6;
-		type = GUIMeshType::Triangle;
-	}
-
 	void GUIInputBox::updateRenderElementsInternal()
 	{		
 		mImageDesc.width = mLayoutData.area.width;
@@ -162,10 +122,13 @@ namespace bs
 		TEXT_SPRITE_DESC textDesc = getTextDesc();
 		mTextSprite->update(textDesc, (UINT64)_getParentWidget());
 
+		ImageSprite* caretSprite = nullptr;
 		if(mCaretShown && gGUIManager().getCaretBlinkState())
 		{
 			gGUIManager().getInputCaretTool()->updateText(this, textDesc); // TODO - These shouldn't be here. Only call this when one of these parameters changes.
 			gGUIManager().getInputCaretTool()->updateSprite();
+
+			caretSprite = gGUIManager().getInputCaretTool()->getSprite();
 		}
 
 		if(mSelectionShown)
@@ -178,6 +141,30 @@ namespace bs
 		// input box isn't filled with mostly empty space.
 		Vector2I offset(mLayoutData.area.x, mLayoutData.area.y);
 		clampScrollToBounds(mTextSprite->getBounds(offset, Rect2I()));
+
+		// Populate GUI render elements from the sprites
+		{
+			using T = impl::GUIRenderElementHelper;
+			T::populate({ T::SpriteInfo(mTextSprite, 1), T::SpriteInfo(mImageSprite, 3), T::SpriteInfo(caretSprite) }, mRenderElements);
+
+			if (mSelectionShown)
+			{
+				const Vector<ImageSprite*>& sprites = gGUIManager().getInputSelectionTool()->getSprites();
+				for (auto& entry : sprites)
+				{
+					for (UINT32 i = 0; i < entry->getNumRenderElements(); i++)
+					{
+						mRenderElements.add(GUIRenderElement());
+						GUIRenderElement& renderElement = mRenderElements.back();
+
+						entry->getRenderElementInfo(i, renderElement);
+
+						renderElement.depth = 2;
+						renderElement.type = GUIMeshType::Triangle;
+					}
+				}
+			}
+		}
 
 		GUIElement::updateRenderElementsInternal();
 	}
@@ -356,21 +343,6 @@ namespace bs
 		return textBounds;
 	}
 
-	UINT32 GUIInputBox::_getRenderElementDepth(UINT32 renderElementIdx) const
-	{
-		UINT32 localRenderElementIdx;
-		Sprite* sprite = renderElemToSprite(renderElementIdx, localRenderElementIdx);
-
-		if(sprite == mImageSprite)
-			return _getDepth() + 3;
-		else if(sprite == mTextSprite)
-			return _getDepth() + 1;
-		else if(sprite == gGUIManager().getInputCaretTool()->getSprite())
-			return _getDepth();
-		else // Selection sprites
-			return _getDepth() + 2;
-	}
-
 	UINT32 GUIInputBox::_getRenderElementDepthRange() const
 	{
 		return 4;
@@ -387,8 +359,15 @@ namespace bs
 		return false;
 	}
 
-	void GUIInputBox::_fillBuffer(UINT8* vertices, UINT32* indices, UINT32 vertexOffset, UINT32 indexOffset,
-		UINT32 maxNumVerts, UINT32 maxNumIndices, UINT32 renderElementIdx) const
+	void GUIInputBox::_fillBuffer(
+		UINT8* vertices,
+		UINT32* indices,
+		UINT32 vertexOffset,
+		UINT32 indexOffset,
+		const Vector2I& offset,
+		UINT32 maxNumVerts,
+		UINT32 maxNumIndices,
+		UINT32 renderElementIdx) const
 	{
 		UINT8* uvs = vertices + sizeof(Vector2);
 		UINT32 vertexStride = sizeof(Vector2) * 2;
@@ -396,11 +375,11 @@ namespace bs
 
 		UINT32 localRenderElementIdx;
 		Sprite* sprite = renderElemToSprite(renderElementIdx, localRenderElementIdx);
-		Vector2I offset = renderElemToOffset(renderElementIdx);
+		Vector2I layoutOffset = renderElemToOffset(renderElementIdx) + offset;
 		Rect2I clipRect = renderElemToClipRect(renderElementIdx);
 
-		sprite->fillBuffer(vertices, uvs, indices, vertexOffset, indexOffset, maxNumVerts, maxNumIndices, vertexStride, 
-			indexStride, localRenderElementIdx, offset, clipRect);
+		sprite->fillBuffer(vertices, uvs, indices, vertexOffset, indexOffset, maxNumVerts, maxNumIndices, vertexStride,
+			indexStride, localRenderElementIdx, layoutOffset, clipRect);
 	}
 
 	bool GUIInputBox::_mouseEvent(const GUIMouseEvent& ev)
@@ -1004,7 +983,7 @@ namespace bs
 		INT32 left = textOffset.x - mTextOffset.x;
 		// Include caret width here because we don't want to scroll if just the caret is outside the bounds
 		// (Possible if the text width is exactly the maximum width)
-		INT32 right = left + (INT32)textDesc.width + caretWidth; 
+		INT32 right = left + (INT32)textDesc.width + caretWidth;
 		INT32 top = textOffset.y - mTextOffset.y;
 		INT32 bottom = top + (INT32)textDesc.height;
 

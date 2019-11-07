@@ -16,7 +16,7 @@ namespace bs
 		for (UINT32 i = 0; i < numFields; i++)
 		{
 			RTTIField* field = type->getField(i);
-			if (field->isReflectableType() || field->isReflectablePtrType())
+			if (field->schema.type == SerializableFT_Reflectable || field->schema.type == SerializableFT_ReflectablePtr)
 				return true;
 		}
 
@@ -27,7 +27,7 @@ namespace bs
 			for (UINT32 i = 0; i < numFields; i++)
 			{
 				RTTIField* field = derivedClass->getField(i);
-				if (field->isReflectableType() || field->isReflectablePtrType())
+				if (field->schema.type == SerializableFT_Reflectable || field->schema.type == SerializableFT_ReflectablePtr)
 					return true;
 			}
 		}
@@ -35,7 +35,7 @@ namespace bs
 		return false;
 	}
 
-	void findResourceDependenciesInternal(IReflectable& obj, FrameAlloc& alloc, bool recursive, 
+	void findResourceDependenciesInternal(IReflectable& obj, FrameAlloc& alloc, bool recursive,
 		Map<UUID, ResourceDependency>& dependencies)
 	{
 		RTTITypeBase* rtti = obj.getRTTI();
@@ -47,16 +47,16 @@ namespace bs
 			for (UINT32 i = 0; i < numFields; i++)
 			{
 				RTTIField* field = rtti->getField(i);
-				if ((field->getFlags() & RTTI_Flag_SkipInReferenceSearch) != 0)
+				if (field->schema.info.flags.isSet(RTTIFieldFlag::SkipInReferenceSearch))
 					continue;
 
-				if (field->isReflectableType())
+				if (field->schema.type == SerializableFT_Reflectable)
 				{
 					auto reflectableField = static_cast<RTTIReflectableFieldBase*>(field);
 
 					if (reflectableField->getType()->getRTTIId() == TID_ResourceHandle)
 					{
-						if (reflectableField->isArray())
+						if (reflectableField->schema.isArray)
 						{
 							const UINT32 numElements = reflectableField->getArraySize(rttiInstance, &obj);
 							for (UINT32 j = 0; j < numElements; j++)
@@ -83,11 +83,11 @@ namespace bs
 					}
 					else if (recursive)
 					{
-						// Optimization, no need to retrieve its value and go deeper if it has no 
+						// Optimization, no need to retrieve its value and go deeper if it has no
 						// reflectable children that may hold the reference.
 						if (hasReflectableChildren(reflectableField->getType()))
 						{
-							if (reflectableField->isArray())
+							if (reflectableField->schema.isArray)
 							{
 								const UINT32 numElements = reflectableField->getArraySize(rttiInstance, &obj);
 								for (UINT32 j = 0; j < numElements; j++)
@@ -104,20 +104,20 @@ namespace bs
 						}
 					}
 				}
-				else if (field->isReflectablePtrType() && recursive)
+				else if (field->schema.type == SerializableFT_ReflectablePtr && recursive)
 				{
 					auto reflectablePtrField = static_cast<RTTIReflectablePtrFieldBase*>(field);
 
-					// Optimization, no need to retrieve its value and go deeper if it has no 
+					// Optimization, no need to retrieve its value and go deeper if it has no
 					// reflectable children that may hold the reference.
 					if (hasReflectableChildren(reflectablePtrField->getType()))
 					{
-						if (reflectablePtrField->isArray())
+						if (reflectablePtrField->schema.isArray)
 						{
 							const UINT32 numElements = reflectablePtrField->getArraySize(rttiInstance, &obj);
 							for (UINT32 j = 0; j < numElements; j++)
 							{
-								const SPtr<IReflectable>& childObj = 
+								const SPtr<IReflectable>& childObj =
 									reflectablePtrField->getArrayValue(rttiInstance, &obj, j);
 
 								if (childObj != nullptr)
@@ -203,7 +203,7 @@ namespace bs
 		return output;
 	}
 
-	class CoreSerializationContextRTTI : 
+	class CoreSerializationContextRTTI :
 		public RTTIType<CoreSerializationContext, SerializationContext, CoreSerializationContextRTTI>
 	{
 		const String& getRTTIName() override

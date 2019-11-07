@@ -45,7 +45,7 @@ namespace bs
 			set { Internal_setMaterials(mCachedPtr, value); }
 		}
 
-		/// <summary>Factor to be applied to the cull distance set in the camera's render settings.</summary>
+		/// <summary>Factor to be applied to the cull distance set in the camera&apos;s render settings.</summary>
 		[ShowInInspector]
 		[NativeWrapper]
 		public float CullDistance
@@ -55,7 +55,20 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the layer bitfield that controls whether a renderable is considered visible in a specific camera.  
+		/// If enabled this renderable will write per-pixel velocity information when rendered. This is required for effects such 
+		/// as temporal anti-aliasing and motion blur, but comes with a minor performance overhead. If you are not using those 
+		/// effects you can disable this for a performance gain.
+		/// </summary>
+		[ShowInInspector]
+		[NativeWrapper]
+		public bool WriteVelocity
+		{
+			get { return Internal_getWriteVelocity(mCachedPtr); }
+			set { Internal_setWriteVelocity(mCachedPtr, value); }
+		}
+
+		/// <summary>
+		/// Determines the layer bitfield that controls whether a renderable is considered visible in a specific camera. 
 		/// Renderable layer must match camera layer in order for the camera to render the component.
 		/// </summary>
 		[ShowInInspector]
@@ -79,8 +92,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Sets a material that will be used for rendering a sub-mesh with the specified index. If a sub-mesh doesn't have a 
-		/// specific material set then the primary material will be used.
+		/// Sets a material that will be used for rendering a sub-mesh with the specified index. If a sub-mesh doesn&apos;t have 
+		/// a specific material set then the primary material will be used.
 		/// </summary>
 		public void SetMaterial(int idx, RRef<Material> material)
 		{
@@ -88,8 +101,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Sets a material that will be used for rendering a sub-mesh with the specified index. If a sub-mesh doesn't have a 
-		/// specific material set then the primary material will be used.
+		/// Sets a material that will be used for rendering a sub-mesh with the specified index. If a sub-mesh doesn&apos;t have 
+		/// a specific material set then the primary material will be used.
 		/// </summary>
 		public void SetMaterial(RRef<Material> material)
 		{
@@ -120,6 +133,10 @@ namespace bs
 		private static extern void Internal_setCullDistanceFactor(IntPtr thisPtr, float factor);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern float Internal_getCullDistanceFactor(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setWriteVelocity(IntPtr thisPtr, bool enable);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern bool Internal_getWriteVelocity(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setLayer(IntPtr thisPtr, ulong layer);
 		[MethodImpl(MethodImplOptions.InternalCall)]

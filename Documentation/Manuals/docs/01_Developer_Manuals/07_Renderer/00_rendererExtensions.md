@@ -38,7 +38,7 @@ public:
 ~~~~~~~~~~~~~
  
 Finally the implementation needs to implement the following methods:
- - @bs::RendererExtension::check() - Called every frame for every camera in the scene. The methods accepts a camera as a parameter and return true or false whether the extension wishes to render to that camera. Some extensions might render to all cameras, others just to one or a few.
+ - @bs::RendererExtension::check() - Called every frame for every camera in the scene. The methods accepts a camera as a parameter and returns @bs::RendererExtensionRequest that signals the renderer if and under which circumstances should **RendererExtension::render()** be called.
  - @bs::RendererExtension::render() - Called every frame for every camera that the **ct::RendererExtension::check()** method returned true for. This is the method where you place the bulk of extension code and perform actual rendering. The rendering is performed using the low level rendering API as described previously. Note that this is the only method in the extension that you should be rendering from.
  
 ~~~~~~~~~~~~~{.cpp}
@@ -50,13 +50,13 @@ public:
 		: RendererExtension(RenderLocation::PostLightPass, 0)
 	{ }
 	
-	bool check(const Camera& camera) override
+	bool check(const Camera& camera, bool& canSkip) override
 	{
 		// Render on any camera
 		return true;
 	}
 
-	void render(const Camera& camera) override
+	void render(const Camera& camera, const RendererViewContext& viewContext)) override
 	{
 		RenderAPI& rapi = RenderAPI::instance();
 		
@@ -66,7 +66,7 @@ public:
 }
 ~~~~~~~~~~~~~
 
-> Your extension should never call **RenderAPI::setRenderTarget()**. Render targets are bound and managed exclusively by the renderer itself. The type of render target depends on the render location the extension is attached to. 
+@bs::RendererViewContext is an additional parameter provided to the **render()** method, that gives you insight in the current state of the renderer. In particular it contains the current render target set by the renderer. If you ever change the render target inside the extension (through a call to **RenderAPI::setRenderTarget()**) you must ensure to restore the original render target before exiting the method.
 
 # Registering an extension
 Once extension is implemented you need to register it with the renderer by calling @bs::RendererExtension::create<T>, where the template parameter is the type of your extension. You must also provide initialization data that will be passed to the extension - this can be null.

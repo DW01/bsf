@@ -21,5 +21,7 @@ namespace bs
 		void testComplex();
 		void testMinHeap();
 		void testQuadtree();
+		void testVarInt();
+		void testBitStream();
 	};
 }

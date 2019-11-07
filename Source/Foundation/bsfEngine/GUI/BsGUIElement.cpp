@@ -17,6 +17,14 @@ namespace bs
 		// is assigned to a parent (that's when the active GUI skin becomes known)
 	}
 
+	GUIElement::GUIElement(const char* styleName, const GUIDimensions& dimensions, GUIElementOptions options)
+		: GUIElementBase(dimensions), mOptionFlags(options), mStyle(&GUISkin::DefaultStyle)
+		, mStyleName(styleName ? styleName : StringUtil::BLANK)
+	{
+		// Style is set to default here, and the proper one is assigned once GUI element
+		// is assigned to a parent (that's when the active GUI skin becomes known)
+	}
+
 	void GUIElement::_updateRenderElements()
 	{
 		updateRenderElementsInternal();
@@ -178,8 +186,15 @@ namespace bs
 
 	void GUIElement::resetDimensions()
 	{
+		bool isFixedBefore = (mDimensions.flags & GUIDF_FixedWidth) != 0 && (mDimensions.flags & GUIDF_FixedHeight) != 0;
+
 		mDimensions = GUIDimensions::create();
 		mDimensions.updateWithStyle(mStyle);
+
+		bool isFixedAfter = (mDimensions.flags & GUIDF_FixedWidth) != 0 && (mDimensions.flags & GUIDF_FixedHeight) != 0;
+
+		if (isFixedBefore != isFixedAfter)
+			refreshChildUpdateParents();
 
 		_markLayoutAsDirty();
 	}
@@ -260,9 +275,16 @@ namespace bs
 		if(newStyle != mStyle)
 		{
 			mStyle = newStyle;
-			mDimensions.updateWithStyle(mStyle);
-			styleUpdated();
 
+			bool isFixedBefore = (mDimensions.flags & GUIDF_FixedWidth) != 0 && (mDimensions.flags & GUIDF_FixedHeight) != 0;
+
+			mDimensions.updateWithStyle(mStyle);
+
+			bool isFixedAfter = (mDimensions.flags & GUIDF_FixedWidth) != 0 && (mDimensions.flags & GUIDF_FixedHeight) != 0;
+			if (isFixedBefore != isFixedAfter)
+				refreshChildUpdateParents();
+
+			styleUpdated();
 			_markLayoutAsDirty();
 		}
 	}

@@ -12,13 +12,14 @@
 
 namespace bs { namespace ct
 {
-	VULKAN_IMAGE_DESC createDesc(VkImage image, VmaAllocation allocation, VkImageLayout layout, const TextureProperties& props)
+	VULKAN_IMAGE_DESC createDesc(VkImage image, VmaAllocation allocation, VkImageLayout layout, VkFormat actualFormat,
+		const TextureProperties& props)
 	{
 		VULKAN_IMAGE_DESC desc;
 		desc.image = image;
 		desc.allocation = allocation;
 		desc.type = props.getTextureType();
-		desc.format = VulkanUtility::getPixelFormat(props.getFormat(), props.isHardwareGammaEnabled());
+		desc.format = actualFormat;
 		desc.numFaces = props.getNumFaces();
 		desc.numMipLevels = props.getNumMipmaps() + 1;
 		desc.layout = layout;
@@ -28,8 +29,8 @@ namespace bs { namespace ct
 	}
 
 	VulkanImage::VulkanImage(VulkanResourceManager* owner, VkImage image, VmaAllocation allocation, VkImageLayout layout,
-							 const TextureProperties& props, bool ownsImage)
-		: VulkanImage(owner, createDesc(image, allocation, layout, props), ownsImage)
+							 VkFormat actualFormat, const TextureProperties& props, bool ownsImage)
+		: VulkanImage(owner, createDesc(image, allocation, layout, actualFormat, props), ownsImage)
 	{ }
 
 	VulkanImage::VulkanImage(VulkanResourceManager* owner, const VULKAN_IMAGE_DESC& desc, bool ownsImage)
@@ -69,16 +70,17 @@ namespace bs { namespace ct
 		TextureSurface completeSurface(0, desc.numMipLevels, 0, desc.numFaces);
 		if ((mUsage & TU_DEPTHSTENCIL) != 0)
 		{
-			mFramebufferMainView = createView(completeSurface, getAspectFlags());
-			mMainView = createView(completeSurface, VK_IMAGE_ASPECT_DEPTH_BIT);
+			mFramebufferMainView = createView(completeSurface, desc.format, getAspectFlags());
+			mMainView = createView(completeSurface, desc.format, VK_IMAGE_ASPECT_DEPTH_BIT);
 		}
 		else
-			mMainView = createView(completeSurface, VK_IMAGE_ASPECT_COLOR_BIT);
+			mMainView = createView(completeSurface, desc.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		ImageViewInfo mainViewInfo;
 		mainViewInfo.surface = completeSurface;
 		mainViewInfo.framebuffer = false;
 		mainViewInfo.view = mMainView;
+		mainViewInfo.format = desc.format;
 
 		mImageInfos.push_back(mainViewInfo);
 
@@ -88,6 +90,7 @@ namespace bs { namespace ct
 			fbMainViewInfo.surface = completeSurface;
 			fbMainViewInfo.framebuffer = true;
 			fbMainViewInfo.view = mFramebufferMainView;
+			fbMainViewInfo.format = desc.format;
 
 			mImageInfos.push_back(fbMainViewInfo);
 		}
@@ -131,12 +134,24 @@ namespace bs { namespace ct
 
 	VkImageView VulkanImage::getView(const TextureSurface& surface, bool framebuffer) const
 	{
+		return getView(mImageViewCI.format, surface, framebuffer);
+	}
+
+	VkImageView VulkanImage::getView(VkFormat format, bool framebuffer) const
+	{
+		TextureSurface completeSurface(0, mNumMipLevels, 0, mNumFaces);
+		return getView(format, completeSurface, framebuffer);
+	}
+
+	VkImageView VulkanImage::getView(VkFormat format, const TextureSurface& surface, bool framebuffer) const
+	{
 		for(auto& entry : mImageInfos)
 		{
 			if (surface.mipLevel == entry.surface.mipLevel &&
 				surface.numMipLevels == entry.surface.numMipLevels &&
 				surface.face == entry.surface.face &&
-				surface.numFaces == entry.surface.numFaces)
+				surface.numFaces == entry.surface.numFaces &&
+				format == entry.format)
 			{
 				if((mUsage & TU_DEPTHSTENCIL) == 0)
 					return entry.view;
@@ -151,25 +166,27 @@ namespace bs { namespace ct
 		ImageViewInfo info;
 		info.surface = surface;
 		info.framebuffer = framebuffer;
+		info.format = format;
 
 		if ((mUsage & TU_DEPTHSTENCIL) != 0)
 		{
 			if(framebuffer)
-				info.view = createView(surface, getAspectFlags());
+				info.view = createView(surface, format, getAspectFlags());
 			else
-				info.view = createView(surface, VK_IMAGE_ASPECT_DEPTH_BIT);
+				info.view = createView(surface, format, VK_IMAGE_ASPECT_DEPTH_BIT);
 		}
 		else
-			info.view = createView(surface, VK_IMAGE_ASPECT_COLOR_BIT);
+			info.view = createView(surface, format, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		mImageInfos.push_back(info);
 
 		return info.view;
 	}
 
-	VkImageView VulkanImage::createView(const TextureSurface& surface, VkImageAspectFlags aspectMask) const
+	VkImageView VulkanImage::createView(const TextureSurface& surface, VkFormat format, VkImageAspectFlags aspectMask) const
 	{
 		VkImageViewType oldViewType = mImageViewCI.viewType;
+		VkFormat oldFormat = mImageViewCI.format;
 
 		const UINT32 numFaces = surface.numFaces == 0 ? mNumFaces : surface.numFaces;
 
@@ -204,12 +221,14 @@ namespace bs { namespace ct
 		mImageViewCI.subresourceRange.levelCount = surface.numMipLevels == 0 ? VK_REMAINING_MIP_LEVELS : surface.numMipLevels;
 		mImageViewCI.subresourceRange.baseArrayLayer = surface.face;
 		mImageViewCI.subresourceRange.layerCount = surface.numFaces == 0 ? VK_REMAINING_ARRAY_LAYERS : surface.numFaces;
+		mImageViewCI.format = format;
 
 		VkImageView view;
 		VkResult result = vkCreateImageView(mOwner->getDevice().getLogical(), &mImageViewCI, gVulkanAllocator, &view);
 		assert(result == VK_SUCCESS);
 
 		mImageViewCI.viewType = oldViewType;
+		mImageViewCI.format = oldFormat;
 		return view;
 	}
 
@@ -220,7 +239,7 @@ namespace bs { namespace ct
 			return VK_IMAGE_LAYOUT_GENERAL;
 		
 		if ((mUsage & TU_RENDERTARGET) != 0)
-			return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		else if ((mUsage & TU_DEPTHSTENCIL) != 0)
 			return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		else
@@ -295,12 +314,8 @@ namespace bs { namespace ct
 		VkSubresourceLayout layout;
 		vkGetImageSubresourceLayout(device.getLogical(), mImage, &range, &layout);
 
-		const UINT32 pixelSize = PixelUtil::getNumElemBytes(output.getFormat());
-		assert((UINT32)layout.rowPitch % pixelSize == 0);
-		assert((UINT32)layout.depthPitch % pixelSize == 0);
-
-		output.setRowPitch((UINT32)layout.rowPitch / pixelSize);
-		output.setSlicePitch((UINT32)layout.depthPitch / pixelSize);
+		output.setRowPitch((UINT32)layout.rowPitch);
+		output.setSlicePitch((UINT32)layout.depthPitch);
 
 		VkDeviceMemory memory;
 		VkDeviceSize memoryOffset;
@@ -416,7 +431,7 @@ namespace bs { namespace ct
 			break;
 		default:
 			accessFlags = 0;
-			LOGWRN("Unsupported source layout for Vulkan image.");
+			BS_LOG(Warning, RenderBackend, "Unsupported source layout for Vulkan image.");
 			break;
 		}
 
@@ -593,7 +608,7 @@ namespace bs { namespace ct
 	}
 
 	VulkanTexture::~VulkanTexture()
-	{ 
+	{
 		for (UINT32 i = 0; i < BS_MAX_DEVICES; i++)
 		{
 			if (mImages[i] == nullptr)
@@ -665,7 +680,7 @@ namespace bs { namespace ct
 			// Only support 2D textures, with one sample and one mip level, only used for shader reads
 			// (Optionally check vkGetPhysicalDeviceFormatProperties & vkGetPhysicalDeviceImageFormatProperties for
 			// additional supported configs, but right now there doesn't seem to be any additional support)
-			if(texType == TEX_TYPE_2D && props.getNumSamples() <= 1 && props.getNumMipmaps() == 0 && 
+			if(texType == TEX_TYPE_2D && props.getNumSamples() <= 1 && props.getNumMipmaps() == 0 &&
 				props.getNumFaces() == 1 && (mImageCI.usage & VK_IMAGE_USAGE_SAMPLED_BIT) != 0)
 			{
 				// Also, only support normal textures, not render targets or storage textures
@@ -678,7 +693,19 @@ namespace bs { namespace ct
 			}
 		}
 
-		mImageCI.extent = { props.getWidth(), props.getHeight(), props.getDepth() };
+		if((usage & TU_MUTABLEFORMAT) != 0)
+			mImageCI.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;
+
+		UINT32 width = mProperties.getWidth();
+		UINT32 height = mProperties.getHeight();
+		UINT32 depth = mProperties.getDepth();
+
+		// 0-sized textures aren't supported by the API
+		width = std::max(width, 1U);
+		height = std::max(height, 1U);
+		depth = std::max(depth, 1U);
+
+		mImageCI.extent = { width, height, depth };
 		mImageCI.mipLevels = props.getNumMipmaps() + 1;
 		mImageCI.arrayLayers = props.getNumFaces();
 		mImageCI.samples = VulkanUtility::getSampleFlags(props.getNumSamples());
@@ -728,7 +755,8 @@ namespace bs { namespace ct
 		assert(result == VK_SUCCESS);
 
 		VmaAllocation allocation = device.allocateMemory(image, flags);
-		return device.getResourceManager().create<VulkanImage>(image, allocation, mImageCI.initialLayout, getProperties());
+		return device.getResourceManager().create<VulkanImage>(image, allocation, mImageCI.initialLayout, mImageCI.format,
+			getProperties());
 	}
 
 	VulkanBuffer* VulkanTexture::createStaging(VulkanDevice& device, const PixelData& pixelData, bool readable)
@@ -755,11 +783,26 @@ namespace bs { namespace ct
 		VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 		VmaAllocation allocation = device.allocateMemory(buffer, flags);
 
+		UINT32 blockSize = PixelUtil::getBlockSize(pixelData.getFormat());
+
+		assert(pixelData.getRowPitch() % blockSize == 0);
+		assert(pixelData.getSlicePitch() % blockSize == 0);
+
+		UINT32 rowPitchInPixels = pixelData.getRowPitch() / blockSize;
+		UINT32 slicePitchInPixels = pixelData.getSlicePitch() / blockSize;
+
+		if(PixelUtil::isCompressed(pixelData.getFormat()))
+		{
+			Vector2I blockDim = PixelUtil::getBlockDimensions(pixelData.getFormat());
+			rowPitchInPixels *= blockDim.x;
+			slicePitchInPixels *= blockDim.x * blockDim.y;
+		}
+
 		return device.getResourceManager().create<VulkanBuffer>(buffer, allocation,
-			pixelData.getRowPitch(), pixelData.getSlicePitch());
+			rowPitchInPixels, slicePitchInPixels);
 	}
 
-	void VulkanTexture::copyImage(VulkanTransferBuffer* cb, VulkanImage* srcImage, VulkanImage* dstImage, 
+	void VulkanTexture::copyImage(VulkanTransferBuffer* cb, VulkanImage* srcImage, VulkanImage* dstImage,
 									  VkImageLayout srcFinalLayout, VkImageLayout dstFinalLayout)
 	{
 		UINT32 numFaces = mProperties.getNumFaces();
@@ -833,7 +876,7 @@ namespace bs { namespace ct
 		bs_stack_free(imageRegions);
 	}
 
-	void VulkanTexture::copyImpl(const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc, 
+	void VulkanTexture::copyImpl(const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc,
 			const SPtr<CommandBuffer>& commandBuffer)
 	{
 		VulkanTexture* other = static_cast<VulkanTexture*>(target.get());
@@ -846,7 +889,7 @@ namespace bs { namespace ct
 
 		if ((srcProps.getUsage() & TU_DEPTHSTENCIL) != 0 || (dstProps.getUsage() & TU_DEPTHSTENCIL) != 0)
 		{
-			LOGERR("Texture copy/resolve isn't supported for depth-stencil textures.");
+			BS_LOG(Error, RenderBackend, "Texture copy/resolve isn't supported for depth-stencil textures.");
 			return;
 		}
 
@@ -856,7 +899,7 @@ namespace bs { namespace ct
 		{
 			if (srcProps.getNumSamples() != dstProps.getNumSamples())
 			{
-				LOGERR("When copying textures their multisample counts must match. Ignoring copy.");
+				BS_LOG(Error, RenderBackend, "When copying textures their multisample counts must match. Ignoring copy.");
 				return;
 			}
 		}
@@ -866,8 +909,8 @@ namespace bs { namespace ct
 
 		UINT32 mipWidth, mipHeight, mipDepth;
 
-		bool copyEntireSurface = desc.srcVolume.getWidth() == 0 || 
-			desc.srcVolume.getHeight() == 0 || 
+		bool copyEntireSurface = desc.srcVolume.getWidth() == 0 ||
+			desc.srcVolume.getHeight() == 0 ||
 			desc.srcVolume.getDepth() == 0;
 
 		if(copyEntireSurface)
@@ -964,12 +1007,12 @@ namespace bs { namespace ct
 
 		if (srcHasMultisample && !destHasMultisample) // Resolving from MS to non-MS texture
 		{
-			vkCmdResolveImage(vkCmdBuf, srcImage->getHandle(), transferSrcLayout, dstImage->getHandle(), transferDstLayout, 
+			vkCmdResolveImage(vkCmdBuf, srcImage->getHandle(), transferSrcLayout, dstImage->getHandle(), transferDstLayout,
 				1, &resolveRegion);
 		}
 		else // Just a normal copy
 		{
-			vkCmdCopyImage(vkCmdBuf, srcImage->getHandle(), transferSrcLayout, dstImage->getHandle(), transferDstLayout, 
+			vkCmdCopyImage(vkCmdBuf, srcImage->getHandle(), transferSrcLayout, dstImage->getHandle(), transferDstLayout,
 				1, &imageRegion);
 		}
 
@@ -985,7 +1028,7 @@ namespace bs { namespace ct
 
 		if (props.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return PixelData();
 		}
 
@@ -1033,7 +1076,7 @@ namespace bs { namespace ct
 		{
 			// Initially the texture will be in preinitialized layout, and it will transition to general layout on first
 			// use in shader. No further transitions are allowed for directly mappable textures.
-			assert(subresource->getLayout() == VK_IMAGE_LAYOUT_PREINITIALIZED || 
+			assert(subresource->getLayout() == VK_IMAGE_LAYOUT_PREINITIALIZED ||
 				   subresource->getLayout() == VK_IMAGE_LAYOUT_GENERAL);
 
 			// GPU should never be allowed to write to a directly mappable texture, since only linear tiling is supported
@@ -1047,7 +1090,7 @@ namespace bs { namespace ct
 			// We're safe to map directly since GPU isn't using the subresource
 			if (!isUsedOnGPU)
 			{
-				// If some CB has an operation queued that will be using the current contents of the image, create a new 
+				// If some CB has an operation queued that will be using the current contents of the image, create a new
 				// image so we don't modify the previous use of the image
 				if (subresource->isBound())
 				{
@@ -1116,7 +1159,7 @@ namespace bs { namespace ct
 				// Submit the command buffer and wait until it finishes
 				transferCB->flush(true);
 
-				// If writing and some CB has an operation queued that will be using the current contents of the image, 
+				// If writing and some CB has an operation queued that will be using the current contents of the image,
 				// create a new image so we don't modify the previous use of the image
 				if (options == GBL_READ_WRITE && subresource->isBound())
 				{
@@ -1238,7 +1281,7 @@ namespace bs { namespace ct
 		if (!mIsMapped)
 			return;
 
-		// Note: If we did any writes they need to be made visible to the GPU. However there is no need to execute 
+		// Note: If we did any writes they need to be made visible to the GPU. However there is no need to execute
 		// a pipeline barrier because (as per spec) host writes are implicitly visible to the device.
 
 		if (mStagingBuffer == nullptr)
@@ -1386,7 +1429,7 @@ namespace bs { namespace ct
 	{
 		if (mProperties.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return;
 		}
 
@@ -1400,9 +1443,12 @@ namespace bs { namespace ct
 	void VulkanTexture::writeDataImpl(const PixelData& src, UINT32 mipLevel, UINT32 face, bool discardWholeBuffer,
 									  UINT32 queueIdx)
 	{
+		if(src.getSize() == 0)
+			return;
+
 		if (mProperties.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return;
 		}
 
@@ -1411,7 +1457,7 @@ namespace bs { namespace ct
 
 		if (face > 0 && mProperties.getTextureType() == TEX_TYPE_3D)
 		{
-			LOGERR("3D texture arrays are not supported.");
+			BS_LOG(Error, RenderBackend, "3D texture arrays are not supported.");
 			return;
 		}
 
@@ -1421,7 +1467,7 @@ namespace bs { namespace ct
 			if (mImages[i] == nullptr)
 				continue;
 
-			PixelData myData = lock(discardWholeBuffer ? GBL_WRITE_ONLY_DISCARD : GBL_WRITE_ONLY_DISCARD_RANGE, 
+			PixelData myData = lock(discardWholeBuffer ? GBL_WRITE_ONLY_DISCARD : GBL_WRITE_ONLY_DISCARD_RANGE,
 				mipLevel, face, i, queueIdx);
 			PixelUtil::bulkPixelConversion(src, myData);
 			unlock();

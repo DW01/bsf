@@ -181,9 +181,9 @@ namespace bs
 		PostMessage((HWND)hwnd, WM_SETCURSOR, WPARAM((HWND)hwnd), (LPARAM)MAKELONG(HTCLIENT, WM_MOUSEMOVE));
 	}
 
-	bool Platform::isCursorHidden() 
-	{ 
-		return mData->mIsCursorHidden; 
+	bool Platform::isCursorHidden()
+	{
+		return mData->mIsCursorHidden;
 	}
 
 	void Platform::clipCursorToWindow(const RenderWindow& window)
@@ -248,7 +248,7 @@ namespace bs
 
 		mData->mCursor.cursor = CreateIconIndirect(&iconinfo);
 		
-		DeleteObject(hBitmap);          
+		DeleteObject(hBitmap);
 		DeleteObject(hMonoBitmap);
 
 		// Make sure we notify the message loop to perform the actual cursor update
@@ -347,7 +347,7 @@ namespace bs
 		auto iterFind = mData->mDropTargets.dropTargetsPerWindow.find(target->_getOwnerWindow());
 		if (iterFind == mData->mDropTargets.dropTargetsPerWindow.end())
 		{
-			LOGWRN("Attempting to destroy a drop target but cannot find its parent window.");
+			BS_LOG(Warning, Platform, "Attempting to destroy a drop target but cannot find its parent window.");
 		}
 		else
 		{
@@ -456,7 +456,7 @@ namespace bs
 
 		if (timeBeginPeriod(1) == TIMERR_NOCANDO)
 		{
-			LOGWRN("Unable to set timer resolution to 1ms. This can cause significant waste " \
+			BS_LOG(Warning, Platform, "Unable to set timer resolution to 1ms. This can cause significant waste "
 				"in performance for waiting threads.");
 		}
 
@@ -524,9 +524,6 @@ namespace bs
 		mData->mRequiresShutDown = true;
 	}
 
-	bool isShiftPressed = false;
-	bool isCtrlPressed = false;
-
 	/**	Translate engine non client area to win32 non client area. */
 	LRESULT translateNonClientAreaType(NonClientAreaBorderType type)
 	{
@@ -568,7 +565,7 @@ namespace bs
 		POINT clientPoint;
 
 		clientPoint.x = GET_X_LPARAM(lParam);
-		clientPoint.y = GET_Y_LPARAM(lParam); 
+		clientPoint.y = GET_Y_LPARAM(lParam);
 
 		if (!nonClient)
 			ClientToScreen(hWnd, &clientPoint);
@@ -591,8 +588,10 @@ namespace bs
 	 */
 	bool getCommand(unsigned int virtualKeyCode, InputCommandType& command)
 	{
-		switch (virtualKeyCode) 
-		{ 
+		bool isShiftPressed = GetAsyncKeyState(VK_SHIFT);
+		
+		switch (virtualKeyCode)
+		{
 		case VK_LEFT:
 			command = isShiftPressed ? InputCommandType::SelectLeft : InputCommandType::CursorMoveLeft;
 			return true;
@@ -755,8 +754,7 @@ namespace bs
 			((MINMAXINFO*)lParam)->ptMinTrackSize.y = 100;
 
 			// Ensure maximizes window has proper size and doesn't cover the entire screen
-			const POINT ptZero = { 0, 0 };
-			HMONITOR primaryMonitor = MonitorFromPoint(ptZero, MONITOR_DEFAULTTOPRIMARY);
+			HMONITOR primaryMonitor = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
 
 			MONITORINFO monitorInfo;
 			monitorInfo.cbSize = sizeof(MONITORINFO);
@@ -782,7 +780,7 @@ namespace bs
 
 				POINT mousePos;
 				mousePos.x = GET_X_LPARAM(lParam);
-				mousePos.y = GET_Y_LPARAM(lParam); 
+				mousePos.y = GET_Y_LPARAM(lParam);
 
 				ScreenToClient(hWnd, &mousePos);
 
@@ -962,18 +960,6 @@ namespace bs
 		case WM_SYSKEYDOWN:
 		case WM_KEYDOWN:
 			{
-				if(wParam == VK_SHIFT)
-				{
-					isShiftPressed = true;
-					break;
-				}
-
-				if(wParam == VK_CONTROL)
-				{
-					isCtrlPressed = true;
-					break;
-				}
-
 				InputCommandType command = InputCommandType::Backspace;
 				if(getCommand((unsigned int)wParam, command))
 				{
@@ -987,19 +973,7 @@ namespace bs
 			}
 		case WM_SYSKEYUP:
 		case WM_KEYUP:
-			{
-				if(wParam == VK_SHIFT)
-				{
-					isShiftPressed = false;
-				}
-
-				if(wParam == VK_CONTROL)
-				{
-					isCtrlPressed = false;
-				}
-
-				return 0;
-			}
+			return 0;
 		case WM_CHAR:
 			{
 				// TODO - Not handling IME input
@@ -1009,11 +983,15 @@ namespace bs
 				if (wParam <= 23)
 					break;
 
-				switch (wParam) 
-				{ 
+				// Ignore shortcut key combinations
+				if(GetAsyncKeyState(VK_CONTROL) != 0 || GetAsyncKeyState(VK_MENU) != 0)
+					break;
+
+				switch (wParam)
+				{
 				case VK_ESCAPE:
-					break; 
-				default:    // displayable character 
+					break;
+				default:    // displayable character
 					{
 						UINT32 finalChar = (UINT32)wParam;
 
@@ -1022,7 +1000,7 @@ namespace bs
 
 						return 0;
 					}
-				} 
+				}
 
 				break;
 			}

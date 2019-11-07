@@ -29,16 +29,6 @@ namespace bs
 		return ManagedSerializableDictionaryKeyValue::getRTTIStatic();
 	}
 
-	inline size_t ManagedSerializableDictionary::Hash::operator()(const SPtr<ManagedSerializableFieldData>& x) const
-	{
-		return x->getHash();
-	}
-
-	inline bool ManagedSerializableDictionary::Equals::operator()(const SPtr<ManagedSerializableFieldData>& a, const SPtr<ManagedSerializableFieldData>& b) const
-	{
-		return a->equals(b);
-	}
-
 	ManagedSerializableDictionary::Enumerator::Enumerator(const ManagedSerializableDictionary* parent)
 		: mIteratorInitialized(false), mParent(parent)
 	{
@@ -104,7 +94,7 @@ namespace bs
 			MonoUtil::freeGCHandle(mValuesArrayHandle);
 	}
 
-	ManagedSerializableDictionary::Enumerator& 
+	ManagedSerializableDictionary::Enumerator&
 		ManagedSerializableDictionary::Enumerator::operator=(const Enumerator& other)
 	{
 		mNumEntries = other.mNumEntries;
@@ -252,7 +242,7 @@ namespace bs
 		}
 	}
 
-	SPtr<ManagedSerializableDictionary> ManagedSerializableDictionary::createFromExisting(MonoObject* managedInstance, 
+	SPtr<ManagedSerializableDictionary> ManagedSerializableDictionary::createFromExisting(MonoObject* managedInstance,
 		const SPtr<ManagedSerializableTypeInfoDictionary>& typeInfo)
 	{
 		if(managedInstance == nullptr)

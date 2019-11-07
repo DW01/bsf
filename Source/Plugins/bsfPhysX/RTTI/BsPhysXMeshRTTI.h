@@ -21,7 +21,7 @@ namespace bs
 		{
 			size = obj->mCookedDataSize;
 
-			return bs_shared_ptr_new<MemoryDataStream>(obj->mCookedData, obj->mCookedDataSize, false);
+			return bs_shared_ptr_new<MemoryDataStream>(obj->mCookedData, obj->mCookedDataSize);
 		}
 
 		void setCookedData(FPhysXMesh* obj, const SPtr<DataStream>& value, UINT32 size)
@@ -35,7 +35,7 @@ namespace bs
 	public:
 		FPhysXMeshRTTI()
 		{
-			addDataBlockField("mCookedData", 0, &FPhysXMeshRTTI::getCookedData, &FPhysXMeshRTTI::setCookedData, 0);
+			addDataBlockField("mCookedData", 0, &FPhysXMeshRTTI::getCookedData, &FPhysXMeshRTTI::setCookedData);
 		}
 
 		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override

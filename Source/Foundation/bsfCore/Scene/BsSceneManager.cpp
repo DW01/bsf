@@ -33,14 +33,14 @@ namespace bs
 		bool& val;
 	};
 
-	SceneInstance::SceneInstance(ConstructPrivately dummy, const String& name, const HSceneObject& root, 
+	SceneInstance::SceneInstance(ConstructPrivately dummy, const String& name, const HSceneObject& root,
 		const SPtr<PhysicsScene>& physicsScene)
 		:mName(name), mRoot(root), mPhysicsScene(physicsScene)
 	{ }
 
 	SceneManager::SceneManager()
 		: mMainScene(
-			bs_shared_ptr_new<SceneInstance>(SceneInstance::ConstructPrivately(), "Main", 
+			bs_shared_ptr_new<SceneInstance>(SceneInstance::ConstructPrivately(), "Main",
 				SceneObject::createInternal("SceneRoot"),
 				gPhysics().createPhysicsScene()))
 	{
@@ -124,6 +124,7 @@ namespace bs
 	void SceneManager::_bindActor(const SPtr<SceneActor>& actor, const HSceneObject& so)
 	{
 		mBoundActors[actor.get()] = BoundActorData(actor, so);
+		actor->_updateState(*so, true);
 	}
 
 	void SceneManager::_unbindActor(const SPtr<SceneActor>& actor)
@@ -229,8 +230,8 @@ namespace bs
 	{
 		if(mDisableStateChange)
 		{
-			LOGWRN("Component state cannot be changed from the calling locating. Are you calling it from Component \
-				callbacks?");
+			BS_LOG(Warning, Scene, "Component state cannot be changed from the calling locating. "
+				"Are you calling it from Component callbacks?");
 			return;
 		}
 
@@ -405,7 +406,7 @@ namespace bs
 		ScopeToggle toggle(mDisableStateChange);
 
 		const bool alwaysRun = component->hasFlag(ComponentFlag::AlwaysRun);
-		const bool isEnabled = component->sceneObject()->getActive() && (alwaysRun || 
+		const bool isEnabled = component->sceneObject()->getActive() && (alwaysRun ||
 			mComponentState != ComponentState::Stopped);
 
 		if (isEnabled)
@@ -475,13 +476,17 @@ namespace bs
 			if(component.isDestroyed(false))
 				continue;
 
+			UINT32 existingListType;
+			UINT32 existingIdx;
+			decodeComponentId(component->getSceneManagerId(), existingIdx, existingListType);
+
 			const bool alwaysRun = component->hasFlag(ComponentFlag::AlwaysRun);
 			const bool isActive = component->SO()->getActive();
 
 			UINT32 listType = 0;
 			switch(entry.type)
 			{
-			case ComponentStateEventType::Created: 
+			case ComponentStateEventType::Created:
 				if (alwaysRun || !isStopped)
 					listType = isActive ? ActiveList : InactiveList;
 				else
@@ -491,16 +496,14 @@ namespace bs
 			case ComponentStateEventType::Deactivated:
 				if (alwaysRun || !isStopped)
 					listType = isActive ? ActiveList : InactiveList;
+				else
+					listType = (existingListType == UninitializedList) ? UninitializedList : InactiveList;
 				break;
-			case ComponentStateEventType::Destroyed: 
+			case ComponentStateEventType::Destroyed:
 				listType = 0;
 				break;
 			default: break;
 			}
-
-			UINT32 existingListType;
-			UINT32 existingIdx;
-			decodeComponentId(component->getSceneManagerId(), existingIdx, existingListType);
 
 			if(existingListType == listType)
 				continue;
@@ -557,7 +560,7 @@ namespace bs
 	}
 
 	void SceneManager::registerNewSO(const HSceneObject& node)
-	{ 
+	{
 		if(mMainScene->getRoot())
 			node->setParent(mMainScene->getRoot());
 	}

@@ -27,81 +27,14 @@ namespace bs { namespace ct
 
 		mDummyStructuredBuffer = bs_new<VulkanHardwareBuffer>(
 			VulkanHardwareBuffer::BT_STRUCTURED, BF_UNKNOWN, GBU_LOADSTORE, 16, GDF_DEFAULT);
-
-		VkBufferViewCreateInfo viewCI;
-		viewCI.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-		viewCI.pNext = nullptr;
-		viewCI.flags = 0;
-		viewCI.format = VulkanUtility::getBufferFormat(BF_32X1F);
-		viewCI.offset = 0;
-		viewCI.range = VK_WHOLE_SIZE;
-
-		for(UINT32 i = 0; i < BS_MAX_DEVICES; i++)
-		{
-			VulkanBuffer* readBuffer = mDummyReadBuffer->getResource(i);
-			if(readBuffer)
-			{
-				viewCI.buffer = readBuffer->getHandle();
-
-				VkResult result = vkCreateBufferView(readBuffer->getDevice().getLogical(), &viewCI, gVulkanAllocator, 
-					&mDummyReadBufferViews[i]);
-				assert(result == VK_SUCCESS);
-			}
-			else
-				mDummyReadBufferViews[i] = VK_NULL_HANDLE;
-
-			VulkanBuffer* storageBuffer = mDummyStorageBuffer->getResource(i);
-			if(storageBuffer)
-			{
-				viewCI.buffer = storageBuffer->getHandle();
-
-				VkResult result = vkCreateBufferView(storageBuffer->getDevice().getLogical(), &viewCI, gVulkanAllocator, 
-					&mDummyStorageBufferViews[i]);
-				assert(result == VK_SUCCESS);
-			}
-			else
-				mDummyStorageBufferViews[i] = VK_NULL_HANDLE;
-		}
-
 	}
 
 	VulkanHardwareBufferManager::~VulkanHardwareBufferManager()
 	{
-		for(UINT32 i = 0; i < BS_MAX_DEVICES; i++)
-		{
-			VulkanBuffer* readBuffer = mDummyReadBuffer->getResource(i);
-			if(readBuffer)
-				vkDestroyBufferView(readBuffer->getDevice().getLogical(), mDummyReadBufferViews[i], gVulkanAllocator);
-
-			VulkanBuffer* storageBuffer = mDummyStorageBuffer->getResource(i);
-			if(storageBuffer)
-				vkDestroyBufferView(storageBuffer->getDevice().getLogical(), mDummyStorageBufferViews[i], gVulkanAllocator);
-		}
-
 		bs_delete(mDummyReadBuffer);
 		bs_delete(mDummyStorageBuffer);
 		bs_delete(mDummyUniformBuffer);
 		bs_delete(mDummyStructuredBuffer);
-	}
-
-	VkBufferView VulkanHardwareBufferManager::getDummyReadBufferView(UINT32 deviceIdx) const
-	{
-		return mDummyReadBufferViews[deviceIdx];
-	}
-
-	VkBufferView VulkanHardwareBufferManager::getDummyStorageBufferView(UINT32 deviceIdx) const
-	{
-		return mDummyStorageBufferViews[deviceIdx];
-	}
-
-	VkBuffer VulkanHardwareBufferManager::getDummyUniformBuffer(UINT32 deviceIdx) const
-	{
-		return mDummyUniformBuffer->getResource(deviceIdx)->getHandle();
-	}
-
-	VkBuffer VulkanHardwareBufferManager::getDummyStructuredBuffer(UINT32 deviceIdx) const
-	{
-		return mDummyStructuredBuffer->getResource(deviceIdx)->getHandle();
 	}
 
 	SPtr<VertexBuffer> VulkanHardwareBufferManager::createVertexBufferInternal(const VERTEX_BUFFER_DESC& desc,

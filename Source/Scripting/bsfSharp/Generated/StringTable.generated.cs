@@ -44,7 +44,12 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<StringTable>(StringTable x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		/// <summary>Checks does the string table contain the provided identifier.</summary>
 		/// <param name="identifier">Identifier to look for.</param>
@@ -61,7 +66,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Returns a string translation for the specified language. Returns the identifier itself if one doesn't exist.
+		/// Returns a string translation for the specified language. Returns the identifier itself if one doesn&apos;t exist.
 		/// </summary>
 		public string GetString(string identifier, Language language)
 		{

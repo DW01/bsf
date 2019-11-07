@@ -26,7 +26,6 @@ using namespace std::chrono;
 namespace bs
 {
 	ProfilerCPU::Timer::Timer()
-		:startTime(0.0f)
 	{
 		time = 0.0f;
 	}
@@ -74,7 +73,7 @@ namespace bs
 		cycles = 0;
 	}
 
-	inline UINT64 ProfilerCPU::TimerPrecise::getNumCycles() 
+	inline UINT64 ProfilerCPU::TimerPrecise::getNumCycles()
 	{
 #if BS_COMPILER == BS_COMPILER_GNUC || BS_COMPILER == BS_COMPILER_CLANG
 		unsigned int a = 0;
@@ -159,18 +158,18 @@ namespace bs
 	}
 
 	BS_THREADLOCAL ProfilerCPU::ThreadInfo* ProfilerCPU::ThreadInfo::activeThread = nullptr;
-
+	
 	ProfilerCPU::ThreadInfo::ThreadInfo()
-		:isActive(false), rootBlock(nullptr), frameAlloc(1024 * 512), activeBlocks(nullptr)
+		:frameAlloc(1024 * 512)
 	{
 
 	}
-
+	
 	void ProfilerCPU::ThreadInfo::begin(const char* _name)
 	{
 		if(isActive)
 		{
-			LOGWRN("Profiler::beginThread called on a thread that was already being sampled");
+			BS_LOG(Warning, Profiler, "Profiler::beginThread called on a thread that was already being sampled");
 			return;
 		}
 
@@ -198,11 +197,12 @@ namespace bs
 		activeBlocks->pop();
 
 		if(!isActive)
-			LOGWRN("Profiler::endThread called on a thread that isn't being sampled.");
+			BS_LOG(Warning, Profiler, "Profiler::endThread called on a thread that isn't being sampled.");
 
 		if (activeBlocks->size() > 0)
 		{
-			LOGWRN("Profiler::endThread called but not all sample pairs were closed. Sampling data will not be valid.");
+			BS_LOG(Warning, Profiler, "Profiler::endThread called but not all sample pairs were closed. "
+				"Sampling data will not be valid.");
 
 			while (activeBlocks->size() > 0)
 			{
@@ -276,8 +276,6 @@ namespace bs
 	}
 
 	ProfilerCPU::ProfilerCPU()
-		: mBasicTimerOverhead(0.0), mPreciseTimerOverhead(0), mBasicSamplingOverheadMs(0.0), mPreciseSamplingOverheadMs(0.0)
-		, mBasicSamplingOverheadCycles(0), mPreciseSamplingOverheadCycles(0)
 	{
 		// TODO - We only estimate overhead on program start. It might be better to estimate it each time beginThread is called,
 		// and keep separate values per thread.
@@ -357,20 +355,20 @@ namespace bs
 #if BS_DEBUG_MODE
 		if(block == nullptr)
 		{
-			LOGWRN("Mismatched CPUProfiler::endSample. No beginSample was called.");
+			BS_LOG(Warning, Profiler, "Mismatched CPUProfiler::endSample. No beginSample was called.");
 			return;
 		}
 
 		if(thread->activeBlock.type == ActiveSamplingType::Precise)
 		{
-			LOGWRN("Mismatched CPUProfiler::endSample. Was expecting Profiler::endSamplePrecise.");
+			BS_LOG(Warning, Profiler, "Mismatched CPUProfiler::endSample. Was expecting Profiler::endSamplePrecise.");
 			return;
 		}
 
 		if(strcmp(block->name, name) != 0)
 		{
-			LOGWRN("Mismatched CPUProfiler::endSample. Was expecting \"" + String(block->name) + 
-				"\" but got \"" + String(name) + "\". Sampling data will not be valid.");
+			BS_LOG(Warning, Profiler, "Mismatched CPUProfiler::endSample. Was expecting \"{0}\" but got \"{1}\". "
+				"Sampling data will not be valid.", block->name, name);
 			return;
 		}
 #endif
@@ -387,7 +385,7 @@ namespace bs
 
 	void ProfilerCPU::beginSamplePrecise(const char* name)
 	{
-		// Note: There is a (small) possibility a context switch will happen during this measurement in which case result will be skewed. 
+		// Note: There is a (small) possibility a context switch will happen during this measurement in which case result will be skewed.
 		// Increasing thread priority might help. This is generally only a problem with code that executes a long time (10-15+ ms - depending on OS quant length)
 		
 		ThreadInfo* thread = ThreadInfo::activeThread;
@@ -424,20 +422,20 @@ namespace bs
 #if BS_DEBUG_MODE
 		if(block == nullptr)
 		{
-			LOGWRN("Mismatched Profiler::endSamplePrecise. No beginSamplePrecise was called.");
+			BS_LOG(Warning, Profiler, "Mismatched Profiler::endSamplePrecise. No beginSamplePrecise was called.");
 			return;
 		}
 
 		if(thread->activeBlock.type == ActiveSamplingType::Basic)
 		{
-			LOGWRN("Mismatched CPUProfiler::endSamplePrecise. Was expecting Profiler::endSample.");
+			BS_LOG(Warning, Profiler, "Mismatched CPUProfiler::endSamplePrecise. Was expecting Profiler::endSample.");
 			return;
 		}
 
 		if (strcmp(block->name, name) != 0)
 		{
-			LOGWRN("Mismatched Profiler::endSamplePrecise. Was expecting \"" + String(block->name) + 
-				"\" but got \"" + String(name) + "\". Sampling data will not be valid.");
+			BS_LOG(Warning, Profiler, "Mismatched Profiler::endSamplePrecise. Was expecting \"{0}\" but got \"{1}\". "
+				"Sampling data will not be valid.", block->name, name);
 			return;
 		}
 #endif
@@ -767,10 +765,10 @@ namespace bs
 
 		mBasicTimerOverhead = 1000000.0;
 		mPreciseTimerOverhead = 1000000;
-		for (UINT32 tries = 0; tries < 20; tries++) 
+		for (UINT32 tries = 0; tries < 20; tries++)
 		{
 			Timer timer;
-			for (UINT32 i = 0; i < reps; i++) 
+			for (UINT32 i = 0; i < reps; i++)
 			{
 				timer.start();
 				timer.stop();
@@ -781,7 +779,7 @@ namespace bs
 				mBasicTimerOverhead = avgTime;
 
 			TimerPrecise timerPrecise;
-			for (UINT32 i = 0; i < reps; i++) 
+			for (UINT32 i = 0; i < reps; i++)
 			{
 				timerPrecise.start();
 				timerPrecise.stop();
@@ -796,7 +794,7 @@ namespace bs
 		mPreciseSamplingOverheadMs = 1000000.0;
 		mBasicSamplingOverheadCycles = 1000000;
 		mPreciseSamplingOverheadCycles = 1000000;
-		for (UINT32 tries = 0; tries < 3; tries++) 
+		for (UINT32 tries = 0; tries < 3; tries++)
 		{
 			/************************************************************************/
 			/* 				AVERAGE TIME IN MS FOR BASIC SAMPLING                   */
@@ -809,7 +807,7 @@ namespace bs
 
 			// Two different cases that can effect performance, one where
 			// sample already exists and other where new one needs to be created
-			for (UINT32 i = 0; i < sampleReps; i++) 
+			for (UINT32 i = 0; i < sampleReps; i++)
 			{
 				beginSample("TestAvg1");
 				endSample("TestAvg1");
@@ -833,7 +831,7 @@ namespace bs
 				endSample("TestAvg10");
 			}
 
-			for (UINT32 i = 0; i < sampleReps * 5; i++) 
+			for (UINT32 i = 0; i < sampleReps * 5; i++)
 			{
 				beginSample(("TestAvg#" + toString(i)).c_str());
 				endSample(("TestAvg#" + toString(i)).c_str());
@@ -860,7 +858,7 @@ namespace bs
 
 			// Two different cases that can effect performance, one where
 			// sample already exists and other where new one needs to be created
-			for (UINT32 i = 0; i < sampleReps; i++) 
+			for (UINT32 i = 0; i < sampleReps; i++)
 			{
 				beginSample("TestAvg1");
 				endSample("TestAvg1");
@@ -884,7 +882,7 @@ namespace bs
 				endSample("TestAvg10");
 			}
 
-			for (UINT32 i = 0; i < sampleReps * 5; i++) 
+			for (UINT32 i = 0; i < sampleReps * 5; i++)
 			{
 				beginSample(("TestAvg#" + toString(i)).c_str());
 				endSample(("TestAvg#" + toString(i)).c_str());
@@ -909,7 +907,7 @@ namespace bs
 
 			// Two different cases that can effect performance, one where
 			// sample already exists and other where new one needs to be created
-			for (UINT32 i = 0; i < sampleReps; i++) 
+			for (UINT32 i = 0; i < sampleReps; i++)
 			{
 				beginSamplePrecise("TestAvg1");
 				endSamplePrecise("TestAvg1");
@@ -933,7 +931,7 @@ namespace bs
 				endSamplePrecise("TestAvg10");
 			}
 
-			for (UINT32 i = 0; i < sampleReps * 5; i++) 
+			for (UINT32 i = 0; i < sampleReps * 5; i++)
 			{
 				beginSamplePrecise(("TestAvg#" + toString(i)).c_str());
 				endSamplePrecise(("TestAvg#" + toString(i)).c_str());
@@ -958,7 +956,7 @@ namespace bs
 
 			// Two different cases that can effect performance, one where
 			// sample already exists and other where new one needs to be created
-			for (UINT32 i = 0; i < sampleReps; i++) 
+			for (UINT32 i = 0; i < sampleReps; i++)
 			{
 				beginSamplePrecise("TestAvg1");
 				endSamplePrecise("TestAvg1");
@@ -982,7 +980,7 @@ namespace bs
 				endSamplePrecise("TestAvg10");
 			}
 
-			for (UINT32 i = 0; i < sampleReps * 5; i++) 
+			for (UINT32 i = 0; i < sampleReps * 5; i++)
 			{
 				beginSamplePrecise(("TestAvg#" + toString(i)).c_str());
 				endSamplePrecise(("TestAvg#" + toString(i)).c_str());
@@ -997,23 +995,6 @@ namespace bs
 			if (avgCyclesPrecise < mPreciseSamplingOverheadCycles)
 				mPreciseSamplingOverheadCycles = avgCyclesPrecise;
 		}
-	}
-
-	CPUProfilerBasicSamplingEntry::Data::Data()
-		:numCalls(0), avgTimeMs(0.0), maxTimeMs(0.0), totalTimeMs(0.0),
-		avgSelfTimeMs(0.0), totalSelfTimeMs(0.0), estimatedSelfOverheadMs(0.0),
-		estimatedOverheadMs(0.0), pctOfParent(1.0f)
-	{ }
-
-	CPUProfilerPreciseSamplingEntry::Data::Data()
-		:numCalls(0), avgCycles(0), maxCycles(0), totalCycles(0),
-		avgSelfCycles(0), totalSelfCycles(0), estimatedSelfOverhead(0),
-		estimatedOverhead(0), pctOfParent(1.0f)
-	{ }
-
-	CPUProfilerReport::CPUProfilerReport()
-	{
-
 	}
 
 	ProfilerCPU& gProfilerCPU()

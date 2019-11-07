@@ -1,12 +1,12 @@
 # Version
 set (BS_FRAMEWORK_VERSION_MAJOR 1)
 set (BS_FRAMEWORK_VERSION_MINOR 1)
-set (BS_FRAMEWORK_VERSION_PATCH 0) 
+set (BS_FRAMEWORK_VERSION_PATCH 0)
 set (BS_FRAMEWORK_CURRENT_RELEASE_YEAR 2019)
 
-set (BS_FRAMEWORK_PREBUILT_DEPENDENCIES_VERSION 9)
+set (BS_FRAMEWORK_PREBUILT_DEPENDENCIES_VERSION 11)
 set (BS_FRAMEWORK_SRC_DEPENDENCIES_VERSION 1)
-set (BS_FRAMEWORK_BUILTIN_ASSETS_VERSION 6)
+set (BS_FRAMEWORK_BUILTIN_ASSETS_VERSION 7)
 
 # Options
 set(AUDIO_MODULE "OpenAudio" CACHE STRING "Audio backend to use.")
@@ -15,12 +15,14 @@ set_property(CACHE AUDIO_MODULE PROPERTY STRINGS OpenAudio FMOD Null)
 set(PHYSICS_MODULE "PhysX" CACHE STRING "Physics backend to use.")
 set_property(CACHE PHYSICS_MODULE PROPERTY STRINGS "PhysX" "Null")
 
+set(BSF_PLUGIN_IMGUI OFF CACHE BOOL "Add support for Imgui library through a plugin")
+
 if(WIN32)
 	set(RENDER_API_MODULE "DirectX 11" CACHE STRING "Render API to use.")
 	set_property(CACHE RENDER_API_MODULE PROPERTY STRINGS "DirectX 11" "OpenGL" "Vulkan" "Null")
 elseif(APPLE)
 	set(RENDER_API_MODULE "OpenGL" CACHE STRING "Render API to use.")
-	set_property(CACHE RENDER_API_MODULE PROPERTY STRINGS "OpenGL" "Null")
+	set_property(CACHE RENDER_API_MODULE PROPERTY STRINGS "OpenGL" "Vulkan" "Null")
 else()
 	set(RENDER_API_MODULE "OpenGL" CACHE STRING "Render API to use.")
 	set_property(CACHE RENDER_API_MODULE PROPERTY STRINGS "OpenGL" "Vulkan" "Null")
@@ -34,6 +36,8 @@ set(INCLUDE_ALL_IN_WORKFLOW OFF CACHE BOOL "If true, all libraries (even those n
 set(BUILD_TESTS OFF CACHE BOOL "If true, build targets for running unit tests will be included in the output.")
 
 set(BUILD_BSL OFF CACHE BOOL "If true, build lexer & parser for BSL. Requires flex & bison dependencies.")
+
+set(BUILD_ALL_RENDER_API OFF CACHE BOOL "If true, all supported render backends will be built, regardless of choice in RENDER_API_MODULE. Choice in RENDER_API_MODULE will still be used as the default.")
 
 set(INCLUDE_ASSET_PACKAGING_SCRIPTS OFF CACHE BOOL "If true, generate helper targets that allow you to import built-in assets as well as upload new package versions.")
 
@@ -62,12 +66,12 @@ if(WIN32)
 		file (STRINGS ${SOURCE_DEP_BUILD_VERSION_FILE} CURRENT_SOURCE_DEP_VERSION)
 		if(${BS_FRAMEWORK_SRC_DEPENDENCIES_VERSION} GREATER ${CURRENT_SOURCE_DEP_VERSION})
 			message(STATUS "Built dependencies are out of date, forcing recompile.")
-			execute_process(COMMAND "${CMAKE_COMMAND}" 
+			execute_process(COMMAND "${CMAKE_COMMAND}"
 				-E remove_directory "${SOURCE_DEP_BUILD_DIR}")	
 		endif()
 	else()
 		message(STATUS "Built dependencies are out of date, forcing recompile.")
-		execute_process(COMMAND "${CMAKE_COMMAND}" 
+		execute_process(COMMAND "${CMAKE_COMMAND}"
 			-E remove_directory "${SOURCE_DEP_BUILD_DIR}")	
 	endif()
 endif()
@@ -82,7 +86,7 @@ if(RENDER_API_MODULE MATCHES "DirectX 11")
 	set(RENDER_API_MODULE_LIB bsfD3D11RenderAPI)
 elseif(RENDER_API_MODULE MATCHES "Vulkan")
 	set(RENDER_API_MODULE_LIB bsfVulkanRenderAPI)
-	elseif(RENDER_API_MODULE MATCHES "OpenGL")
+elseif(RENDER_API_MODULE MATCHES "OpenGL")
 	set(RENDER_API_MODULE_LIB bsfGLRenderAPI)
 else()
 	set(RENDER_API_MODULE_LIB bsfNullRenderAPI)
@@ -146,14 +150,27 @@ if(INCLUDE_ALL_IN_WORKFLOW AND MSVC)
 	add_subdirectory(Scripting/bsfScript)
 	add_subdirectory(Scripting/bsfSharp)
 else() # Otherwise include only chosen ones
-	if(RENDER_API_MODULE MATCHES "DirectX 11")
-		add_subdirectory(Plugins/bsfD3D11RenderAPI)
-	elseif(RENDER_API_MODULE MATCHES "Vulkan")
-		add_subdirectory(Plugins/bsfVulkanRenderAPI)
-	elseif(RENDER_API_MODULE MATCHES "OpenGL")
+	if(BUILD_ALL_RENDER_API)
+		if(WIN32)
+			add_subdirectory(Plugins/bsfD3D11RenderAPI)
+		endif()
+		
+		if(NOT APPLE)
+			add_subdirectory(Plugins/bsfVulkanRenderAPI)
+		endif()
+		
 		add_subdirectory(Plugins/bsfGLRenderAPI)
-	else()
 		add_subdirectory(Plugins/bsfNullRenderAPI)
+	else()
+		if(RENDER_API_MODULE MATCHES "DirectX 11")
+			add_subdirectory(Plugins/bsfD3D11RenderAPI)
+		elseif(RENDER_API_MODULE MATCHES "Vulkan")
+			add_subdirectory(Plugins/bsfVulkanRenderAPI)
+		elseif(RENDER_API_MODULE MATCHES "OpenGL")
+			add_subdirectory(Plugins/bsfGLRenderAPI)
+		else()
+			add_subdirectory(Plugins/bsfNullRenderAPI)
+		endif()
 	endif()
 
 	if(AUDIO_MODULE MATCHES "FMOD")
@@ -186,6 +203,10 @@ else() # Otherwise include only chosen ones
 	endif()
 endif()
 
+if (BSF_PLUGIN_IMGUI)
+	include(CMake/Plugins/bsfImgui.cmake)
+endif()
+
 add_subdirectory(Plugins/bsfFBXImporter)
 add_subdirectory(Plugins/bsfFontImporter)
 add_subdirectory(Plugins/bsfFreeImgImporter)
@@ -195,17 +216,17 @@ add_subdirectory(Plugins/bsfSL)
 if(BUILD_TESTS)
 	enable_testing()
 
-	add_executable(UtilityTest 
-		Foundation/bsfUtility/Private/UnitTests/BsUtilityTest.cpp 
+	add_executable(UtilityTest
+		Foundation/bsfUtility/Private/UnitTests/BsUtilityTest.cpp
 		Foundation/bsfUtility/Private/UnitTests/BsUtilityTestSuite.cpp
 		Foundation/bsfUtility/Private/UnitTests/BsFileSystemTestSuite.cpp)
 		
 	target_link_libraries(UtilityTest bsf)
-	target_include_directories(UtilityTest PRIVATE 
+	target_include_directories(UtilityTest PRIVATE
 		"Foundation/bsfUtility"
 		"Foundation/bsfUtility/ThirdParty")
 
-	add_executable(CoreTest 
+	add_executable(CoreTest
 		Foundation/bsfCore/Private/UnitTests/BsCoreTest.cpp)
 		
 	target_link_libraries(CoreTest bsf)
@@ -221,6 +242,7 @@ endif()
 add_executable(bsfImportTool
 	Foundation/bsfEngine/Resources/BsBuiltinResourcesImporter.cpp)
 add_common_flags(bsfImportTool)
+target_compile_definitions(bsfImportTool PUBLIC -DBS_IS_ASSET_TOOL)
 
 target_link_libraries(bsfImportTool bsf)
 	
@@ -255,10 +277,16 @@ if(((SCRIPT_API AND (NOT SCRIPT_API MATCHES "None")) OR BS_IS_BANSHEE3D) AND SCR
 	include(${BSF_SOURCE_DIR}/CMake/GenerateScriptBindings.cmake)
 endif()
 
+if(NOT BS_IS_BANSHEE3D)
+	set(DATA_DST_DIR bin)
+else()
+	set(DATA_DST_DIR .)
+endif()
+
 ## Install
 install(
 	DIRECTORY ../Data
-	DESTINATION bin/
+	DESTINATION ${DATA_DST_DIR}
 	PATTERN "../Data/Raw" EXCLUDE
 	PATTERN ".version" EXCLUDE
 	PATTERN ".reqversion" EXCLUDE

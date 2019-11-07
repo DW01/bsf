@@ -12,6 +12,9 @@
 #include "Wrappers/BsScriptComponent.h"
 #include "Wrappers/BsScriptReflectable.h"
 #include "BsManagedSerializableObject.h"
+#include "BsManagedResource.h"
+#include "Wrappers/BsScriptManagedComponent.h"
+#include "BsManagedComponent.h"
 
 namespace bs
 {
@@ -52,8 +55,8 @@ namespace bs
 		const Vector<MonoClass*>& allClasses = curAssembly->getAllClasses();
 		for(auto& curClass : allClasses)
 		{
-			const bool isSerializable = 
-				curClass->isSubClassOf(mBuiltin.componentClass) || 
+			const bool isSerializable =
+				curClass->isSubClassOf(mBuiltin.componentClass) ||
 				curClass->isSubClassOf(resourceClass) ||
 				curClass->hasAttribute(mBuiltin.serializeObjectAttribute);
 
@@ -191,6 +194,9 @@ namespace bs
 				if (field->hasAttribute(mBuiltin.loadOnAssignAttribute))
 					fieldInfo->mFlags |= ScriptFieldFlag::LoadOnAssign;
 
+				if(field->hasAttribute(mBuiltin.hdrAttribute))
+					fieldInfo->mFlags |= ScriptFieldFlag::HDR;
+
 				objInfo->mFieldNameToId[fieldInfo->mName] = fieldInfo->mFieldId;
 				objInfo->mFields[fieldInfo->mFieldId] = fieldInfo;
 			}
@@ -275,6 +281,9 @@ namespace bs
 
 					if (property->hasAttribute(mBuiltin.loadOnAssignAttribute))
 						propertyInfo->mFlags |= ScriptFieldFlag::LoadOnAssign;
+
+					if (property->hasAttribute(mBuiltin.hdrAttribute))
+						propertyInfo->mFlags |= ScriptFieldFlag::HDR;
 				}
 
 				objInfo->mFieldNameToId[propertyInfo->mName] = propertyInfo->mFieldId;
@@ -693,6 +702,10 @@ namespace bs
 		if(mBuiltin.genericRRefClass == nullptr)
 			BS_EXCEPT(InvalidStateException, "Cannot find RRef<T> managed class.");
 
+		mBuiltin.genericAsyncOpClass = engineAssembly->getClass(ENGINE_NS, "AsyncOp`1");
+		if(mBuiltin.genericAsyncOpClass == nullptr)
+			BS_EXCEPT(InvalidStateException, "Cannot find AsyncOp<T> managed class.");
+
 		mBuiltin.serializeFieldAttribute = engineAssembly->getClass(ENGINE_NS, "SerializeField");
 		if(mBuiltin.serializeFieldAttribute == nullptr)
 			BS_EXCEPT(InvalidStateException, "Cannot find SerializeField managed class.");
@@ -720,6 +733,10 @@ namespace bs
 		mBuiltin.loadOnAssignAttribute = engineAssembly->getClass(ENGINE_NS, "LoadOnAssign");
 		if (mBuiltin.loadOnAssignAttribute == nullptr)
 			BS_EXCEPT(InvalidStateException, "Cannot find LoadOnAssign managed class.");
+
+		mBuiltin.hdrAttribute = engineAssembly->getClass(ENGINE_NS, "HDR");
+		if (mBuiltin.hdrAttribute == nullptr)
+			BS_EXCEPT(InvalidStateException, "Cannot find HDR managed class.");
 
 		mBaseTypesInitialized = true;
 	}
@@ -859,9 +876,120 @@ namespace bs
 
 	SPtr<IReflectable> ScriptAssemblyManager::getReflectableFromManagedObject(MonoObject* value)
 	{
-		SPtr<IReflectable> nativeValue;
 		if (value != nullptr)
 		{
+			::MonoClass* klass = MonoUtil::getClass(value);
+			MonoClass* monoClass = MonoManager::instance().findClass(klass);
+
+			if (MonoUtil::isEnum(klass))
+			{
+				BS_LOG(Warning, Script, "Unsupported type provided.");
+				return nullptr;
+			}
+
+			MonoPrimitiveType monoPrimitiveType = MonoUtil::getPrimitiveType(klass);
+			if(monoPrimitiveType != MonoPrimitiveType::Class && monoPrimitiveType != MonoPrimitiveType::ValueType)
+			{
+				BS_LOG(Warning, Script, "Unsupported type provided.");
+				return nullptr;
+			}
+
+			const ScriptMeta* managedResourceMeta = ScriptManagedResource::getMetaData();
+			const ScriptMeta* managedComponentMeta = ScriptManagedComponent::getMetaData();
+
+			if (monoClass->isSubClassOf(ScriptResource::getMetaData()->scriptClass)) // Resource
+			{
+				if (monoClass == ScriptResource::getMetaData()->scriptClass ||
+					monoClass == ScriptManagedResource::getMetaData()->scriptClass)
+				{
+					BS_LOG(Warning, Script, "Unsupported type provided.");
+					return nullptr;
+				}
+
+				if (monoClass->isSubClassOf(managedResourceMeta->scriptClass))
+				{
+					ScriptManagedResource* scriptResource = nullptr;
+					managedResourceMeta->thisPtrField->get(value, &scriptResource);
+
+					HManagedResource resource = scriptResource->getHandle();
+					if (!resource.isLoaded(false))
+						return nullptr;
+
+					MonoObject* managedInstance = resource->getManagedInstance();
+					SPtr<ManagedSerializableObject> serializedObject = ManagedSerializableObject::createFromExisting(managedInstance);
+					if (serializedObject == nullptr)
+						return nullptr;
+
+					serializedObject->serialize();
+					return serializedObject;
+				}
+				else
+				{
+					::MonoReflectionType* type = MonoUtil::getType(klass);
+					BuiltinResourceInfo* builtinInfo = getBuiltinResourceInfo(type);
+					if (builtinInfo == nullptr)
+					{
+						assert(false && "Unable to find information about a built-in resource. Did you update BuiltinResourceTypes list?");
+						return nullptr;
+					}
+
+					ScriptResourceBase* scriptResource = nullptr;
+					builtinInfo->metaData->thisPtrField->get(value, &scriptResource);
+
+					HResource handle = scriptResource->getGenericHandle();
+					if (!handle.isLoaded(false))
+						return nullptr;
+
+					return handle.getInternalPtr();
+				}
+			}
+			else if (monoClass->isSubClassOf(mBuiltin.componentClass)) // Component
+			{
+				if (monoClass == mBuiltin.componentClass || monoClass == mBuiltin.managedComponentClass)
+				{
+					BS_LOG(Warning, Script, "Unsupported type provided.");
+					return nullptr;
+				}
+
+				if(monoClass->isSubClassOf(mBuiltin.managedComponentClass))
+				{
+					ScriptManagedComponent* scriptComponent = nullptr;
+					managedComponentMeta->thisPtrField->get(value, &scriptComponent);
+
+					HManagedComponent component = scriptComponent->getHandle();
+					if (component.isDestroyed())
+						return nullptr;
+
+					MonoObject* managedInstance = component->getManagedInstance();
+					SPtr<ManagedSerializableObject> serializedObject = ManagedSerializableObject::createFromExisting(managedInstance);
+					if (serializedObject == nullptr)
+						return nullptr;
+
+					serializedObject->serialize();
+					return serializedObject;
+				}
+				else
+				{
+					::MonoReflectionType* type = MonoUtil::getType(klass);
+					BuiltinComponentInfo* builtinInfo = getBuiltinComponentInfo(type);
+					if (builtinInfo == nullptr)
+					{
+						assert(false && "Unable to find information about a built-in component. Did you update BuiltinComponents list?");
+						return nullptr;
+					}
+
+					ScriptComponentBase* scriptComponent = nullptr;
+					builtinInfo->metaData->thisPtrField->get(value, &scriptComponent);
+
+					HComponent handle = scriptComponent->getComponent();
+					if (handle.isDestroyed())
+						return nullptr;
+
+					return handle.getInternalPtr();
+				}
+			}
+
+			// Generic class or value type
 			String elementNs;
 			String elementTypeName;
 			MonoUtil::getClassName(value, elementNs, elementTypeName);
@@ -869,7 +997,7 @@ namespace bs
 			SPtr<ManagedSerializableObjectInfo> objInfo;
 			if (!instance().getSerializableObjectInfo(elementNs, elementTypeName, objInfo))
 			{
-				LOGERR("Object has no serialization meta-data.");
+				BS_LOG(Error, Script, "Object has no serialization meta-data.");
 				return nullptr;
 			}
 
@@ -886,22 +1014,22 @@ namespace bs
 				if (reflTypeInfo->metaData->thisPtrField != nullptr)
 					reflTypeInfo->metaData->thisPtrField->get(value, &scriptReflectable);
 
-				nativeValue = scriptReflectable->getReflectable();
+				return scriptReflectable->getReflectable();
 			}
 			else
 			{
 				SPtr<ManagedSerializableObject> managedObj = ManagedSerializableObject::createFromExisting(value);
 				if (!managedObj)
 				{
-					LOGERR("Object failed to serialize due to an internal error.");
+					BS_LOG(Error, Script, "Object failed to serialize due to an internal error.");
 					return nullptr;
 				}
 
 				managedObj->serialize();
-				nativeValue = managedObj;
+				return managedObj;
 			}
 		}
 
-		return nativeValue;
+		return nullptr;
 	}
 }

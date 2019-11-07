@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "RenderAPI/BsVertexDataDesc.h"
 
 namespace bs
@@ -25,7 +26,7 @@ namespace bs
 	public:
 		VertexDataDescRTTI()
 		{
-			addPlainArrayField("mVertexData", 0, &VertexDataDescRTTI::getVertexElementData, 
+			addPlainArrayField("mVertexData", 0, &VertexDataDescRTTI::getVertexElementData,
 				&VertexDataDescRTTI::getNumVertexElementData, &VertexDataDescRTTI::setVertexElementData, &VertexDataDescRTTI::setNumVertexElementData);
 		}
 

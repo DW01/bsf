@@ -12,7 +12,7 @@ namespace bs
 	{
 		BuiltinResources& br = BuiltinResources::instance();
 
-		// Note: Ideally I want to avoid loading all materials, and instead just load those that are used. 
+		// Note: Ideally I want to avoid loading all materials, and instead just load those that are used.
 		Vector<RendererMaterialData>& materials = getMaterials();
 		Vector<SPtr<ct::Shader>> shaders;
 		for (auto& material : materials)
@@ -50,6 +50,12 @@ namespace bs
 			materials[i].metaData->shaderPath = materials[i].shaderPath;
 			materials[i].metaData->shader = shaders[i];
 
+			if(!shaders[i])
+			{
+				BS_LOG(Error, Renderer, "Failed to load renderer material: {0}", materials[i].shaderPath);
+				continue;
+			}
+
 			// Note: Making the assumption here that all the techniques are generated due to shader variations
 			Vector<SPtr<ct::Technique>> techniques = shaders[i]->getCompatibleTechniques();
 			materials[i].metaData->instances.resize((UINT32)techniques.size());
@@ -59,7 +65,7 @@ namespace bs
 
 #if BS_PROFILING_ENABLED
 			const String& filename = materials[i].shaderPath.getFilename(false);
-			materials[i].metaData->profilerSampleName = ProfilerString("RM: ") + 
+			materials[i].metaData->profilerSampleName = ProfilerString("RM: ") +
 				ProfilerString(filename.data(), filename.size());
 #endif
 		}

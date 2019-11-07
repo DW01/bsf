@@ -10,7 +10,9 @@
 #include "BsRendererLight.h"
 #include "BsRendererScene.h"
 #include "BsRenderBeast.h"
-#include <BsRendererDecal.h>
+#include "BsRendererDecal.h"
+#include "Animation/BsAnimationManager.h"
+#include "RenderAPI/BsCommandBuffer.h"
 
 namespace bs { namespace ct
 {
@@ -49,7 +51,7 @@ namespace bs { namespace ct
 	}
 
 	RendererViewData::RendererViewData()
-		:encodeDepth(false), depthEncodeNear(0.0f), depthEncodeFar(0.0f)
+		:encodeDepth(false)
 	{
 		
 	}
@@ -57,6 +59,7 @@ namespace bs { namespace ct
 	RendererViewProperties::RendererViewProperties(const RENDERER_VIEW_DESC& src)
 		:RendererViewData(src), frameIdx(0), target(src.target)
 	{
+		projTransformNoAA = src.projTransform;
 		viewProjTransform = src.projTransform * src.viewTransform;
 	}
 
@@ -103,34 +106,39 @@ namespace bs { namespace ct
 		mCompositor.build(*this, RCNodeFinalResolve::getNodeId());
 	}
 
-	void RendererView::setTransform(const Vector3& origin, const Vector3& direction, const Matrix4& view, 
+	void RendererView::setTransform(const Vector3& origin, const Vector3& direction, const Matrix4& view,
 									  const Matrix4& proj, const ConvexVolume& worldFrustum)
 	{
 		mProperties.viewOrigin = origin;
 		mProperties.viewDirection = direction;
 		mProperties.viewTransform = view;
 		mProperties.projTransform = proj;
+		mProperties.projTransformNoAA = proj;
 		mProperties.cullFrustum = worldFrustum;
 		mProperties.viewProjTransform = proj * view;
+		mProperties.temporalJitter = Vector2::ZERO;
 	}
 
 	void RendererView::setView(const RENDERER_VIEW_DESC& desc)
 	{
 		mCamera = desc.sceneCamera;
 		mProperties = desc;
+		mProperties.projTransformNoAA = desc.projTransform;
 		mProperties.viewProjTransform = desc.projTransform * desc.viewTransform;
 		mProperties.prevViewProjTransform = Matrix4::IDENTITY;
 		mProperties.target = desc.target;
+		mProperties.temporalJitter = Vector2::ZERO;
 
 		setStateReductionMode(desc.stateReduction);
 	}
 
-	void RendererView::beginFrame()
+	void RendererView::beginFrame(const FrameInfo& frameInfo)
 	{
 		// Check if render target resized and update the view properties accordingly
 		// Note: Normally we rely on the renderer notify* methods to let us know of changes to camera/viewport, but since
-		// render target resize can often originate from the core thread, this avoids the back and forth between 
+		// render target resize can often originate from the core thread, this avoids the back and forth between
 		// main <-> core thread, and the frame delay that comes with it
+		bool perViewBufferDirty = false;
 		if(mCamera)
 		{
 			const SPtr<Viewport>& viewport = mCamera->getViewport();
@@ -151,10 +159,60 @@ namespace bs { namespace ct
 					mProperties.target.targetWidth = newTargetWidth;
 					mProperties.target.targetHeight = newTargetHeight;
 					
-					updatePerViewBuffer();
+					perViewBufferDirty = true;
 				}
 			}
 		}
+
+		// Update projection matrix jitter if temporal AA is enabled
+		if(mRenderSettings->temporalAA.enabled)
+		{
+			UINT32 positionCount = mRenderSettings->temporalAA.jitteredPositionCount;
+			positionCount = Math::clamp(positionCount, 4U, 128U);
+			
+			UINT32 positionIndex = mTemporalPositionIdx % positionCount;
+			
+			if (positionCount == 4)
+			{
+				// Using a 4x MSAA pattern: http://msdn.microsoft.com/en-us/library/windows/desktop/ff476218(v=vs.85).aspx
+				Vector2 samples[] =
+				{
+					{ -2.0f / 16.0f, -6.0f / 16.0f },
+					{  6.0f / 16.0f, -2.0f / 16.0f },
+					{  2.0f / 16.0f,  6.0f / 16.0f },
+					{ -6.0f / 16.0f,  2.0f / 16.0f }
+				};
+
+				mProperties.temporalJitter = samples[positionIndex];
+			}
+			else
+			{
+				constexpr float EPSILON = 1e-6f;
+				
+				float u1 = Math::haltonSequence<float>(positionIndex + 1, 2);
+				float u2 = Math::haltonSequence<float>(positionIndex + 1, 3);
+
+				float scale = (2.0f - mRenderSettings->temporalAA.sharpness) * 0.3f;
+
+				float angle = 2.0f * Math::PI * u2;
+				float radius = scale * Math::sqrt(-2.0f * Math::log(Math::max(u1, EPSILON)));
+
+				mProperties.temporalJitter = Vector2(radius * Math::cos(angle), radius * Math::sin(angle));
+			}
+
+			Vector2 viewSize = Vector2((float)mProperties.target.targetWidth, (float)mProperties.target.targetHeight);
+			Vector2 subsampleJitter = mProperties.temporalJitter / viewSize;
+			Matrix4 subSampleTranslate = Matrix4::translation(Vector3(subsampleJitter.x, subsampleJitter.y, 0.0f));
+			
+			mProperties.projTransform = subSampleTranslate * mProperties.projTransformNoAA;
+			mProperties.viewProjTransform = mProperties.projTransform * mProperties.viewTransform;
+
+			mTemporalPositionIdx++;
+			perViewBufferDirty = true;
+		}
+
+		if (perViewBufferDirty)
+			updatePerViewBuffer();
 
 		// Note: inverse view-projection can be cached, it doesn't change every frame
 		Matrix4 viewProj = mProperties.projTransform * mProperties.viewTransform;
@@ -162,6 +220,19 @@ namespace bs { namespace ct
 		Matrix4 NDCToPrevNDC = mProperties.prevViewProjTransform * invViewProj;
 		
 		gPerCameraParamDef.gNDCToPrevNDC.set(mParamBuffer, NDCToPrevNDC);
+
+		mFrameTimings = frameInfo.timings;
+		mAsyncAnim = frameInfo.perFrameData.animation ? frameInfo.perFrameData.animation->async : false;
+
+		// Account for auto-exposure taking multiple frames
+		if (mRedrawThisFrame)
+		{
+			// Note: Doing this here instead of _notifyNeedsRedraw because we need an up-to-date frame index
+			if (mRenderSettings->enableHDR && mRenderSettings->enableAutoExposure)
+				mWaitingOnAutoExposureFrame = mFrameTimings.frameIdx;
+			else
+				mWaitingOnAutoExposureFrame = std::numeric_limits<UINT64>::max();
+		}
 	}
 
 	void RendererView::endFrame()
@@ -177,6 +248,108 @@ namespace bs { namespace ct
 		mForwardOpaqueQueue->clear();
 		mTransparentQueue->clear();
 		mDecalQueue->clear();
+
+		if (mRedrawForFrames > 0)
+			mRedrawForFrames--;
+
+		if (mRedrawForSeconds > 0.0f)
+			mRedrawForSeconds -= mFrameTimings.timeDelta;
+
+		mRedrawThisFrame = false;
+	}
+
+	void RendererView::_notifyNeedsRedraw()
+	{
+		mRedrawThisFrame = true;
+		
+		// If doing async animation there is a one frame delay
+		mRedrawForFrames = mAsyncAnim ? 2 : 1;
+
+		// This will be set once we get the new luminance data from the GPU
+		mRedrawForSeconds = 0.0f;
+	}
+
+	bool RendererView::shouldDraw() const
+	{
+		if (!mProperties.onDemand)
+			return true;
+
+		if(mRenderSettings->enableHDR && mRenderSettings->enableAutoExposure)
+		{
+			constexpr float AUTO_EXPOSURE_TOLERANCE = 0.01f;
+			
+			// The view was redrawn but we still haven't received the eye adaptation results from the GPU, so
+			// we keep redrawing until we do
+			if (mWaitingOnAutoExposureFrame != std::numeric_limits<UINT64>::max())
+				return true;
+			
+			// Need to render until the auto-exposure reaches the target exposure
+			float eyeAdaptationDiff = Math::abs(mCurrentEyeAdaptation - mPreviousEyeAdaptation);
+			if (eyeAdaptationDiff > AUTO_EXPOSURE_TOLERANCE)
+				return true;
+		}
+
+		return mRedrawForFrames > 0 || mRedrawForSeconds > 0.0f;
+	}
+
+	bool RendererView::requiresVelocityWrites() const
+	{
+		return mRenderSettings->temporalAA.enabled || mRenderSettings->enableVelocityBuffer;
+	}
+
+	void RendererView::updateAsyncOperations()
+	{
+		// Find most recent available frame
+		auto lastFinishedIter = mLuminanceUpdates.end();
+		for(auto iter = mLuminanceUpdates.begin(); iter != mLuminanceUpdates.end(); ++iter)
+		{
+			if (iter->commandBuffer->getState() == CommandBufferState::Executing)
+				break;
+
+			lastFinishedIter = iter;
+		}
+
+		if (lastFinishedIter != mLuminanceUpdates.end())
+		{
+			// Get new luminance value
+			mPreviousEyeAdaptation = mCurrentEyeAdaptation;
+
+			PixelData data = lastFinishedIter->outputTexture->texture->lock(GBL_READ_ONLY);
+			mCurrentEyeAdaptation = data.getColorAt(0, 0).r;
+			lastFinishedIter->outputTexture->texture->unlock();
+
+			// We've received information about eye adaptation, use that to determine if redrawing
+			// is required (technically we're drawing a few frames extra, as this information is always
+			// a few frames too late).
+			if (lastFinishedIter->frameIdx == mWaitingOnAutoExposureFrame)
+				mWaitingOnAutoExposureFrame = std::numeric_limits<UINT64>::max();
+
+			mLuminanceUpdates.erase(mLuminanceUpdates.begin(), lastFinishedIter + 1);
+		}
+	}
+	
+	RendererViewRedrawReason RendererView::getRedrawReason() const
+	{
+		if (!mProperties.onDemand)
+			return RendererViewRedrawReason::PerFrame;
+
+		if (mRedrawThisFrame)
+			return RendererViewRedrawReason::OnDemandThisFrame;
+
+		return RendererViewRedrawReason::OnDemandLingering;
+	}
+
+	float RendererView::getCurrentExposure() const
+	{
+		if (mRenderSettings->enableAutoExposure)
+			return mPreviousEyeAdaptation;
+
+		return Math::pow(2.0f, mRenderSettings->exposureScale);
+	}
+
+	void RendererView::_notifyLuminanceUpdated(UINT64 frameIdx, SPtr<CommandBuffer> cb, SPtr<PooledRenderTexture> texture) const
+	{
+		mLuminanceUpdates.emplace_back(frameIdx, cb, texture);
 	}
 
 	void RendererView::determineVisible(const Vector<RendererRenderable*>& renderables, const Vector<CullInfo>& cullInfos,
@@ -185,7 +358,7 @@ namespace bs { namespace ct
 		mVisibility.renderables.clear();
 		mVisibility.renderables.resize(renderables.size(), false);
 
-		if (mRenderSettings->overlayOnly)
+		if (!shouldDraw3D())
 			return;
 
 		calculateVisibility(cullInfos, mVisibility.renderables);
@@ -201,13 +374,13 @@ namespace bs { namespace ct
 		}
 	}
 
-	void RendererView::determineVisible(const Vector<RendererParticles>& particleSystems, const Vector<CullInfo>& cullInfos, 
+	void RendererView::determineVisible(const Vector<RendererParticles>& particleSystems, const Vector<CullInfo>& cullInfos,
 		Vector<bool>* visibility)
 	{
 		mVisibility.particleSystems.clear();
 		mVisibility.particleSystems.resize(particleSystems.size(), false);
 
-		if (mRenderSettings->overlayOnly)
+		if (!shouldDraw3D())
 			return;
 
 		calculateVisibility(cullInfos, mVisibility.particleSystems);
@@ -223,13 +396,13 @@ namespace bs { namespace ct
 		}
 	}
 
-	void RendererView::determineVisible(const Vector<RendererDecal>& decals, const Vector<CullInfo>& cullInfos, 
+	void RendererView::determineVisible(const Vector<RendererDecal>& decals, const Vector<CullInfo>& cullInfos,
 		Vector<bool>* visibility)
 	{
 		mVisibility.decals.clear();
 		mVisibility.decals.resize(decals.size(), false);
 
-		if (mRenderSettings->overlayOnly)
+		if (!shouldDraw3D())
 			return;
 
 		calculateVisibility(cullInfos, mVisibility.decals);
@@ -245,7 +418,7 @@ namespace bs { namespace ct
 		}
 	}
 
-	void RendererView::determineVisible(const Vector<RendererLight>& lights, const Vector<Sphere>& bounds, 
+	void RendererView::determineVisible(const Vector<RendererLight>& lights, const Vector<Sphere>& bounds,
 		LightType lightType, Vector<bool>* visibility)
 	{
 		// Special case for directional lights, they're always visible
@@ -273,7 +446,7 @@ namespace bs { namespace ct
 			perViewVisibility = &mVisibility.spotLights;
 		}
 
-		if (mRenderSettings->overlayOnly)
+		if (!shouldDraw3D())
 			return;
 
 		calculateVisibility(bounds, *perViewVisibility);
@@ -293,7 +466,7 @@ namespace bs { namespace ct
 	{
 		UINT64 cameraLayers = mProperties.visibleLayers;
 		const ConvexVolume& worldFrustum = mProperties.cullFrustum;
-		const Vector3& worldCameraPosition = mCamera->getTransform().getPosition();
+		const Vector3& worldCameraPosition = mProperties.viewOrigin;
 		float baseCullDistance = mRenderSettings->cullDistance;
 
 		for (UINT32 i = 0; i < (UINT32)cullInfos.size(); i++)
@@ -350,9 +523,6 @@ namespace bs { namespace ct
 
 	void RendererView::queueRenderElements(const SceneInfo& sceneInfo)
 	{
-		if (mRenderSettings->overlayOnly)
-			return;
-
 		// Queue renderables
 		for(UINT32 i = 0; i < (UINT32)sceneInfo.renderables.size(); i++)
 		{
@@ -362,17 +532,28 @@ namespace bs { namespace ct
 			const AABox& boundingBox = sceneInfo.renderableCullInfos[i].bounds.getBox();
 			const float distanceToCamera = (mProperties.viewOrigin - boundingBox.getCenter()).length();
 
+			bool needsVelocity = requiresVelocityWrites();
 			for (auto& renderElem : sceneInfo.renderables[i]->elements)
 			{
-				// Note: I could keep renderables in multiple separate arrays, so I don't need to do the check here
+				UINT32 techniqueIdx;
+				if (needsVelocity)
+				{
+					techniqueIdx = renderElem.writeVelocityTechniqueIdx != (UINT32)-1
+						? renderElem.writeVelocityTechniqueIdx
+						: renderElem.defaultTechniqueIdx;
+				}
+				else
+					techniqueIdx = renderElem.defaultTechniqueIdx;
+
 				ShaderFlags shaderFlags = renderElem.material->getShader()->getFlags();
 
+				// Note: I could keep renderables in multiple separate arrays, so I don't need to do the check here
 				if (shaderFlags.isSet(ShaderFlag::Transparent))
-					mTransparentQueue->add(&renderElem, distanceToCamera, renderElem.techniqueIdx);
+					mTransparentQueue->add(&renderElem, distanceToCamera, techniqueIdx);
 				else if (shaderFlags.isSet(ShaderFlag::Forward))
-					mForwardOpaqueQueue->add(&renderElem, distanceToCamera, renderElem.techniqueIdx);
+					mForwardOpaqueQueue->add(&renderElem, distanceToCamera, techniqueIdx);
 				else
-					mDeferredOpaqueQueue->add(&renderElem, distanceToCamera, renderElem.techniqueIdx);
+					mDeferredOpaqueQueue->add(&renderElem, distanceToCamera, techniqueIdx);
 			}
 		}
 
@@ -392,11 +573,11 @@ namespace bs { namespace ct
 			ShaderFlags shaderFlags = renderElem.material->getShader()->getFlags();
 
 			if (shaderFlags.isSet(ShaderFlag::Transparent))
-				mTransparentQueue->add(&renderElem, distanceToCamera, renderElem.techniqueIdx);
+				mTransparentQueue->add(&renderElem, distanceToCamera, renderElem.defaultTechniqueIdx);
 			else if (shaderFlags.isSet(ShaderFlag::Forward))
-				mForwardOpaqueQueue->add(&renderElem, distanceToCamera, renderElem.techniqueIdx);
+				mForwardOpaqueQueue->add(&renderElem, distanceToCamera, renderElem.defaultTechniqueIdx);
 			else
-				mDeferredOpaqueQueue->add(&renderElem, distanceToCamera, renderElem.techniqueIdx);
+				mDeferredOpaqueQueue->add(&renderElem, distanceToCamera, renderElem.defaultTechniqueIdx);
 		}
 
 		// Queue decals
@@ -427,7 +608,7 @@ namespace bs { namespace ct
 			const UINT32* techniqueIndices = renderElem.techniqueIndices[(INT32)isInside];
 
 			// No MSAA evaluation, or same value for all samples (no divergence between samples)
-			mDecalQueue->add(&renderElem, distanceToCamera, 
+			mDecalQueue->add(&renderElem, distanceToCamera,
 				techniqueIndices[(INT32)(isMSAA ? MSAAMode::Single : MSAAMode::None)]);
 
 			// Evaluates all MSAA samples for pixels that are marked as divergent
@@ -446,16 +627,16 @@ namespace bs { namespace ct
 		// Returns a set of values that will transform depth buffer values (in range [0, 1]) to a distance
 		// in view space. This involes applying the inverse projection transform to the depth value. When you multiply
 		// a vector with the projection matrix you get [clipX, clipY, Az + B, C * z], where we don't care about clipX/clipY.
-		// A is [2, 2], B is [2, 3] and C is [3, 2] elements of the projection matrix (only ones that matter for our depth 
-		// value). The hardware will also automatically divide the z value with w to get the depth, therefore the final 
+		// A is [2, 2], B is [2, 3] and C is [3, 2] elements of the projection matrix (only ones that matter for our depth
+		// value). The hardware will also automatically divide the z value with w to get the depth, therefore the final
 		// formula is:
 		// depth = (Az + B) / (C * z)
 
-		// To get the z coordinate back we simply do the opposite: 
+		// To get the z coordinate back we simply do the opposite:
 		// z = B / (depth * C - A)
 
-		// However some APIs will also do a transformation on the depth values before storing them to the texture 
-		// (e.g. OpenGL will transform from [-1, 1] to [0, 1]). And we need to reverse that as well. Therefore the final 
+		// However some APIs will also do a transformation on the depth values before storing them to the texture
+		// (e.g. OpenGL will transform from [-1, 1] to [0, 1]). And we need to reverse that as well. Therefore the final
 		// formula is:
 		// z = B / ((depth * (maxDepth - minDepth) + minDepth) * C - A)
 
@@ -492,12 +673,12 @@ namespace bs { namespace ct
 		// Returns a set of values that will transform depth buffer values (e.g. [0, 1] in DX, [-1, 1] in GL) to a distance
 		// in view space. This involes applying the inverse projection transform to the depth value. When you multiply
 		// a vector with the projection matrix you get [clipX, clipY, Az + B, C * z], where we don't care about clipX/clipY.
-		// A is [2, 2], B is [2, 3] and C is [3, 2] elements of the projection matrix (only ones that matter for our depth 
-		// value). The hardware will also automatically divide the z value with w to get the depth, therefore the final 
+		// A is [2, 2], B is [2, 3] and C is [3, 2] elements of the projection matrix (only ones that matter for our depth
+		// value). The hardware will also automatically divide the z value with w to get the depth, therefore the final
 		// formula is:
 		// depth = (Az + B) / (C * z)
 
-		// To get the z coordinate back we simply do the opposite: 
+		// To get the z coordinate back we simply do the opposite:
 		// z = B / (depth * C - A)
 
 		// Are we reorganize it because it needs to fit the "(1.0f / (depth + y)) * x" format used in the shader:
@@ -575,9 +756,10 @@ namespace bs { namespace ct
 		gPerCameraParamDef.gMatViewProj.set(mParamBuffer, viewProj);
 		gPerCameraParamDef.gMatInvViewProj.set(mParamBuffer, invViewProj);
 		gPerCameraParamDef.gMatInvProj.set(mParamBuffer, invProj);
+		gPerCameraParamDef.gMatPrevViewProj.set(mParamBuffer, mProperties.prevViewProjTransform);
 
 		// Construct a special inverse view-projection matrix that had projection entries that effect z and w eliminated.
-		// Used to transform a vector(clip_x, clip_y, view_z, view_w), where clip_x/clip_y are in clip space, and 
+		// Used to transform a vector(clip_x, clip_y, view_z, view_w), where clip_x/clip_y are in clip space, and
 		// view_z/view_w in view space, into world space.
 
 		// Only projects z/w coordinates (cancels out with the inverse matrix below)
@@ -650,7 +832,7 @@ namespace bs { namespace ct
 		return ndcToUV;
 	}
 
-	void RendererView::updateLightGrid(const VisibleLightData& visibleLightData, 
+	void RendererView::updateLightGrid(const VisibleLightData& visibleLightData,
 		const VisibleReflProbeData& visibleReflProbeData)
 	{
 		mLightGrid.updateGrid(*this, visibleLightData, visibleReflProbeData, !mRenderSettings->enableLighting);
@@ -678,17 +860,17 @@ namespace bs { namespace ct
 		const auto numViews = (UINT32)mViews.size();
 
 		// Early exit if no views render scene geometry
-		bool allViewsOverlay = false;
+		bool anyViewsNeed3DDrawing = false;
 		for (UINT32 i = 0; i < numViews; i++)
 		{
-			if (!mViews[i]->getRenderSettings().overlayOnly)
+			if (mViews[i]->shouldDraw3D())
 			{
-				allViewsOverlay = false;
+				anyViewsNeed3DDrawing = true;
 				break;
 			}
 		}
 
-		if (allViewsOverlay)
+		if (!anyViewsNeed3DDrawing)
 			return;
 
 		// Calculate renderable visibility per view
@@ -709,8 +891,11 @@ namespace bs { namespace ct
 		}
 		
 		// Generate render queues per camera
-		for(UINT32 i = 0; i < numViews; i++)
-			mViews[i]->queueRenderElements(sceneInfo);
+		for (UINT32 i = 0; i < numViews; i++)
+		{
+			if(mViews[i]->shouldDraw3D())
+				mViews[i]->queueRenderElements(sceneInfo);
+		}
 
 		// Calculate light visibility for all views
 		const auto numRadialLights = (UINT32)sceneInfo.radialLights.size();
@@ -723,7 +908,7 @@ namespace bs { namespace ct
 
 		for (UINT32 i = 0; i < numViews; i++)
 		{
-			if (mViews[i]->getRenderSettings().overlayOnly)
+			if (!mViews[i]->shouldDraw3D())
 				continue;
 
 			mViews[i]->determineVisible(sceneInfo.radialLights, sceneInfo.radialLightWorldBounds, LightType::Radial,
@@ -750,7 +935,7 @@ namespace bs { namespace ct
 			mViews[i]->calculateVisibility(sceneInfo.reflProbeWorldBounds, mVisibility.reflProbes);
 		}
 
-		// Organize light and refl. probe visibility infomation in a more GPU friendly manner
+		// Organize light and refl. probe visibility information in a more GPU friendly manner
 
 		// Note: I'm determining light and refl. probe visibility for the entire group. It might be more performance
 		// efficient to do it per view. Additionally I'm using a single GPU buffer to hold their information, which is
@@ -763,7 +948,7 @@ namespace bs { namespace ct
 		{
 			for (UINT32 i = 0; i < numViews; i++)
 			{
-				if (mViews[i]->getRenderSettings().overlayOnly)
+				if (!mViews[i]->shouldDraw3D())
 					continue;
 
 				mViews[i]->updateLightGrid(mVisibleLightData, mVisibleReflProbeData);

@@ -33,13 +33,13 @@ namespace bs
 
 	GUISliderHandle* GUISliderHandle::create(GUISliderHandleFlags flags, const String& styleName)
 	{
-		return new (bs_alloc<GUISliderHandle>()) GUISliderHandle(flags, 
+		return new (bs_alloc<GUISliderHandle>()) GUISliderHandle(flags,
 			getStyleName<GUISliderHandle>(styleName), GUIDimensions::create());
 	}
 
 	GUISliderHandle* GUISliderHandle::create(GUISliderHandleFlags flags, const GUIOptions& options, const String& styleName)
 	{
-		return new (bs_alloc<GUISliderHandle>()) GUISliderHandle(flags, 
+		return new (bs_alloc<GUISliderHandle>()) GUISliderHandle(flags,
 			getStyleName<GUISliderHandle>(styleName), GUIDimensions::create(options));
 	}
 
@@ -78,25 +78,6 @@ namespace bs
 	UINT32 GUISliderHandle::getScrollableSize() const
 	{
 		return getMaxSize() - getHandleSize();
-	}
-
-	UINT32 GUISliderHandle::_getNumRenderElements() const
-	{
-		return mImageSprite->getNumRenderElements();
-	}
-
-	const SpriteMaterialInfo& GUISliderHandle::_getMaterial(UINT32 renderElementIdx, SpriteMaterial** material) const
-	{
-		*material = mImageSprite->getMaterial(renderElementIdx);
-		return mImageSprite->getMaterialInfo(renderElementIdx);
-	}
-
-	void GUISliderHandle::_getMeshInfo(UINT32 renderElementIdx, UINT32& numVertices, UINT32& numIndices, GUIMeshType& type) const
-	{
-		UINT32 numQuads = mImageSprite->getNumQuads(renderElementIdx);
-		numVertices = numQuads * 4;
-		numIndices = numQuads * 6;
-		type = GUIMeshType::Triangle;
 	}
 
 	void GUISliderHandle::updateRenderElementsInternal()
@@ -138,6 +119,12 @@ namespace bs
 		desc.color = getTint();
 		mImageSprite->update(desc, (UINT64)_getParentWidget());
 		
+		// Populate GUI render elements from the sprites
+		{
+			using T = impl::GUIRenderElementHelper;
+			T::populate({ T::SpriteInfo(mImageSprite) }, mRenderElements);
+		}
+
 		GUIElement::updateRenderElementsInternal();
 	}
 
@@ -157,29 +144,36 @@ namespace bs
 		return Vector2I();
 	}
 
-	void GUISliderHandle::_fillBuffer(UINT8* vertices, UINT32* indices, UINT32 vertexOffset, UINT32 indexOffset,
-		UINT32 maxNumVerts, UINT32 maxNumIndices, UINT32 renderElementIdx) const
+	void GUISliderHandle::_fillBuffer(
+		UINT8* vertices,
+		UINT32* indices,
+		UINT32 vertexOffset,
+		UINT32 indexOffset,
+		const Vector2I& offset,
+		UINT32 maxNumVerts,
+		UINT32 maxNumIndices,
+		UINT32 renderElementIdx) const
 	{
 		UINT8* uvs = vertices + sizeof(Vector2);
 		UINT32 vertexStride = sizeof(Vector2) * 2;
 		UINT32 indexStride = sizeof(UINT32);
 
-		Vector2I offset(mLayoutData.area.x, mLayoutData.area.y);
+		Vector2I layoutOffset = Vector2I(mLayoutData.area.x, mLayoutData.area.y) + offset;
 		Rect2I clipRect = mLayoutData.getLocalClipRect();
 
 		if (mFlags.isSet(GUISliderHandleFlag::Horizontal))
 		{
-			offset.x += getHandlePosPx();
+			layoutOffset.x += getHandlePosPx();
 			clipRect.x -= getHandlePosPx();
 		}
 		else
 		{
-			offset.y += getHandlePosPx();
+			layoutOffset.y += getHandlePosPx();
 			clipRect.y -= getHandlePosPx();
 		}
 
 		mImageSprite->fillBuffer(vertices, uvs, indices, vertexOffset, indexOffset, maxNumVerts, maxNumIndices,
-			vertexStride, indexStride, renderElementIdx, offset, clipRect);
+			vertexStride, indexStride, renderElementIdx, layoutOffset, clipRect);
 	}
 
 	bool GUISliderHandle::_mouseEvent(const GUIMouseEvent& ev)
@@ -380,7 +374,7 @@ namespace bs
 				else
 					mState = State::Normal;
 
-				if (!mHandleDragged) 
+				if (!mHandleDragged)
 				{
 					// If we clicked above or below the scroll handle, scroll by one page
 					INT32 handlePosPx = getHandlePosPx();

@@ -27,6 +27,7 @@ namespace bs
 		/// scene brightness calculations. In log2 units (-8 = 1/256). In the range [-16, 0].
 		/// </summary>
 		[ShowInInspector]
+		[Range(-16f, 0f, true)]
 		[NativeWrapper]
 		public float HistogramLog2Min
 		{
@@ -40,6 +41,7 @@ namespace bs
 		/// scene brightness calculations. In log2 units (4 = 16). In the range [0, 16].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 16f, true)]
 		[NativeWrapper]
 		public float HistogramLog2Max
 		{
@@ -55,6 +57,7 @@ namespace bs
 		/// dark pixels in an otherwise bright image). In range [0.0f, 1.0f].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 1f, true)]
 		[NativeWrapper]
 		public float HistogramPctLow
 		{
@@ -66,10 +69,11 @@ namespace bs
 		/// Percentage above which to ignore values in the eye adaptation histogram. The histogram is used for calculating the 
 		/// average brightness of the scene. Total luminance in the histogram will be summed up and multiplied by this value to 
 		/// calculate maximum luminance. Luminance values above the maximum luminance will be ignored and not used in scene 
-		/// brightness calculations. This allows you to remove outliers on the high end of the histogram (for  example a few very 
+		/// brightness calculations. This allows you to remove outliers on the high end of the histogram (for example a few very 
 		/// bright pixels). In range [0.0f, 1.0f].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 1f, true)]
 		[NativeWrapper]
 		public float HistogramPctHigh
 		{
@@ -83,6 +87,7 @@ namespace bs
 		/// everything is still visible). In range [0.0f, 10.0f].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 10f, true)]
 		[NativeWrapper]
 		public float MinEyeAdaptation
 		{
@@ -92,10 +97,11 @@ namespace bs
 
 		/// <summary>
 		/// Clamps the maximum eye adaptation scale to this value. This allows you to limit eye adaptation so that exposure is 
-		/// never too low (for example when looking at a very bright light source you probably don't want the exposure to be so 
-		/// low that the rest of the scene is all white (overexposed). In range [0.0f, 10.0f].
+		/// never too low (for example when looking at a very bright light source you probably don&apos;t want the exposure to be 
+		/// so low that the rest of the scene is all white (overexposed). In range [0.0f, 10.0f].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 10f, true)]
 		[NativeWrapper]
 		public float MaxEyeAdaptation
 		{
@@ -108,6 +114,7 @@ namespace bs
 		/// exposure changes when the scene brightness increases. In range [0.01f, 20.0f].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0.01f, 20f, true)]
 		[NativeWrapper]
 		public float EyeAdaptationSpeedUp
 		{
@@ -120,6 +127,7 @@ namespace bs
 		/// exposure changes when the scene brightness decreases. In range [0.01f, 20.0f].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0.01f, 20f, true)]
 		[NativeWrapper]
 		public float EyeAdaptationSpeedDown
 		{

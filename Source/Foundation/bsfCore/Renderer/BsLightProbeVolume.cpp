@@ -11,10 +11,6 @@
 
 namespace bs
 {
-	LightProbeVolume::LightProbeVolume()
-		: mVolume(AABox::UNIT_BOX), mCellCount { 1, 1, 1 }
-	{ }
-
 	LightProbeVolume::LightProbeVolume(const AABox& volume, const Vector3I& cellCount)
 		:mVolume(volume), mCellCount(cellCount)
 	{
@@ -328,28 +324,28 @@ namespace bs
 			UINT32 numDirtyProbes = (UINT32)dirtyProbes.size();
 			UINT32 numRemovedProbes = (UINT32)removedProbes.size();
 
-			size += coreSyncGetElemSize((SceneActor&)*this);
-			size += rttiGetElemSize(numDirtyProbes);
-			size += rttiGetElemSize(numRemovedProbes);
+			size += csync_size((SceneActor&)*this);
+			size += rtti_size(numDirtyProbes).bytes;
+			size += rtti_size(numRemovedProbes).bytes;
 			size += (sizeof(UINT32) + sizeof(Vector3) + sizeof(LightProbeFlags)) * numDirtyProbes;
 			size += sizeof(UINT32) * numRemovedProbes;
 
 			buffer = allocator->alloc(size);
+			Bitstream stream(buffer, size);
 
-			char* dataPtr = (char*)buffer;
-			dataPtr = coreSyncWriteElem((SceneActor&)*this, dataPtr);
-			dataPtr = rttiWriteElem(numDirtyProbes, dataPtr);
-			dataPtr = rttiWriteElem(numRemovedProbes, dataPtr);
+			csync_write((SceneActor&)*this, stream);
+			rtti_write(numDirtyProbes, stream);
+			rtti_write(numRemovedProbes, stream);
 
 			for (auto& entry : dirtyProbes)
 			{
-				dataPtr = rttiWriteElem(entry.first, dataPtr);
-				dataPtr = rttiWriteElem(entry.second.position, dataPtr);
-				dataPtr = rttiWriteElem(entry.second.flags, dataPtr);
+				rtti_write(entry.first, stream);
+				rtti_write(entry.second.position, stream);
+				rtti_write(entry.second.flags, stream);
 			}
 
 			for(auto& entry : removedProbes)
-				dataPtr = rttiWriteElem(entry, dataPtr);
+				rtti_write(entry, stream);
 		}
 		bs_frame_clear();
 
@@ -491,26 +487,26 @@ namespace bs
 
 	void LightProbeVolume::syncToCore(const CoreSyncData& data)
 	{
-		char* dataPtr = (char*)data.getBuffer();
+		Bitstream stream(data.getBuffer(), data.getBufferSize());
 
 		bool oldIsActive = mActive;
 
-		dataPtr = coreSyncReadElem((SceneActor&)*this, dataPtr);
+		csync_read((SceneActor&)*this, stream);
 
 		UINT32 numDirtyProbes, numRemovedProbes;
-		dataPtr = rttiReadElem(numDirtyProbes, dataPtr);
-		dataPtr = rttiReadElem(numRemovedProbes, dataPtr);
+		rtti_read(numDirtyProbes, stream);
+		rtti_read(numRemovedProbes, stream);
 
 		for (UINT32 i = 0; i < numDirtyProbes; ++i)
 		{
 			UINT32 handle;
-			dataPtr = rttiReadElem(handle, dataPtr);
+			rtti_read(handle, stream);
 
 			Vector3 position;
-			dataPtr = rttiReadElem(position, dataPtr);
+			rtti_read(position, stream);
 
 			LightProbeFlags flags;
-			dataPtr = rttiReadElem(flags, dataPtr);
+			rtti_read(flags, stream);
 
 			auto iterFind = mProbeMap.find(handle);
 			if(iterFind != mProbeMap.end())
@@ -571,7 +567,7 @@ namespace bs
 		for (UINT32 i = 0; i < numRemovedProbes; ++i)
 		{
 			UINT32 idx;
-			dataPtr = rttiReadElem(idx, dataPtr);
+			rtti_read(idx, stream);
 
 			auto iterFind = mProbeMap.find(idx);
 			if(iterFind != mProbeMap.end())

@@ -9,7 +9,6 @@
 namespace bs
 {
 	Cursor::Cursor()
-		:mNextUniqueId((UINT32)CursorType::Count), mActiveCursorId(-1)
 	{
 		for(UINT32 i = 0; i < (UINT32)CursorType::Count; i++)
 			restoreCursorIcon((CursorType)i);
@@ -65,7 +64,7 @@ namespace bs
 		auto iterFind = mCustomIconNameToId.find(name);
 		if(iterFind == mCustomIconNameToId.end())
 		{
-			LOGWRN("Cannot find cursor icon with name: " + name);
+			BS_LOG(Warning, Platform, "Cannot find cursor icon with name: " + name);
 			return;
 		}
 

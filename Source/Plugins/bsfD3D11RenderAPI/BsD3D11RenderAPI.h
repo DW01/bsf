@@ -7,6 +7,8 @@
 
 namespace bs { namespace ct
 {
+	class D3D11CommandBuffer;
+
 	/** @addtogroup D3D11
 	 *  @{
 	 */
@@ -15,14 +17,14 @@ namespace bs { namespace ct
 	class D3D11RenderAPI : public RenderAPI
 	{
 	public:
-		D3D11RenderAPI();
-		~D3D11RenderAPI();
+		D3D11RenderAPI() = default;
+		~D3D11RenderAPI() = default;
 
 		/** @copydoc RenderAPI::getName */
 		const StringID& getName() const override;
 		
 		/** @copydoc RenderAPI::setGraphicsPipeline */
-		void setGraphicsPipeline(const SPtr<GraphicsPipelineState>& pipelineState, 
+		void setGraphicsPipeline(const SPtr<GraphicsPipelineState>& pipelineState,
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setComputePipeline */
@@ -30,11 +32,11 @@ namespace bs { namespace ct
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setGpuParams */
-		void setGpuParams(const SPtr<GpuParams>& gpuParams, 
+		void setGpuParams(const SPtr<GpuParams>& gpuParams,
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::clearRenderTarget */
-		void clearRenderTarget(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0, 
+		void clearRenderTarget(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0,
 			UINT8 targetMask = 0xFF, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::clearViewport */
@@ -42,14 +44,14 @@ namespace bs { namespace ct
 			UINT8 targetMask = 0xFF, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setRenderTarget */
-		void setRenderTarget(const SPtr<RenderTarget>& target, UINT32 readOnlyFlags, 
+		void setRenderTarget(const SPtr<RenderTarget>& target, UINT32 readOnlyFlags,
 			RenderSurfaceMask loadMask = RT_NONE, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setViewport */
 		void setViewport(const Rect2& area, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setScissorRect */
-		void setScissorRect(UINT32 left, UINT32 top, UINT32 right, UINT32 bottom, 
+		void setScissorRect(UINT32 left, UINT32 top, UINT32 right, UINT32 bottom,
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setStencilRef */
@@ -60,7 +62,7 @@ namespace bs { namespace ct
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setIndexBuffer */
-		void setIndexBuffer(const SPtr<IndexBuffer>& buffer, 
+		void setIndexBuffer(const SPtr<IndexBuffer>& buffer,
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::setVertexDeclaration */
@@ -76,7 +78,7 @@ namespace bs { namespace ct
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::drawIndexed */
-		void drawIndexed(UINT32 startIndex, UINT32 indexCount, UINT32 vertexOffset, UINT32 vertexCount, 
+		void drawIndexed(UINT32 startIndex, UINT32 indexCount, UINT32 vertexOffset, UINT32 vertexCount,
 			UINT32 instanceCount = 0, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::dispatchCompute */
@@ -91,6 +93,9 @@ namespace bs { namespace ct
 
 		/** @copydoc RenderAPI::submitCommandBuffer() */
 		void submitCommandBuffer(const SPtr<CommandBuffer>& commandBuffer, UINT32 syncMask = 0xFFFFFFFF) override;
+
+		/** @copydoc RenderAPI::getMainCommandBuffer() */
+		SPtr<CommandBuffer> getMainCommandBuffer() const override;
 
 		/** @copydoc RenderAPI::convertProjectionMatrix */
 		void convertProjectionMatrix(const Matrix4& matrix, Matrix4& dest) override;
@@ -133,6 +138,12 @@ namespace bs { namespace ct
 		void destroyCore() override;
 
 		/**
+		 * Returns a valid command buffer. Uses the provided buffer if not null. Otherwise returns the default command
+		 * buffer.
+		 */
+		SPtr<D3D11CommandBuffer> getCB(const SPtr<CommandBuffer>& buffer);
+
+		/**
 		 * Creates or retrieves a proper input layout depending on the currently set vertex shader and vertex buffer.
 		 *
 		 * Applies the input layout to the pipeline.
@@ -145,34 +156,38 @@ namespace bs { namespace ct
 		 */
 		void applyViewport();
 
+		/** Notifies the active render target that a rendering command was queued that will potentially change its contents. */
+		void notifyRenderTargetModified();
+
 		/** Creates and populates a set of render system capabilities describing which functionality is available. */
 		void initCapabilites(IDXGIAdapter* adapter, RenderAPICapabilities& caps) const;
 
 	private:
-		IDXGIFactory1* mDXGIFactory;
-		D3D11Device* mDevice;
+		IDXGIFactory1* mDXGIFactory = nullptr;
+		D3D11Device* mDevice = nullptr;
 
-		D3D11DriverList* mDriverList;
-		D3D11Driver* mActiveD3DDriver;
+		D3D11DriverList* mDriverList = nullptr;
+		D3D11Driver* mActiveD3DDriver = nullptr;
 
-		D3D_FEATURE_LEVEL mFeatureLevel;
+		D3D_FEATURE_LEVEL mFeatureLevel = D3D_FEATURE_LEVEL_11_0;
 
-		D3D11HLSLProgramFactory* mHLSLFactory;
-		D3D11InputLayoutManager* mIAManager;
+		D3D11HLSLProgramFactory* mHLSLFactory = nullptr;
+		D3D11InputLayoutManager* mIAManager = nullptr;
 
-		bool mPSUAVsBound;
-		bool mCSUAVsBound;
+		bool mPSUAVsBound = false;
+		bool mCSUAVsBound = false;
 
-		UINT32 mStencilRef;
-		Rect2 mViewportNorm;
+		UINT32 mStencilRef = 0;
+		Rect2 mViewportNorm = Rect2(0.0f, 0.0f, 1.0f, 1.0f);
 		D3D11_VIEWPORT mViewport;
 		D3D11_RECT mScissorRect;
 
 		SPtr<VertexDeclaration> mActiveVertexDeclaration;
 		SPtr<D3D11GpuProgram> mActiveVertexShader;
 		SPtr<D3D11DepthStencilState> mActiveDepthStencilState;
+		SPtr<D3D11CommandBuffer> mMainCommandBuffer;
 
-		DrawOperationType mActiveDrawOp;
+		DrawOperationType mActiveDrawOp = DOT_TRIANGLE_LIST;
 	};
 
 	/** @} */

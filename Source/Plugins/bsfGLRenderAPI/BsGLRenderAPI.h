@@ -10,6 +10,8 @@
 
 namespace bs { namespace ct
 {
+	class GLCommandBuffer;
+	
 	/** @addtogroup GL
 	 *  @{
 	 */
@@ -70,22 +72,22 @@ namespace bs { namespace ct
 			, UINT32 instanceCount = 0, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::dispatchCompute() */
-		void dispatchCompute(UINT32 numGroupsX, UINT32 numGroupsY = 1, UINT32 numGroupsZ = 1, 
+		void dispatchCompute(UINT32 numGroupsX, UINT32 numGroupsY = 1, UINT32 numGroupsZ = 1,
 			const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::swapBuffers() */
 		void swapBuffers(const SPtr<RenderTarget>& target, UINT32 syncMask = 0xFFFFFFFF) override;
 
 		/** @copydoc RenderAPI::setRenderTarget() */
-		void setRenderTarget(const SPtr<RenderTarget>& target, UINT32 readOnlyFlags = 0, 
+		void setRenderTarget(const SPtr<RenderTarget>& target, UINT32 readOnlyFlags = 0,
 			RenderSurfaceMask loadMask = RT_NONE, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::clearRenderTarget() */
-		void clearRenderTarget(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0, 
+		void clearRenderTarget(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0,
 			UINT8 targetMask = 0xFF, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::clearViewport() */
-		void clearViewport(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0, 
+		void clearViewport(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0,
 			UINT8 targetMask = 0xFF, const SPtr<CommandBuffer>& commandBuffer = nullptr) override;
 
 		/** @copydoc RenderAPI::addCommands() */
@@ -93,6 +95,9 @@ namespace bs { namespace ct
 
 		/** @copydoc RenderAPI::submitCommandBuffer() */
 		void submitCommandBuffer(const SPtr<CommandBuffer>& commandBuffer, UINT32 syncMask = 0xFFFFFFFF) override;
+
+		/** @copydoc RenderAPI::getMainCommandBuffer() */
+		SPtr<CommandBuffer> getMainCommandBuffer() const override;
 
 		/** @copydoc RenderAPI::convertProjectionMatrix() */
 		void convertProjectionMatrix(const Matrix4& matrix, Matrix4& dest) override;
@@ -130,11 +135,11 @@ namespace bs { namespace ct
 		void endDraw();
 
 		/**	Clear a part of a render target. */
-		void clearArea(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0, 
+		void clearArea(UINT32 buffers, const Color& color = Color::Black, float depth = 1.0f, UINT16 stencil = 0,
 			const Rect2I& clearArea = Rect2I::EMPTY, UINT8 targetMask = 0xFF);
 
-		/** 
-		 * Changes the currently active texture unit. Any texture related operations will then be performed on this unit. 
+		/**
+		 * Changes the currently active texture unit. Any texture related operations will then be performed on this unit.
 		 */
 		bool activateGLTextureUnit(UINT16 unit);
 
@@ -164,6 +169,12 @@ namespace bs { namespace ct
 		 * (for example textures, gpu programs and such).
 		 */
 		void switchContext(const SPtr<GLContext>& context, const RenderWindow& window);
+
+		/**
+		 * Returns a valid command buffer. Uses the provided buffer if not null. Otherwise returns the default command
+		 * buffer.
+		 */
+		SPtr<GLCommandBuffer> getCB(const SPtr<CommandBuffer>& buffer);
 
 		/************************************************************************/
 		/* 								Sampler states                     		*/
@@ -204,9 +215,9 @@ namespace bs { namespace ct
 		/**	Sets anisotropy value for the specified texture unit. */
 		void setTextureAnisotropy(UINT16 unit, UINT32 maxAnisotropy);
 		
-		/** 
-		 * Sets the compare mode to use when sampling the texture (anything but "always" implies the use of a shadow 
-		 * sampler. 
+		/**
+		 * Sets the compare mode to use when sampling the texture (anything but "always" implies the use of a shadow
+		 * sampler.
 		 */
 		void setTextureCompareMode(UINT16 unit, CompareFunction compare);
 
@@ -221,7 +232,7 @@ namespace bs { namespace ct
 		 * Sets up blending mode that allows you to combine new pixels with pixels already in the render target.
 		 * Final pixel value = (renderTargetPixel * sourceFactor) op (pixel * destFactor).
 		 */
-		void setSceneBlending(BlendFactor sourceFactor, BlendFactor destFactor, BlendOperation op);
+		void setSceneBlending(UINT32 target, BlendFactor sourceFactor, BlendFactor destFactor, BlendOperation op);
 
 		/**
 		 * Sets up blending mode that allows you to combine new pixels with pixels already in the render target.
@@ -229,7 +240,7 @@ namespace bs { namespace ct
 		 *	
 		 * Final pixel value = (renderTargetPixel * sourceFactor) op (pixel * destFactor). (And the same for alpha)
 		 */
-		void setSceneBlending(BlendFactor sourceFactor, BlendFactor destFactor, BlendFactor sourceFactorAlpha, 
+		void setSceneBlending(UINT32 target, BlendFactor sourceFactor, BlendFactor destFactor, BlendFactor sourceFactorAlpha,
 			BlendFactor destFactorAlpha, BlendOperation op, BlendOperation alphaOp);
 
 		/**
@@ -240,7 +251,7 @@ namespace bs { namespace ct
 		void setAlphaToCoverage(bool enabled);
 
 		/**	Enables or disables writing to certain color channels of the render target. */
-		void setColorBufferWriteEnabled(bool red, bool green, bool blue, bool alpha);
+		void setColorBufferWriteEnabled(UINT32 target, bool red, bool green, bool blue, bool alpha);
 
 		/************************************************************************/
 		/* 								Rasterizer states                  		*/
@@ -352,6 +363,9 @@ namespace bs { namespace ct
 		/** Convers the engine stencil operation in OpenGL representation. */
 		GLint convertStencilOp(StencilOperation op) const;
 
+		/** Notifies the active render target that a rendering command was queued that will potentially change its contents. */
+		void notifyRenderTargetModified();
+
 	private:
 		/** Information about a currently bound texture. */
 		struct TextureInfo
@@ -362,15 +376,16 @@ namespace bs { namespace ct
 		static const UINT32 MAX_VB_COUNT = 32;
 
 		Rect2 mViewportNorm = Rect2(0.0f, 0.0f, 1.0f, 1.0f);
-		UINT32 mScissorTop = 0; 
-		UINT32 mScissorBottom = 720; 
-		UINT32 mScissorLeft = 0; 
+		UINT32 mScissorTop = 0;
+		UINT32 mScissorBottom = 720;
+		UINT32 mScissorLeft = 0;
 		UINT32 mScissorRight = 1280;
-		UINT32 mViewportLeft = 0; 
-		UINT32 mViewportTop = 0; 
-		UINT32 mViewportWidth = 0; 
+		UINT32 mViewportLeft = 0;
+		UINT32 mViewportTop = 0;
+		UINT32 mViewportWidth = 0;
 		UINT32 mViewportHeight = 0;
 		bool mScissorEnabled = false;
+		bool mScissorRectDirty = false;
 
 		UINT32 mStencilReadMask = 0xFFFFFFFF;
 		UINT32 mStencilWriteMask = 0xFFFFFFFF;
@@ -386,7 +401,7 @@ namespace bs { namespace ct
 		UINT32 mNumTextureUnits = 0;
 		TextureInfo* mTextureInfos = nullptr;
 		bool mDepthWrite = true;
-		bool mColorWrite[4];
+		bool mColorWrite[BS_MAX_MULTIPLE_RENDER_TARGETS][4];
 
 		GLSupport* mGLSupport;
 		bool mGLInitialised;
@@ -410,6 +425,7 @@ namespace bs { namespace ct
 
 		SPtr<GLContext> mMainContext;
 		SPtr<GLContext> mCurrentContext;
+		SPtr<GLCommandBuffer> mMainCommandBuffer;
 
 		bool mDrawCallInProgress = false;
 

@@ -35,7 +35,7 @@ namespace bs
 	}
 
 	GLRenderTexture::~GLRenderTexture()
-	{ 
+	{
 		if (mFB != nullptr)
 			bs_delete(mFB);
 	}
@@ -80,7 +80,10 @@ namespace bs
 					if (glColorSurface->getProperties().getTextureType() != TEX_TYPE_3D)
 					{
 						if (mColorSurfaces[i]->getNumArraySlices() != glColorSurface->getProperties().getNumFaces())
-							LOGWRN("OpenGL doesn't support binding of arbitrary ranges for array textures. The entire range will be bound instead.");
+						{
+							BS_LOG(Warning, RenderBackend, "OpenGL doesn't support binding of arbitrary ranges for array "
+								"textures. The entire range will be bound instead.");
+						}
 
 						surfaceDesc.zoffset = 0;
 						surfaceDesc.buffer = glColorSurface->getBuffer(0, mColorSurfaces[i]->getMostDetailedMip());
@@ -115,7 +118,7 @@ namespace bs
 				if (!allLayers)
 					firstSlice = mDepthStencilSurface->getFirstArraySlice();
 
-				depthStencilBuffer = glDepthStencilTexture->getBuffer(firstSlice, 
+				depthStencilBuffer = glDepthStencilTexture->getBuffer(firstSlice,
 					mDepthStencilSurface->getMostDetailedMip());
 			}
 

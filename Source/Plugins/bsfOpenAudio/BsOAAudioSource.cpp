@@ -181,10 +181,10 @@ namespace bs
 			alSourcePlay(mSourceIDs[i]);
 
 			// Non-3D clips need to play only on a single source
-			// Note: I'm still creating sourcs objects (and possibly queuing streaming buffers) for these non-playing 
+			// Note: I'm still creating sourcs objects (and possibly queuing streaming buffers) for these non-playing
 			// sources. It would be possible to optimize them out at cost of more complexity. At this time it doesn't feel
 			// worth it.
-			if(!is3D()) 
+			if(!is3D())
 				break;
 		}
 	}
@@ -539,7 +539,7 @@ namespace bs
 
 				if (bufferBits == 0)
 				{
-					LOGERR("Error decoding stream.");
+					BS_LOG(Error, Audio, "Error decoding stream.");
 					return;
 				}
 				else

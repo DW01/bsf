@@ -4,6 +4,7 @@
 
 #include "BsScriptEnginePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStdRTTI.h"
 #include "Serialization/BsManagedSerializableDiff.h"
 
 namespace bs
@@ -165,7 +166,7 @@ namespace bs
 		}
 	};
 
-	class BS_SCR_BE_EXPORT ModificationRTTI : 
+	class BS_SCR_BE_EXPORT ModificationRTTI :
 		public RTTIType < ManagedSerializableDiff::Modification, IReflectable, ModificationRTTI >
 	{
 	public:
@@ -189,7 +190,7 @@ namespace bs
 		}
 	};
 
-	class BS_SCR_BE_EXPORT ModifiedObjectRTTI : 
+	class BS_SCR_BE_EXPORT ModifiedObjectRTTI :
 		public RTTIType < ManagedSerializableDiff::ModifiedObject, ManagedSerializableDiff::Modification, ModifiedObjectRTTI >
 	{
 	private:
@@ -430,7 +431,7 @@ namespace bs
 	public:
 		ManagedSerializableDiffRTTI()
 		{
-			addReflectablePtrField("mModificationRoot", 0, &ManagedSerializableDiffRTTI::getModificationRoot, 
+			addReflectablePtrField("mModificationRoot", 0, &ManagedSerializableDiffRTTI::getModificationRoot,
 				&ManagedSerializableDiffRTTI::setModificationRoot);
 
 		}

@@ -55,7 +55,7 @@ namespace bs
 
 		/// <summary>
 		/// A set of all curves stored in the animation. Returned value will not be updated if the animation clip curves are 
-		/// added or removed, as it is a copy of clip's internal values.
+		/// added or removed, as it is a copy of clip&apos;s internal values.
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -124,7 +124,12 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<AnimationClip>(AnimationClip x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<AnimationClip> Internal_GetRef(IntPtr thisPtr);

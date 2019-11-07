@@ -18,18 +18,13 @@ namespace bs
 
 	}
 
-	FMODImporter::~FMODImporter()
-	{
-
-	}
-
 	bool FMODImporter::isExtensionSupported(const String& ext) const
 	{
 		String lowerCaseExt = ext;
 		StringUtil::toLowerCase(lowerCaseExt);
 
 		return lowerCaseExt == u8"wav" || lowerCaseExt == u8"flac" || lowerCaseExt == u8"ogg" || lowerCaseExt == u8"mp3" ||
-			lowerCaseExt == u8"wma" || lowerCaseExt == u8"asf" || lowerCaseExt == u8"wmv" || lowerCaseExt == u8"midi" || 
+			lowerCaseExt == u8"wma" || lowerCaseExt == u8"asf" || lowerCaseExt == u8"wmv" || lowerCaseExt == u8"midi" ||
 			lowerCaseExt == u8"fsb" || lowerCaseExt == u8"aif" || lowerCaseExt == u8"aiff";
 	}
 
@@ -55,7 +50,7 @@ namespace bs
 			String pathStr = filePath.toString();
 			if (gFMODAudio()._getFMOD()->createSound(pathStr.c_str(), FMOD_CREATESAMPLE, nullptr, &sound) != FMOD_OK)
 			{
-				LOGERR("Failed importing audio file: " + pathStr);
+				BS_LOG(Error, Audio, "Failed importing audio file: {0}", pathStr);
 				return nullptr;
 			}
 		}
@@ -66,10 +61,10 @@ namespace bs
 
 		sound->getFormat(nullptr, &format, &numChannels, &numBits);
 
-		if(format != FMOD_SOUND_FORMAT_PCM8 && format != FMOD_SOUND_FORMAT_PCM16 && format != FMOD_SOUND_FORMAT_PCM24 
+		if(format != FMOD_SOUND_FORMAT_PCM8 && format != FMOD_SOUND_FORMAT_PCM16 && format != FMOD_SOUND_FORMAT_PCM24
 			&& format != FMOD_SOUND_FORMAT_PCM32 && format != FMOD_SOUND_FORMAT_PCMFLOAT)
 		{
-			LOGERR("Failed importing audio file, invalid imported format: " + filePath.toString());
+			BS_LOG(Error, Audio, "Failed importing audio file, invalid imported format: ", filePath);
 			return nullptr;
 		}
 

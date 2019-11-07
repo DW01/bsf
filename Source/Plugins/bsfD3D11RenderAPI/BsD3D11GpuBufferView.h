@@ -44,10 +44,10 @@ namespace bs { namespace ct
 			bool operator()(const GPU_BUFFER_VIEW_DESC& a, const GPU_BUFFER_VIEW_DESC& b) const;
 		};
 
-		GpuBufferView();
+		GpuBufferView() = default;
 		virtual ~GpuBufferView();
 
-		/** 
+		/**
 		 * Initializes a new buffer view for the specified buffer. Descriptor structure defines which portion of the buffer,
 		 * and how will its contents be represented by the view.
 		 */
@@ -83,7 +83,7 @@ namespace bs { namespace ct
 	private:
 		/**
 		 * Creates a DX11 shader resource view that allows a buffer to be bound to a shader for reading (the most common
-		 * option). 
+		 * option).
 		 *
 		 * @param[in]	buffer			Buffer to create the view for.
 		 * @param[in]	firstElement	Index of the first element the view manages. Interpretation of this value depends on
@@ -110,8 +110,8 @@ namespace bs { namespace ct
 		 */
 		ID3D11UnorderedAccessView* createUAV(D3D11GpuBuffer* buffer, UINT32 firstElement, UINT32 numElements, bool useCounter);
 
-		ID3D11ShaderResourceView* mSRV;
-		ID3D11UnorderedAccessView* mUAV;
+		ID3D11ShaderResourceView* mSRV = nullptr;
+		ID3D11UnorderedAccessView* mUAV = nullptr;
 
 		GPU_BUFFER_VIEW_DESC mDesc;
 		D3D11GpuBuffer* mBuffer;

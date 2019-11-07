@@ -17,7 +17,7 @@ namespace bs
 			SPtr<MaterialParamsType> params = material->_getInternalParams();
 
 			UINT32 paramIndex;
-			auto result = params->getParamIndex(name, MaterialParams::ParamType::Data, (GpuParamDataType)DATA_TYPE, 0, 
+			auto result = params->getParamIndex(name, MaterialParams::ParamType::Data, (GpuParamDataType)DATA_TYPE, 0,
 				paramIndex);
 
 			if (result == MaterialParams::GetParamResult::Success)
@@ -41,8 +41,8 @@ namespace bs
 
 		if(arrayIdx >= this->mArraySize)
 		{
-			LOGWRN("Array index out of range. Provided index was " + toString(arrayIdx) + 
-				" but array length is " + toString(this->mArraySize));
+			BS_LOG(Warning, Material, "Array index out of range. Provided index was {0} but array length is {1}",
+				arrayIdx, this->mArraySize);
 			return;
 		}
 
@@ -75,8 +75,8 @@ namespace bs
 
 		if(arrayIdx >= this->mArraySize)
 		{
-			LOGWRN("Array index out of range. Provided index was " + toString(arrayIdx) + 
-				" but array length is " + toString(this->mArraySize));
+			BS_LOG(Warning, Material, "Array index out of range. Provided index was {0} but array length is {1}",
+				arrayIdx, this->mArraySize);
 			return;
 		}
 
@@ -102,15 +102,15 @@ namespace bs
 	}
 
 	template<bool Core>
-	void TMaterialColorGradientParam<Core>::set(const ColorGradient& value, UINT32 arrayIdx) const
+	void TMaterialColorGradientParam<Core>::set(const ColorGradientHDR& value, UINT32 arrayIdx) const
 	{
 		if (this->mMaterial == nullptr)
 			return;
 
 		if(arrayIdx >= this->mArraySize)
 		{
-			LOGWRN("Array index out of range. Provided index was " + toString(arrayIdx) + 
-				" but array length is " + toString(this->mArraySize));
+			BS_LOG(Warning, Material, "Array index out of range. Provided index was {0} but array length is {1}",
+				arrayIdx, this->mArraySize);
 			return;
 		}
 
@@ -122,9 +122,9 @@ namespace bs
 	}
 
 	template<bool Core>
-	const ColorGradient& TMaterialColorGradientParam<Core>::get(UINT32 arrayIdx) const
+	const ColorGradientHDR& TMaterialColorGradientParam<Core>::get(UINT32 arrayIdx) const
 	{
-		static ColorGradient EMPTY_GRADIENT;
+		static ColorGradientHDR EMPTY_GRADIENT;
 
 		if (this->mMaterial == nullptr || arrayIdx >= this->mArraySize)
 			return EMPTY_GRADIENT;
@@ -143,8 +143,8 @@ namespace bs
 
 		if (arrayIdx >= this->mArraySize)
 		{
-			LOGWRN("Array index out of range. Provided index was " + toString(arrayIdx) +
-				" but array length is " + toString(this->mArraySize));
+			BS_LOG(Warning, Material, "Array index out of range. Provided index was {0} but array length is {1}",
+				arrayIdx, this->mArraySize);
 			return;
 		}
 
@@ -296,7 +296,7 @@ namespace bs
 	}
 
 	template<bool Core>
-	TMaterialParamLoadStoreTexture<Core>::TMaterialParamLoadStoreTexture(const String& name, 
+	TMaterialParamLoadStoreTexture<Core>::TMaterialParamLoadStoreTexture(const String& name,
 		const MaterialPtrType& material)
 		:mParamIndex(0), mMaterial(nullptr)
 	{

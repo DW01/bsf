@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Image/BsSpriteTexture.h"
 
 namespace bs
@@ -53,51 +54,56 @@ namespace bs
 	{	
 		enum { id = TID_SpriteSheetGridAnimation }; enum { hasDynamicSize = 1 };
 
-		static void toMemory(const SpriteSheetGridAnimation& data, char* memory)
-		{ 
-			static constexpr UINT32 VERSION = 0;
+		static BitLength toMemory(const SpriteSheetGridAnimation& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
+		{
+			static constexpr uint32_t VERSION = 0;
 
-			const UINT32 size = getDynamicSize(data);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+			{
+				BitLength size = 0;
+				size += rtti_write(VERSION, stream);
+				size += rtti_write(data.numRows, stream);
+				size += rtti_write(data.numColumns, stream);
+				size += rtti_write(data.count, stream);
+				size += rtti_write(data.fps, stream);
 
-			memory = rttiWriteElem(size, memory);
-			memory = rttiWriteElem(VERSION, memory);
-			memory = rttiWriteElem(data.numRows, memory);
-			memory = rttiWriteElem(data.numColumns, memory);
-			memory = rttiWriteElem(data.count, memory);
-			memory = rttiWriteElem(data.fps, memory);
+				return size;
+			});
 		}
 
-		static UINT32 fromMemory(SpriteSheetGridAnimation& data, char* memory)
-		{ 
-			UINT32 size = 0;
-			memory = rttiReadElem(size, memory);
+		static BitLength fromMemory(SpriteSheetGridAnimation& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
+		{
+			BitLength size;
+			rtti_read_size_header(stream, compress, size);
 
-			UINT32 version = 0;
-			memory = rttiReadElem(version, memory);
+			uint32_t version = 0;
+			rtti_read(version, stream);
 
 			switch(version)
 			{
 			case 0:
 			{
-				memory = rttiReadElem(data.numRows, memory);
-				memory = rttiReadElem(data.numColumns, memory);
-				memory = rttiReadElem(data.count, memory);
-				memory = rttiReadElem(data.fps, memory);
+				rtti_read(data.numRows, stream);
+				rtti_read(data.numColumns, stream);
+				rtti_read(data.count, stream);
+				rtti_read(data.fps, stream);
 			}
 				break;
 			default:
-				LOGERR("Unknown version. Unable to deserialize.");
+				BS_LOG(Error, RTTI, "Unknown version. Unable to deserialize.");
 				break;
 			}
 
 			return size;
 		}
 
-		static UINT32 getDynamicSize(const SpriteSheetGridAnimation& data)
-		{ 
-			UINT32 size = sizeof(UINT32) * 2 + rttiGetElemSize(data.numRows) + rttiGetElemSize(data.numColumns) +
-				rttiGetElemSize(data.count) + rttiGetElemSize(data.fps);
-			return size;
+		static BitLength getSize(const SpriteSheetGridAnimation& data, const RTTIFieldInfo& fieldInfo, bool compress)
+		{
+			BitLength dataSize = rtti_size(data.numRows) + rtti_size(data.numColumns) +
+				rtti_size(data.count) + rtti_size(data.fps) + sizeof(uint32_t);
+
+			rtti_add_header_size(dataSize, compress);
+			return dataSize;
 		}	
 	};
 

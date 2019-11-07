@@ -63,7 +63,7 @@ target_include_directories(bsf PUBLIC
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/bsfEngine>)
 
 # Defines
-target_compile_definitions(bsf PRIVATE 
+target_compile_definitions(bsf PRIVATE
 	-DBS_EXPORTS
 	-DBS_CORE_EXPORTS
 	-DBS_UTILITY_EXPORTS
@@ -73,16 +73,28 @@ target_compile_definitions(bsf PRIVATE
 	$<$<CONFIG:Release>:BS_CONFIG=BS_CONFIG_RELEASE>)
 
 if(MSVC)
-	target_compile_options(bsf PUBLIC
-		$<$<COMPILE_LANGUAGE:CXX>:/GR->)
+	if(NOT BSF_ENABLE_RTTI)
+		target_compile_options(bsf PUBLIC
+			$<$<COMPILE_LANGUAGE:CXX>:/GR->)
+	endif()
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
-	target_compile_options(bsf PUBLIC
-		-fno-exceptions
-		$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+	if(NOT BSF_ENABLE_EXCEPTIONS)
+		target_compile_options(bsf PUBLIC
+			-fno-exceptions)
+	endif()
+	if(NOT BSF_ENABLE_RTTI)
+		target_compile_options(bsf PUBLIC
+			$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+	endif()
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-	target_compile_options(bsf PUBLIC
-		-fno-exceptions
-		$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+	if(NOT BSF_ENABLE_EXCEPTIONS)
+		target_compile_options(bsf PUBLIC
+			-fno-exceptions)
+	endif()
+	if(NOT BSF_ENABLE_RTTI)
+		target_compile_options(bsf PUBLIC
+			$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+	endif()
 else()
 # TODO_OTHER_COMPILERS_GO_HERE
 endif()
@@ -135,16 +147,16 @@ if(NOT BS_IS_BANSHEE3D)
 	install(
 		DIRECTORY bsfUtility
 		DESTINATION include
-		FILES_MATCHING 
+		FILES_MATCHING
 		PATTERN "*.h"
 		PATTERN "*.hpp"
 		PATTERN "Private" EXCLUDE
 	)
 
 	install(
-		DIRECTORY bsfCore 
+		DIRECTORY bsfCore
 		DESTINATION include
-		FILES_MATCHING 
+		FILES_MATCHING
 		PATTERN "*.h"
 		PATTERN "*.hpp"
 		PATTERN "Private" EXCLUDE
@@ -153,7 +165,7 @@ if(NOT BS_IS_BANSHEE3D)
 	install(
 		DIRECTORY bsfEngine
 		DESTINATION include
-		FILES_MATCHING 
+		FILES_MATCHING
 		PATTERN "*.h"
 		PATTERN "*.hpp"
 		PATTERN "Private" EXCLUDE

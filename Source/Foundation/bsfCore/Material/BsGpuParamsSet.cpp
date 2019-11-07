@@ -425,11 +425,12 @@ namespace bs
 			if (findIter == validDataParameters.end())
 				continue;
 
-			if (findIter->second->type != iter->second.type && 
+			if (findIter->second->type != iter->second.type &&
 				!(iter->second.type == GPDT_COLOR && (findIter->second->type == GPDT_FLOAT4 || findIter->second->type == GPDT_FLOAT3)))
 			{
-				LOGWRN("Ignoring shader parameter \"" + iter->first + "\". Type doesn't match the one defined in the gpu program. "
-					+ "Shader defined type: " + toString(iter->second.type) + " - Gpu program defined type: " + toString(findIter->second->type));
+				BS_LOG(Warning, Material, "Ignoring shader parameter \"{0}\". Type doesn't match the one defined in the "
+					"GPU program. Shader defined type: {1} - Gpu program defined type: {2}",
+					iter->first, iter->second.type, findIter->second->type);
 				continue;
 			}
 
@@ -502,10 +503,10 @@ namespace bs
 		//// Fill out various helper structures
 		Vector<ShaderBlockDesc> paramBlockData = determineValidShareableParamBlocks(allParamDescs, shader->getParamBlocks());
 		UnorderedMap<ValidParamKey, String> validParams = determineValidParameters(
-			allParamDescs, 
-			shader->getDataParams(), 
-			shader->getTextureParams(), 
-			shader->getBufferParams(), 
+			allParamDescs,
+			shader->getDataParams(),
+			shader->getTextureParams(),
+			shader->getBufferParams(),
 			shader->getSamplerParams());
 
 		Map<String, ParamBlockPtrType> paramBlockBuffers;
@@ -561,7 +562,7 @@ namespace bs
 						globalBlockIdx = (UINT32)mBlocks.size();
 
 						paramPtr->setParamBlockBuffer(progType, iterBlockDesc->first, newParamBlockBuffer);
-						mBlocks.emplace_back(iterBlockDesc->first, iterBlockDesc->second.set, 
+						mBlocks.emplace_back(iterBlockDesc->first, iterBlockDesc->second.set,
 							iterBlockDesc->second.slot, newParamBlockBuffer, false);
 					}
 					else
@@ -611,7 +612,7 @@ namespace bs
 		auto& allParamBlocks = shader->getParamBlocks();
 		for (auto& entry : allParamBlocks)
 		{
-			auto iterFind = std::find_if(mBlocks.begin(), mBlocks.end(), 
+			auto iterFind = std::find_if(mBlocks.begin(), mBlocks.end(),
 				[&](auto& x)
 			{
 				return x.name == entry.first;
@@ -643,7 +644,7 @@ namespace bs
 				{
 					GpuProgramType progType = (GpuProgramType)j;
 
-					auto processObjectParams = [&](const Map<String, GpuParamObjectDesc>& gpuParams, 
+					auto processObjectParams = [&](const Map<String, GpuParamObjectDesc>& gpuParams,
 						UINT32 stageIdx, MaterialParams::ParamType paramType)
 					{
 						for (auto& param : gpuParams)
@@ -837,8 +838,8 @@ namespace bs
 		BlockInfo& blockInfo = mBlocks[index];
 		if (!blockInfo.shareable)
 		{
-			LOGERR("Cannot set parameter block buffer with the name \"" + blockInfo.name + 
-				"\". Buffer is not assignable. ");
+			BS_LOG(Error, RenderBackend, "Cannot set parameter block buffer with the name \"{0}\". "
+				"Buffer is not assignable. ", blockInfo.name);
 			return;
 		}
 
@@ -869,13 +870,14 @@ namespace bs
 	}
 
 	template<bool Core>
-	void TGpuParamsSet<Core>::setParamBlockBuffer(const String& name, const ParamBlockPtrType& paramBlock, 
+	void TGpuParamsSet<Core>::setParamBlockBuffer(const String& name, const ParamBlockPtrType& paramBlock,
 		bool ignoreInUpdate)
 	{
 		UINT32 bufferIdx = getParamBlockBufferIndex(name);
 		if(bufferIdx == (UINT32)-1)
 		{
-			LOGERR("Cannot set parameter block buffer with the name \"" + name + "\". Buffer name not found. ");
+			BS_LOG(Error, RenderBackend, "Cannot set parameter block buffer with the name \"{0}\". Buffer name not found. ",
+				name);
 			return;
 		}
 
@@ -913,7 +915,12 @@ namespace bs
 			if(materialParamInfo->dataType != GPDT_STRUCT)
 			{
 				const GpuParamDataTypeInfo& typeInfo = GpuParams::PARAM_SIZES.lookup[(int)materialParamInfo->dataType];
-				UINT32 paramSize = typeInfo.numColumns * typeInfo.numRows * typeInfo.baseTypeSize;
+
+				UINT32 paramSize;
+				if(materialParamInfo->dataType != GPDT_COLOR)
+					paramSize = typeInfo.numColumns * typeInfo.numRows * typeInfo.baseTypeSize;
+				else
+					paramSize = paramInfo.arrayStride * typeInfo.baseTypeSize;
 
 				UINT8* data = params->getData(materialParamInfo->index);
 				if (!isAnimated)
@@ -1071,10 +1078,10 @@ namespace bs
 							Color value;
 							if (params->isAnimated(*materialParamInfo, i))
 							{
-								const ColorGradient& gradient = params->getColorGradientParam(*materialParamInfo, i);
+								const ColorGradientHDR& gradient = params->getColorGradientParam(*materialParamInfo, i);
 
 								const float wrappedT = Math::repeat(t, gradient.getDuration());
-								value = Color::fromRGBA(gradient.evaluate(wrappedT));
+								value = gradient.evaluate(wrappedT);
 							}
 							else
 								memcpy(&value, data + readOffset, paramSize);
@@ -1092,7 +1099,6 @@ namespace bs
 				{
 					params->getStructData(*materialParamInfo, paramData, paramSize, i);
 
-					UINT32 readOffset = i * paramSize;
 					UINT32 writeOffset = (paramInfo.offset + paramInfo.arrayStride * i) * sizeof(UINT32);
 					paramBlock->write(writeOffset, paramData, paramSize);
 				}	

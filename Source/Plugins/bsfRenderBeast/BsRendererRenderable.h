@@ -21,6 +21,7 @@ namespace bs { namespace ct
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatInvWorld)
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatWorldNoScale)
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatInvWorldNoScale)
+		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatPrevWorld)
 		BS_PARAM_BLOCK_ENTRY(float, gWorldDeterminantSign)
 		BS_PARAM_BLOCK_ENTRY(INT32, gLayer)
 	BS_PARAM_BLOCK_END
@@ -38,8 +39,8 @@ namespace bs { namespace ct
 	{
 	public:
 		/** Updates the provided buffer with the data from the provided matrices. */
-		static void update(SPtr<GpuParamBlockBuffer>& buffer, const Matrix4& tfrm, const Matrix4& tfrmNoScale, 
-			UINT32 layer);
+		static void update(SPtr<GpuParamBlockBuffer>& buffer, const Matrix4& tfrm, const Matrix4& tfrmNoScale,
+			const Matrix4& prevTfrm, UINT32 layer);
 	};
 
 	struct MaterialSamplerOverrides;
@@ -75,6 +76,9 @@ namespace bs { namespace ct
 		/** GPU buffer containing element's bone matrices, if it requires any. */
 		SPtr<GpuBuffer> boneMatrixBuffer;
 
+		/** GPU buffer containing element's bone matrices for the previous frame, if it requires any. */
+		SPtr<GpuBuffer> bonePrevMatrixBuffer;
+
 		/** Vertex buffer containing element's morph shape vertices, if it has any. */
 		SPtr<VertexBuffer> morphShapeBuffer;
 
@@ -99,14 +103,18 @@ namespace bs { namespace ct
 		/** Updates the per-object GPU buffer according to the currently set properties. */
 		void updatePerObjectBuffer();
 
-		/** 
-		 * Updates the per-call GPU buffer according to the provided parameters. 
-		 * 
+		/**
+		 * Updates the per-call GPU buffer according to the provided parameters.
+		 *
 		 * @param[in]	viewProj	Combined view-projection matrix of the current camera.
 		 * @param[in]	flush		True if the buffer contents should be immediately flushed to the GPU.
 		 */
 		void updatePerCallBuffer(const Matrix4& viewProj, bool flush = true);
 
+		Matrix4 worldTfrm = Matrix4::IDENTITY;
+		Matrix4 prevWorldTfrm = Matrix4::IDENTITY;
+		PrevFrameDirtyState prevFrameDirtyState = PrevFrameDirtyState::Clean;
+		
 		Renderable* renderable;
 		Vector<RenderableElement> elements;
 

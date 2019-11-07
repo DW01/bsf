@@ -8,6 +8,7 @@
 #include "Serialization/BsManagedSerializableObject.h"
 #include "Serialization/BsManagedSerializableField.h"
 #include "Serialization/BsManagedDiff.h"
+#include "Serialization/BsManagedCompare.h"
 
 namespace bs
 {
@@ -58,7 +59,7 @@ namespace bs
 		ManagedSerializableObjectRTTI()
 		{
 			addReflectablePtrField("mObjInfo", 0, &ManagedSerializableObjectRTTI::getInfo, &ManagedSerializableObjectRTTI::setInfo);
-			addReflectablePtrArrayField("mFieldEntries", 1, &ManagedSerializableObjectRTTI::getFieldEntry, &ManagedSerializableObjectRTTI::getNumFieldEntries, 
+			addReflectablePtrArrayField("mFieldEntries", 1, &ManagedSerializableObjectRTTI::getFieldEntry, &ManagedSerializableObjectRTTI::getNumFieldEntries,
 				&ManagedSerializableObjectRTTI::setFieldsEntry, &ManagedSerializableObjectRTTI::setNumFieldEntries);
 		}
 
@@ -83,6 +84,12 @@ namespace bs
 		{
 			static ManagedDiff managedDiffHandler;
 			return managedDiffHandler;
+		}
+
+		ICompare& getCompareHandler() const override
+		{
+			static ManagedCompare managedCompareHandler;
+			return managedCompareHandler;
 		}
 
 		const String& getRTTIName() override

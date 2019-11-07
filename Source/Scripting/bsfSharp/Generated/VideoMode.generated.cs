@@ -12,7 +12,7 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Video mode contains information about how a render window presents its information to an output device like a  monitor.
+	/// Video mode contains information about how a render window presents its information to an output device like a monitor.
 	/// </summary>
 	[StructLayout(LayoutKind.Sequential), SerializeObject]
 	public partial struct VideoMode
@@ -56,7 +56,7 @@ namespace bs
 		/// <summary>Index of the parent video output.</summary>
 		public int outputIdx;
 		/// <summary>
-		/// Determines was video mode user created or provided by the API/OS. API/OS created video modes can contain  additional 
+		/// Determines was video mode user created or provided by the API/OS. API/OS created video modes can contain additional 
 		/// information that allows the video mode to be used more accurately and you should use them when possible.
 		/// </summary>
 		public bool isCustom;

@@ -11,8 +11,8 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Represents the most customizable type of joint. This joint type can be used to create all other built-in joint  types, 
-	/// and to design your own custom ones, but is less intuitive to use. Allows a specification of a linear  constraint (for 
+	/// Represents the most customizable type of joint. This joint type can be used to create all other built-in joint types, 
+	/// and to design your own custom ones, but is less intuitive to use. Allows a specification of a linear constraint (for 
 	/// example for slider), twist constraint (rotating around X) and swing constraint (rotating around Y and Z). It also 
 	/// allows you to constrain limits to only specific axes or completely lock specific axes.
 	/// </summary>
@@ -104,7 +104,7 @@ namespace bs
 			set { Internal_setLimitSwing(mCachedPtr, ref value); }
 		}
 
-		/// <summary>Returns the drive's target position relative to the joint's first body.</summary>
+		/// <summary>Returns the drive&apos;s target position relative to the joint&apos;s first body.</summary>
 		[NativeWrapper]
 		public Vector3 DrivePosition
 		{
@@ -116,7 +116,7 @@ namespace bs
 			}
 		}
 
-		/// <summary>Returns the drive's target rotation relative to the joint's first body.</summary>
+		/// <summary>Returns the drive&apos;s target rotation relative to the joint&apos;s first body.</summary>
 		[NativeWrapper]
 		public Quaternion DriveRotation
 		{
@@ -128,7 +128,7 @@ namespace bs
 			}
 		}
 
-		/// <summary>Returns the drive's target linear velocity.</summary>
+		/// <summary>Returns the drive&apos;s target linear velocity.</summary>
 		[NativeWrapper]
 		public Vector3 DriveLinearVelocity
 		{
@@ -140,7 +140,7 @@ namespace bs
 			}
 		}
 
-		/// <summary>Returns the drive's target angular velocity.</summary>
+		/// <summary>Returns the drive&apos;s target angular velocity.</summary>
 		[NativeWrapper]
 		public Vector3 DriveAngularVelocity
 		{
@@ -167,9 +167,9 @@ namespace bs
 		/// example unlocking just one translational axis is the equivalent of a slider joint.)
 		///
 		/// Angular degrees of freedom are partitioned as twist (around X axis) and swing (around Y and Z axes). Different 
-		/// effects can be achieves by unlocking their various combinations:  - If a single degree of angular freedom is unlocked 
+		/// effects can be achieves by unlocking their various combinations: - If a single degree of angular freedom is unlocked 
 		/// it should be the twist degree as it has extra options for that case (for example for a hinge joint). - If both swing 
-		/// degrees are unlocked but twist is locked the result is a zero-twist joint.  - If one swing and one twist degree of 
+		/// degrees are unlocked but twist is locked the result is a zero-twist joint. - If one swing and one twist degree of 
 		/// freedom are unlocked the result is a zero-swing joint (for example an arm attached at the elbow) - If all angular 
 		/// degrees of freedom are unlocked the result is the same as the spherical joint.
 		/// </summary>
@@ -196,13 +196,13 @@ namespace bs
 			Internal_setDrive(mCachedPtr, type, ref drive);
 		}
 
-		/// <summary>Sets the drive's target position and rotation relative to the joint's first body.</summary>
+		/// <summary>Sets the drive&apos;s target position and rotation relative to the joint&apos;s first body.</summary>
 		public void SetDriveTransform(Vector3 position, Quaternion rotation)
 		{
 			Internal_setDriveTransform(mCachedPtr, ref position, ref rotation);
 		}
 
-		/// <summary>Sets the drive's target linear and angular velocities.</summary>
+		/// <summary>Sets the drive&apos;s target linear and angular velocities.</summary>
 		public void SetDriveVelocity(Vector3 linear, Vector3 angular)
 		{
 			Internal_setDriveVelocity(mCachedPtr, ref linear, ref angular);

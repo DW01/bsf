@@ -61,7 +61,7 @@ namespace bs
 			mDevice = alcOpenDevice(nullptr);
 
 		if (mDevice == nullptr)
-			LOGERR("Failed to open OpenAL device: " + defaultDeviceName);
+			BS_LOG(Error, Audio, "Failed to open OpenAL device: {0}", defaultDeviceName);
 
 		rebuildContexts();
 	}
@@ -130,7 +130,7 @@ namespace bs
 		String narrowName = device.name;
 		mDevice = alcOpenDevice(narrowName.c_str());
 		if (mDevice == nullptr)
-			LOGERR("Failed to open OpenAL device: " + narrowName);
+			BS_LOG(Error, Audio, "Failed to open OpenAL device: ", narrowName);
 
 		rebuildContexts();
 	}
@@ -204,7 +204,7 @@ namespace bs
 		else
 			return mContexts[0];
 
-		LOGERR("Unable to find context for an audio listener.");
+		BS_LOG(Error, Audio, "Unable to find context for an audio listener.");
 		return nullptr;
 	}
 
@@ -378,7 +378,8 @@ namespace bs
 				}
 				else
 				{
-					LOGWRN("OpenAL doesn't support bit depth larger than 16. Your audio data will be truncated.");
+					BS_LOG(Warning, RenderBackend,
+						"OpenAL doesn't support bit depth larger than 16. Your audio data will be truncated.");
 
 					UINT32 bufferSize = info.numSamples * 2;
 					UINT8* sampleBuffer16 = (UINT8*)bs_stack_alloc(bufferSize);
@@ -391,7 +392,7 @@ namespace bs
 					bs_stack_free(sampleBuffer16);
 				}
 			}
-			else if(info.bitDepth == 8) 
+			else if(info.bitDepth == 8)
 			{
 				// OpenAL expects unsigned 8-bit data, but engine stores it as signed, so convert
 				UINT32 bufferSize = info.numSamples * (info.bitDepth / 8);

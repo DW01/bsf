@@ -20,11 +20,11 @@ namespace bs
 		/// <summary>Linear movement on the Z axis using the linear drive model.</summary>
 		Z = 2,
 		/// <summary>
-		/// Rotation around the Y axis using the twist/swing angular drive model. Should not be used together with  SLERP mode.
+		/// Rotation around the Y axis using the twist/swing angular drive model. Should not be used together with SLERP mode.
 		/// </summary>
 		Swing = 3,
 		/// <summary>
-		/// Rotation around the Z axis using the twist/swing angular drive model. Should not be used together with  SLERP mode.
+		/// Rotation around the Z axis using the twist/swing angular drive model. Should not be used together with SLERP mode.
 		/// </summary>
 		Twist = 4,
 		/// <summary>

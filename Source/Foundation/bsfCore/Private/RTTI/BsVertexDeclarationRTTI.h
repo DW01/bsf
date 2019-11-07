@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "RenderAPI/BsVertexBuffer.h"
 #include "Managers/BsHardwareBufferManager.h"
 #include "RenderAPI/BsVertexDataDesc.h"
@@ -15,6 +16,8 @@ namespace bs
 	 *  @{
 	 */
 
+	BS_ALLOW_MEMCPY_SERIALIZATION(VertexElement);
+	
 	class VertexDeclarationRTTI : public RTTIType<VertexDeclaration, IReflectable, VertexDeclarationRTTI>
 	{
 	private:
@@ -58,7 +61,7 @@ namespace bs
 	public:
 		VertexDeclarationRTTI()
 		{
-			addPlainArrayField("mElementList", 0, &VertexDeclarationRTTI::getElement, &VertexDeclarationRTTI::getElementArraySize, 
+			addPlainArrayField("mElementList", 0, &VertexDeclarationRTTI::getElement, &VertexDeclarationRTTI::getElementArraySize,
 				&VertexDeclarationRTTI::setElement, &VertexDeclarationRTTI::setElementArraySize);
 		}
 

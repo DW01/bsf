@@ -61,7 +61,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines a spring that controls how the joint responds when a limit is reached. You must enable the spring  flag on 
+		/// Determines a spring that controls how the joint responds when a limit is reached. You must enable the spring flag on 
 		/// the joint in order for this to be recognized.
 		/// </summary>
 		[ShowInInspector]

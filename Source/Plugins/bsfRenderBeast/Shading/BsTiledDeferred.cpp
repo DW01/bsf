@@ -36,8 +36,8 @@ namespace bs { namespace ct
 		defines.set("TILE_SIZE", TILE_SIZE);
 	}
 
-	void TiledDeferredLightingMat::execute(const RendererView& view, const VisibleLightData& lightData, 
-		const GBufferTextures& gbuffer, const SPtr<Texture>& inputTexture, const SPtr<Texture>& lightAccumTex, 
+	void TiledDeferredLightingMat::execute(const RendererView& view, const VisibleLightData& lightData,
+		const GBufferTextures& gbuffer, const SPtr<Texture>& inputTexture, const SPtr<Texture>& lightAccumTex,
 		const SPtr<Texture>& lightAccumTexArray, const SPtr<Texture>& msaaCoverage)
 	{
 		BS_RENMAT_PROFILE_BLOCK
@@ -226,6 +226,38 @@ namespace bs { namespace ct
 		RenderAPI::instance().dispatchCompute(numGroupsX, 1);
 	}
 
+	/** Helper method used for initializing variations of the ClearLoadStore material. */
+	template<ClearLoadStoreType OBJ_TYPE, ClearLoadStoreDataType DATA_TYPE, UINT32 NUM_COMPONENTS>
+	static const ShaderVariation& getClearLoadStoreVariation()
+	{
+		static ShaderVariation variation = ShaderVariation(
+			{
+				ShaderVariation::Param("OBJ_TYPE", (int)OBJ_TYPE),
+				ShaderVariation::Param("DATA_TYPE", (int)DATA_TYPE),
+				ShaderVariation::Param("NUM_COMPONENTS", NUM_COMPONENTS),
+
+			});
+
+		return variation;
+	}
+
+	template<ClearLoadStoreType BUFFER_TYPE, ClearLoadStoreDataType DATA_TYPE>
+	const ShaderVariation& getClearLoadStoreVariation(UINT32 numComponents)
+	{
+		switch (numComponents)
+		{
+		default:
+		case 1:
+			return getClearLoadStoreVariation<BUFFER_TYPE, DATA_TYPE, 0>();
+		case 2:
+			return getClearLoadStoreVariation<BUFFER_TYPE, DATA_TYPE, 1>();
+		case 3:
+			return getClearLoadStoreVariation<BUFFER_TYPE, DATA_TYPE, 2>();
+		case 4:
+			return getClearLoadStoreVariation<BUFFER_TYPE, DATA_TYPE, 3>();
+		}
+	}
+
 	ClearLoadStoreMat* ClearLoadStoreMat::getVariation(ClearLoadStoreType objType, ClearLoadStoreDataType dataType,
 									UINT32 numComponents)
 	{
@@ -234,106 +266,35 @@ namespace bs { namespace ct
 		default:
 		case ClearLoadStoreType::Texture:
 			if(dataType == ClearLoadStoreDataType::Float)
-			{
-				switch(numComponents)
-				{
-				default:
-				case 1:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Float, 0>());
-				case 2:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Float, 1>());
-				case 3:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Float, 2>());
-				case 4:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Float, 3>());
-				}
-			}
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Float>(numComponents));
 			else
-			{
-				switch(numComponents)
-				{
-				default:
-				case 1:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Int, 0>());
-				case 2:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Int, 1>());
-				case 3:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Int, 2>());
-				case 4:
-					return get(getVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Int, 3>());
-				}
-			}
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::Texture, ClearLoadStoreDataType::Int>(numComponents));
 		case ClearLoadStoreType::TextureArray:
 			if(dataType == ClearLoadStoreDataType::Float)
-			{
-				switch(numComponents)
-				{
-				default:
-				case 1:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Float, 0>());
-				case 2:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Float, 1>());
-				case 3:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Float, 2>());
-				case 4:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Float, 3>());
-				}
-			}
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Float>(numComponents));
 			else
-			{
-				switch(numComponents)
-				{
-				default:
-				case 1:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Int, 0>());
-				case 2:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Int, 1>());
-				case 3:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Int, 2>());
-				case 4:
-					return get(getVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Int, 3>());
-				}
-			}
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::TextureArray, ClearLoadStoreDataType::Int>(numComponents));
 		case ClearLoadStoreType::Buffer:
 			if(dataType == ClearLoadStoreDataType::Float)
-			{
-				switch(numComponents)
-				{
-				default:
-				case 1:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Float, 0>());
-				case 2:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Float, 1>());
-				case 3:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Float, 2>());
-				case 4:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Float, 3>());
-				}
-			}
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Float>(numComponents));
 			else
-			{
-				switch(numComponents)
-				{
-				default:
-				case 1:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Int, 0>());
-				case 2:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Int, 1>());
-				case 3:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Int, 2>());
-				case 4:
-					return get(getVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Int, 3>());
-				}
-			}
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::Buffer, ClearLoadStoreDataType::Int>(numComponents));
+		case ClearLoadStoreType::StructuredBuffer:
+			if(dataType == ClearLoadStoreDataType::Float)
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::StructuredBuffer, ClearLoadStoreDataType::Float>(numComponents));
+			else
+				return get(getClearLoadStoreVariation<ClearLoadStoreType::StructuredBuffer, ClearLoadStoreDataType::Int>(numComponents));
 		}
 	}
 
 	TiledImageBasedLightingParamDef gTiledImageBasedLightingParamDef;
 
-	// Note: Using larger tiles than in tiled deferred lighting since we use AABB for intersections, which is more
-	// expensive to compute than frustums. This way we amortize the cost even though other parts of the shader might suffer
-	// due to increased thread group load.
-	const UINT32 TiledDeferredImageBasedLightingMat::TILE_SIZE = 32;
+	// Note: Tile size was reduced from 32 to 16 because of macOS limitations. Ideally we should try keeping the larger
+	// size on non-macOS platforms, but currently where don't have a platform-specific way of setting this.
+	//
+	// The theory is that using larger tiles will amortize the cost of computing tile AABB's (which this shader uses,
+	// compared to the cheaper-to-compute frustums).
+	const UINT32 TiledDeferredImageBasedLightingMat::TILE_SIZE = 16;
 
 	TiledDeferredImageBasedLightingMat::TiledDeferredImageBasedLightingMat()
 	{
@@ -363,7 +324,7 @@ namespace bs { namespace ct
 		defines.set("TILE_SIZE", TILE_SIZE);
 	}
 
-	void TiledDeferredImageBasedLightingMat::execute(const RendererView& view, const SceneInfo& sceneInfo, 
+	void TiledDeferredImageBasedLightingMat::execute(const RendererView& view, const SceneInfo& sceneInfo,
 		const VisibleReflProbeData& probeData, const Inputs& inputs)
 	{
 		BS_RENMAT_PROFILE_BLOCK
@@ -377,11 +338,11 @@ namespace bs { namespace ct
 		framebufferSize[1] = height;
 		gTiledImageBasedLightingParamDef.gFramebufferSize.set(mParamBuffer, framebufferSize);
 
-		Skybox* skybox = nullptr; 
+		Skybox* skybox = nullptr;
 		if(view.getRenderSettings().enableSkybox)
 			skybox = sceneInfo.skybox;
 
-		mReflProbeParamBuffer.populate(skybox, probeData.getNumProbes(), sceneInfo.reflProbeCubemapsTex, 
+		mReflProbeParamBuffer.populate(skybox, probeData.getNumProbes(), sceneInfo.reflProbeCubemapsTex,
 			viewProps.capturingReflections);
 
 		mParamBuffer->flushToGPU();

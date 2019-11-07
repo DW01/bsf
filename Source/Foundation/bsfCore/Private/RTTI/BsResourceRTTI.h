@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Resources/BsResource.h"
 #include "Resources/BsResourceMetaData.h"
 
@@ -18,7 +19,7 @@ namespace bs
 	{
 	private:
 		UINT32& getSize(Resource* obj) { return obj->mSize; }
-		void setSize(Resource* obj, UINT32& size) { obj->mSize = size; } 
+		void setSize(Resource* obj, UINT32& size) { obj->mSize = size; }
 
 		SPtr<ResourceMetaData> getMetaData(Resource* obj) { return obj->mMetaData; }
 		void setMetaData(Resource* obj, SPtr<ResourceMetaData> value) { obj->mMetaData = value; }

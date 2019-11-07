@@ -61,10 +61,6 @@
         {
             "Path": "bsfIcon.png",
             "UUID": "fc1a1c8f-4242-c2e9-728b-42429f5b7cd2"
-        },
-        {
-            "Path": "BansheeIcon.png",
-            "UUID": "d32ab6ab-4bd5-4f54-0b9f-4bd55f371ce3"
         }
     ],
     "Includes": [
@@ -211,6 +207,18 @@
         {
             "Path": "ShapingCommon.bslinc",
             "UUID": "3d40728a-454c-0618-cb8d-454c0d8b9d07"
+        },
+        {
+            "Path": "PPGaussianBlurCommon.bslinc",
+            "UUID": "5fcd03a8-489b-a141-a2b6-489b4995ad59"
+        },
+        {
+            "Path": "DepthOfFieldCommon.bslinc",
+            "UUID": "54902d51-41df-28f2-a9ad-41dfa3f28758"
+        },
+        {
+            "Path": "SpriteCommon.bslinc",
+            "UUID": "4249d0c0-4edd-6c00-2b82-4eddf29ba6f0"
         }
     ],
     "Shaders": [
@@ -387,10 +395,6 @@
             "UUID": "a9eb5ddf-1196-48d8-9403-a80a9595cde0"
         },
         {
-            "Path": "PPSSRResolve.bsl",
-            "UUID": "86b9699c-162d-4729-9985-c94e0f45bacb"
-        },
-        {
             "Path": "TetrahedraRender.bsl",
             "UUID": "5912b0ab-b2be-4c0e-a039-91fcc2d3e536"
         },
@@ -529,6 +533,46 @@
         {
             "Path": "SpriteImage.bsl",
             "UUID": "430d9f0c-491b-d499-a994-491bfb3a1907"
+        },
+        {
+            "Path": "PPScreenSpaceLensFlare.bsl",
+            "UUID": "77a9c58f-4f0c-b1db-6294-4f0c85c504db"
+        },
+        {
+            "Path": "Composite.bsl",
+            "UUID": "9035d668-46c0-ba4a-75b0-46c0cf3c64e7"
+        },
+        {
+            "Path": "BicubicUpsample.bsl",
+            "UUID": "b690e22c-45a1-6cda-3cb1-45a1a944984e"
+        },
+        {
+            "Path": "PPBokehDOF.bsl",
+            "UUID": "3c4f084d-4a50-502e-3cad-4a501d10d663"
+        },
+        {
+            "Path": "PPBokehDOFCombine.bsl",
+            "UUID": "a0b378f9-491d-b2d8-359f-491de29726a9"
+        },
+        {
+            "Path": "PPBokehDOFPrepare.bsl",
+            "UUID": "0a6293a4-465b-7b01-e8ae-465be083fc8e"
+        },
+        {
+            "Path": "PPMotionBlur.bsl",
+            "UUID": "041e3400-4192-d889-a781-41923dbdd11a"
+        },
+        {
+            "Path": "PPChromaticAberration.bsl",
+            "UUID": "628e06c1-4fec-0620-309a-4fec04df32fd"
+        },
+        {
+            "Path": "PPFilmGrain.bsl",
+            "UUID": "2c006eb5-4977-3f27-75aa-49770fb3abe6"
+        },
+        {
+            "Path": "TemporalFiltering.bsl",
+            "UUID": "2e904b94-43db-a066-d1ac-43db9b91d61e"
         }
     ],
     "Skin": [
@@ -900,5 +944,11 @@
     ],
     "SplashScreen": null,
     "SpriteIcons": null,
-    "SpriteIcons3D": null
+    "SpriteIcons3D": null,
+    "Textures": [
+        {
+            "Path": "BokehHex.png",
+            "UUID": "1f39006f-4092-f3c0-fe82-4092ec7b3957"
+        }
+    ]
 }

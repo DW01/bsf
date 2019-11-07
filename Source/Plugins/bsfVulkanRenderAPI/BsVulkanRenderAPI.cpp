@@ -20,16 +20,24 @@
 
 #include <vulkan/vulkan.h>
 #include "BsVulkanUtility.h"
+#include "BsVulkanRenderPass.h"
 
 #if BS_PLATFORM == BS_PLATFORM_WIN32
 	#include "Win32/BsWin32VideoModeInfo.h"
 #elif BS_PLATFORM == BS_PLATFORM_LINUX
 	#include "Linux/BsLinuxVideoModeInfo.h"
+#elif BS_PLATFORM == BS_PLATFORM_OSX
+	#include "MacOS/BsMacOSVideoModeInfo.h"
+	#include <MoltenVK/vk_mvk_moltenvk.h>
 #else
 	static_assert(false, "Other platform includes go here.");
 #endif
 
+#if BS_PLATFORM != BS_PLATFORM_OSX
 #define USE_VALIDATION_LAYERS 1
+#else
+#define USE_VALIDATION_LAYERS 0
+#endif
 
 namespace bs { namespace ct
 {
@@ -74,25 +82,19 @@ namespace bs { namespace ct
 		if (flags & VK_DEBUG_REPORT_ERROR_BIT_EXT)
 			BS_EXCEPT(RenderingAPIException, message.str())
 		else if (flags & VK_DEBUG_REPORT_WARNING_BIT_EXT || flags & VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-			LOGWRN(message.str())
+			BS_LOG(Warning, RenderBackend, message.str());
 		else
-			LOGDBG(message.str())
+			BS_LOG(Info, RenderBackend, message.str());
 
 		// Don't abort calls that caused a validation message
 		return VK_FALSE;
 	}
 
 	VulkanRenderAPI::VulkanRenderAPI()
-		:mInstance(nullptr)
 	{
 #if BS_DEBUG_MODE
 		mDebugCallback = nullptr;
 #endif
-	}
-
-	VulkanRenderAPI::~VulkanRenderAPI()
-	{
-
 	}
 
 	const StringID& VulkanRenderAPI::getName() const
@@ -112,8 +114,15 @@ namespace bs { namespace ct
 		appInfo.pApplicationName = "bs::framework app";
 		appInfo.applicationVersion = 1;
 		appInfo.pEngineName = "bs::framework";
-		appInfo.engineVersion = (0 << 24) | (4 << 16) | 0;
+		appInfo.engineVersion = (BS_VERSION_MAJOR << 24) | (BS_VERSION_MINOR << 16) | BS_VERSION_PATCH;
+
+		// MoltenVK doesn't support 1.1, but we don't need it since the only feature we use from it right now is SPIR-V 1.3,
+		// and that's not relevant for MoltenVK as SPIR-V gets translated to MSL anyway.
+#if BS_PLATFORM == BS_PLATFORM_OSX
 		appInfo.apiVersion = VK_API_VERSION_1_0;
+#else
+		appInfo.apiVersion = VK_API_VERSION_1_1;
+#endif
 
 #if BS_DEBUG_MODE && USE_VALIDATION_LAYERS
 		const char* layers[] =
@@ -146,8 +155,12 @@ namespace bs { namespace ct
 		extensions[1] = VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
 #elif BS_PLATFORM == BS_PLATFORM_ANDROID
 		extensions[1] = VK_KHR_ANDROID_SURFACE_EXTENSION_NAME;
-#else
+#elif BS_PLATFORM == BS_PLATFORM_LINUX
 		extensions[1] = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
+#elif BS_PLATFORM == BS_PLATFORM_OSX
+		extensions[1] = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
+#else
+		static_assert(false, "Other platform includes go here.");
 #endif
 
 		uint32_t numExtensions = sizeof(extensions) / sizeof(extensions[0]);
@@ -182,6 +195,18 @@ namespace bs { namespace ct
 
 		result = vkCreateDebugReportCallbackEXT(mInstance, &debugInfo, nullptr, &mDebugCallback);
 		assert(result == VK_SUCCESS);
+#endif
+
+#if BS_PLATFORM == BS_PLATFORM_OSX
+		MVKConfiguration mvkConfig;
+		size_t mvkConfigSize = sizeof(MVKConfiguration);
+		vkGetMoltenVKConfigurationMVK(mInstance, &mvkConfig, &mvkConfigSize);
+
+#if BS_DEBUG_MODE
+		mvkConfig.debugMode = VK_TRUE;
+#endif
+
+		vkSetMoltenVKConfigurationMVK(mInstance, &mvkConfig, &mvkConfigSize);
 #endif
 
 		// Enumerate all devices
@@ -230,6 +255,8 @@ namespace bs { namespace ct
 		mVideoModeInfo = bs_shared_ptr_new<Win32VideoModeInfo>();
 #elif BS_PLATFORM == BS_PLATFORM_LINUX
 		mVideoModeInfo = bs_shared_ptr_new<LinuxVideoModeInfo>();
+#elif BS_PLATFORM == BS_PLATFORM_OSX
+		mVideoModeInfo = bs_shared_ptr_new<MacOSVideoModeInfo>();
 #else
 		static_assert(false, "mVideoModeInfo needs to be created.");
 #endif
@@ -265,6 +292,9 @@ namespace bs { namespace ct
 		bs::TextureManager::startUp<bs::VulkanTextureManager>();
 		TextureManager::startUp<VulkanTextureManager>();
 
+		// Create the render pass manager
+		VulkanRenderPasses::startUp();
+
 		// Create hardware buffer manager		
 		bs::HardwareBufferManager::startUp();
 		HardwareBufferManager::startUp<VulkanHardwareBufferManager>();
@@ -273,18 +303,23 @@ namespace bs { namespace ct
 		bs::RenderWindowManager::startUp<bs::VulkanRenderWindowManager>();
 		RenderWindowManager::startUp();
 
-		// Create query manager 
+		// Create query manager
 		QueryManager::startUp<VulkanQueryManager>(*this);
 
 		// Create vertex input manager
 		VulkanVertexInputManager::startUp();
 
-		// Create & register HLSL factory		
+		// Create & register GPU program factories
 		mGLSLFactory = bs_new<VulkanGLSLProgramFactory>();
+
+#if BS_PLATFORM == BS_PLATFORM_OSX
+		GpuProgramManager::instance().addFactory("mvksl", mGLSLFactory);
+#else
+		GpuProgramManager::instance().addFactory("vksl", mGLSLFactory);
+#endif
 
 		// Create render state manager
 		RenderStateManager::startUp<VulkanRenderStateManager>();
-		GpuProgramManager::instance().addFactory("vksl", mGLSLFactory);
 
 		initCapabilites();
 		
@@ -308,6 +343,7 @@ namespace bs { namespace ct
 		bs::RenderWindowManager::shutDown();
 		HardwareBufferManager::shutDown();
 		bs::HardwareBufferManager::shutDown();
+		VulkanRenderPasses::shutDown();
 		TextureManager::shutDown();
 		bs::TextureManager::shutDown();
 
@@ -550,6 +586,14 @@ namespace bs { namespace ct
 		cbm.flushTransferBuffers(cmdBuffer->getDeviceIdx());
 
 		cmdBuffer->submit(syncMask);
+
+		if(cmdBuffer == mMainCommandBuffer.get())
+			mMainCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(CommandBuffer::create(GQT_GRAPHICS));
+	}
+
+	SPtr<CommandBuffer> VulkanRenderAPI::getMainCommandBuffer() const
+	{
+		return mMainCommandBuffer;
 	}
 
 	void VulkanRenderAPI::convertProjectionMatrix(const Matrix4& matrix, Matrix4& dest)
@@ -702,17 +746,17 @@ namespace bs { namespace ct
 
 			caps.numCombinedTextureUnits
 				= caps.numTextureUnitsPerStage[GPT_FRAGMENT_PROGRAM]
-				+ caps.numTextureUnitsPerStage[GPT_VERTEX_PROGRAM] 
+				+ caps.numTextureUnitsPerStage[GPT_VERTEX_PROGRAM]
 				+ caps.numTextureUnitsPerStage[GPT_GEOMETRY_PROGRAM]
-				+ caps.numTextureUnitsPerStage[GPT_HULL_PROGRAM] 
+				+ caps.numTextureUnitsPerStage[GPT_HULL_PROGRAM]
 				+ caps.numTextureUnitsPerStage[GPT_DOMAIN_PROGRAM]
 				+ caps.numTextureUnitsPerStage[GPT_COMPUTE_PROGRAM];
 
 			caps.numCombinedParamBlockBuffers
 				= caps.numGpuParamBlockBuffersPerStage[GPT_FRAGMENT_PROGRAM]
-				+ caps.numGpuParamBlockBuffersPerStage[GPT_VERTEX_PROGRAM] 
+				+ caps.numGpuParamBlockBuffersPerStage[GPT_VERTEX_PROGRAM]
 				+ caps.numGpuParamBlockBuffersPerStage[GPT_GEOMETRY_PROGRAM]
-				+ caps.numGpuParamBlockBuffersPerStage[GPT_HULL_PROGRAM] 
+				+ caps.numGpuParamBlockBuffersPerStage[GPT_HULL_PROGRAM]
 				+ caps.numGpuParamBlockBuffersPerStage[GPT_DOMAIN_PROGRAM]
 				+ caps.numGpuParamBlockBuffersPerStage[GPT_COMPUTE_PROGRAM];
 

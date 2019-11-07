@@ -63,7 +63,8 @@ namespace bs
 		Category      = 1 << 11,
 		Order         = 1 << 12,
 		Inline        = 1 << 13,
-		LoadOnAssign  = 1 << 14
+		LoadOnAssign  = 1 << 14,
+		HDR           = 1 << 15,
 	};
 
 	typedef Flags<ScriptFieldFlag> ScriptFieldFlags;
@@ -332,7 +333,7 @@ namespace bs
 		virtual MonoObject* getValue(MonoObject* instance) const = 0;
 
 		/**
-		 * Sets a value of the member in the specified object instance. 
+		 * Sets a value of the member in the specified object instance.
 		 *
 		 * @param[in]	instance	Object instance to access the member on.
 		 * @param[in]	value		Value to set on the property. For value type it should be a pointer to the value and for
@@ -340,7 +341,7 @@ namespace bs
 		 */
 		virtual void setValue(MonoObject* instance, void* value) const = 0;
 
-		/** 
+		/**
 		 * Checks if the attribute of the provided type exists on the member and returns it, or returns null if the
 		 * attribute is not present.
 		 */

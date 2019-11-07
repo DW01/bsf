@@ -49,13 +49,13 @@ namespace bs
 	/** @ref scriptBindingMacro */
 	#define BS_SCRIPT_EXPORT(...) __attribute__((annotate("se," #__VA_ARGS__)))
 
-	/** 
+	/**
 	 * When applied to a parameter, makes it a variable argument parameter in the scripting interface (if supported
 	 * by the scripting language.
 	 */
 	#define BS_PARAMS __attribute__((annotate("params")))
 
-	/** 
+	/**
 	 * When applied to a parameter or a field of ResourceHandle type, makes that element be exported as a raw resource in
 	 * script code.
 	 */
@@ -64,13 +64,13 @@ namespace bs
 	/** @ref scriptBindingMacro */
 	#define BS_SCRIPT_EXPORT(...)
 
-	/** 
+	/**
 	 * When applied to a parameter, makes it a variable argument parameter in the scripting interface (if supported
 	 * by the scripting language).
 	 */
 	#define BS_PARAMS
 
-	/** 
+	/**
 	 * When applied to a parameter or a field of ResourceHandle type, makes that element be exported as a raw resource in
 	 * script code.
 	 */
@@ -166,8 +166,16 @@ namespace bs
 	class ISerializable;
 	class SerializableType;
 
+	template<class T>
+	struct RTTIPlainType;
+
 	enum TypeID_Utility
 	{
+		TID_Bool = 0,
+		TID_Int32 = 1,
+		TID_UInt32 = 2,
+		// First 16 entries reserved for builtin types
+		
 		TID_Abstract = 50, // Special type ID used for Abstract classes. Only type ID that may be used by more than one class.
 		TID_WString = 51,
 		TID_Path = 52,
@@ -190,6 +198,13 @@ namespace bs
 		TID_IReflectable = 69,
 		TID_DataBlob = 70,
 		TID_ColorGradient = 71,
-		TID_SerializationContext = 72
+		TID_SerializationContext = 72,
+		TID_List = 73,
+		TID_SmallVector = 74,
+		TID_ColorGradientHDR = 75,
+		TID_RTTISchema = 76,
+		TID_RTTIFieldSchema = 77,
+		TID_BitLength = 78,
+		TID_RTTIFieldInfo = 79
 	};
 }

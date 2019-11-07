@@ -105,7 +105,7 @@ namespace bs
 		}
 	}
 
-	Vector<TextureAtlasUtility::Page> TextureAtlasUtility::createAtlasLayout(Vector<Element>& elements, UINT32 width, 
+	Vector<TextureAtlasUtility::Page> TextureAtlasUtility::createAtlasLayout(Vector<Element>& elements, UINT32 width,
 		UINT32 height, UINT32 maxWidth, UINT32 maxHeight, bool pow2)
 	{
 		for (size_t i = 0; i < elements.size(); i++)
@@ -114,7 +114,7 @@ namespace bs
 			elements[i].output.page = -1;
 		}
 
-		std::sort(elements.begin(), elements.end(), 
+		std::sort(elements.begin(), elements.end(),
 			[](const Element& a, const Element& b)
 		{
 			return a.input.width * a.input.height > b.input.width * b.input.height;
@@ -155,7 +155,8 @@ namespace bs
 				// Check if an element is too large to ever fit
 				if(element.input.width > maxWidth || element.input.height > maxHeight)
 				{
-					LOGWRN("Some of the provided elements don't fit in an atlas of provided size. Returning empty array of pages.");
+					BS_LOG(Warning, Generic, "Some of the provided elements don't fit in an atlas of provided size. "
+						"Returning empty array of pages.");
 					return Vector<Page>();
 				}
 

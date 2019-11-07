@@ -33,6 +33,11 @@ namespace bs
         public object Object { get { return parentObject; } }
 
         /// <summary>
+        /// Returns the serializable object for the base class, if any.
+        /// </summary>
+        public SerializableObject Base => Internal_GetBaseClass(mCachedPtr, parentObject);
+
+        /// <summary>
         /// Creates a new serializable object for the specified object type.
         /// </summary>
         /// <param name="objectType">C# type of the object.</param>
@@ -100,7 +105,7 @@ namespace bs
         ///                    a dictionary append its name with a "[x]" where x is the element index in the array/list, or
         ///                    a key name (surrounded by "") in case of a dictionary. Only primitive dictionary keys are
         ///                    supported.
-        /// 
+        ///
         ///                    Example path: subObject/myDictionary["someElement"]/theArray[4]/fieldToGet
         ///                    </param>
         /// <returns>Property you can use for reading or modifying the property, or null if not found.</returns>
@@ -142,7 +147,7 @@ namespace bs
 
                     if (endIdx > (startIdx + 1) && entry[endIdx - 1] == '"')
                         endIdx--;
-                    
+
                     if (foundKey)
                     {
                         pathElements[i].name = entry.Substring(0, nameEndIdx);
@@ -199,10 +204,13 @@ namespace bs
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void Internal_CreateInstance(SerializableObject instance, Type objectType);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern SerializableObject Internal_GetBaseClass(IntPtr nativeInstance, object owningObject);
     }
 
     /// <summary>
-    /// Contains a single element of a path to a field or array/list/dictionary entry, as used for 
+    /// Contains a single element of a path to a field or array/list/dictionary entry, as used for
     /// <see cref="SerializableObject"/>.
     /// </summary>
     internal struct PropertyPathElement

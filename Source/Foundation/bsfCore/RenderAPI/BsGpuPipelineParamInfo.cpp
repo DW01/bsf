@@ -62,7 +62,7 @@ namespace bs
 				continue;
 
 			for (auto& paramBlock : paramDesc->paramBlocks)
-				numSlotsPerSet[paramBlock.second.set] = 
+				numSlotsPerSet[paramBlock.second.set] =
 					std::max(numSlotsPerSet[paramBlock.second.set], paramBlock.second.slot + 1);
 
 			for (auto& texture : paramDesc->textures)
@@ -190,15 +190,14 @@ namespace bs
 #if BS_DEBUG_MODE
 		if (set >= mNumSets)
 		{
-			LOGERR("Set index out of range: Valid range: [0, " +
-				   toString(mNumSets) + "). Requested: " + toString(set) + ".");
+			BS_LOG(Error, RenderBackend, "Set index out of range: Valid range: [0, {0}). Requested: {1}.", mNumSets, set);
 			return -1;
 		}
 
 		if (slot >= mSetInfos[set].numSlots)
 		{
-			LOGERR("Slot index out of range: Valid range: [0, " +
-				   toString(mSetInfos[set].numSlots) + "). Requested: " + toString(slot) + ".");
+			BS_LOG(Error, RenderBackend, "Slot index out of range: Valid range: [0, {0}). Requested: {1}.",
+				mSetInfos[set].numSlots, slot);
 			return -1;
 		}
 
@@ -212,8 +211,8 @@ namespace bs
 					return mSetInfos[set].slotSamplers[slot];
 			}
 
-			LOGERR("Requested parameter is not of the valid type. Requested: " + toString((UINT32)type) + ". Actual: " +
-					toString((UINT32)mSetInfos[set].slotTypes[slot]) + ".");
+			BS_LOG(Error, RenderBackend, "Requested parameter is not of the valid type. Requested: {0}. Actual: {1}.",
+				(UINT32)type, (UINT32)mSetInfos[set].slotTypes[slot]);
 			return -1;
 		}
 
@@ -227,8 +226,8 @@ namespace bs
 #if BS_DEBUG_MODE
 		if(sequentialSlot >= mNumElementsPerType[(int)type])
 		{
-			LOGERR("Sequential slot index out of range: Valid range: [0, " + toString(mNumElementsPerType[(int)type]) + 
-				"). Requested: " + toString(sequentialSlot) + ".");
+			BS_LOG(Error, RenderBackend, "Sequential slot index out of range: Valid range: [0, {0}). Requested: {1}.",
+				mNumElementsPerType[(int)type], sequentialSlot);
 
 			set = 0;
 			slot = 0;
@@ -244,7 +243,7 @@ namespace bs
 	{
 		constexpr UINT32 numParamDescs = sizeof(mParamDescs) / sizeof(mParamDescs[0]);
 		static_assert(
-			numParamDescs == GPT_COUNT, 
+			numParamDescs == GPT_COUNT,
 			"Number of param descriptor structures must match the number of GPU program stages."
 		);
 
@@ -252,7 +251,7 @@ namespace bs
 			getBinding((GpuProgramType)i, type, name, bindings[i]);
 	}
 
-	void GpuPipelineParamInfoBase::getBinding(GpuProgramType progType, ParamType type, const String& name, 
+	void GpuPipelineParamInfoBase::getBinding(GpuProgramType progType, ParamType type, const String& name,
 		GpuParamBinding &binding)
 	{
 		auto findBinding = [](auto& paramMap, const String& name, GpuParamBinding& binding)
@@ -276,22 +275,22 @@ namespace bs
 
 		switch(type)
 		{
-		case ParamType::ParamBlock: 
+		case ParamType::ParamBlock:
 			findBinding(paramDesc->paramBlocks, name, binding);
 			break;
-		case ParamType::Texture: 
+		case ParamType::Texture:
 			findBinding(paramDesc->textures, name, binding);
 			break;
-		case ParamType::LoadStoreTexture: 
+		case ParamType::LoadStoreTexture:
 			findBinding(paramDesc->loadStoreTextures, name, binding);
 			break;
-		case ParamType::Buffer: 
+		case ParamType::Buffer:
 			findBinding(paramDesc->buffers, name, binding);
 			break;
-		case ParamType::SamplerState: 
+		case ParamType::SamplerState:
 			findBinding(paramDesc->samplers, name, binding);
 			break;
-		default: 
+		default:
 			break;
 		}
 	}
@@ -302,7 +301,7 @@ namespace bs
 
 	SPtr<GpuPipelineParamInfo> GpuPipelineParamInfo::create(const GPU_PIPELINE_PARAMS_DESC& desc)
 	{
-		SPtr<GpuPipelineParamInfo> paramInfo = 
+		SPtr<GpuPipelineParamInfo> paramInfo =
 			bs_core_ptr<GpuPipelineParamInfo>(new (bs_alloc<GpuPipelineParamInfo>()) GpuPipelineParamInfo(desc));
 		paramInfo->_setThisPtr(paramInfo);
 		paramInfo->initialize();
@@ -334,7 +333,7 @@ namespace bs
 		:GpuPipelineParamInfoBase(desc)
 	{ }
 
-	SPtr<GpuPipelineParamInfo> GpuPipelineParamInfo::create(const GPU_PIPELINE_PARAMS_DESC& desc, 
+	SPtr<GpuPipelineParamInfo> GpuPipelineParamInfo::create(const GPU_PIPELINE_PARAMS_DESC& desc,
 		GpuDeviceFlags deviceMask)
 	{
 		return RenderStateManager::instance().createPipelineParamInfo(desc, deviceMask);

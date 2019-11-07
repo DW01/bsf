@@ -3,6 +3,7 @@
 #pragma once
 
 #include "BsCorePrerequisites.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Reflection/BsRTTIType.h"
 #include "Audio/BsAudioClip.h"
 #include "FileSystem/BsDataStream.h"
@@ -34,7 +35,10 @@ namespace bs
 		{
 			SPtr<DataStream> stream = obj->getSourceStream(size);
 			if (stream != nullptr && stream->isFile())
-				LOGWRN("Saving an AudioClip which uses streaming data. Streaming data might not be available if saving to the same file.");
+			{
+				BS_LOG(Warning, RTTI, "Saving an AudioClip which uses streaming data. Streaming data might not be "
+					"available if saving to the same file.");
+			}
 
 			return stream;
 		}
@@ -49,7 +53,7 @@ namespace bs
 	public:
 		AudioClipRTTI()
 		{
-			addDataBlockField("mData", 6, &AudioClipRTTI::getData, &AudioClipRTTI::setData, 0);
+			addDataBlockField("mData", 6, &AudioClipRTTI::getData, &AudioClipRTTI::setData);
 		}
 
 		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override

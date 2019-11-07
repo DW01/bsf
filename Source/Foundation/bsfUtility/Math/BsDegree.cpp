@@ -1,13 +1,12 @@
 //************************************ bs::framework - Copyright 2018 Marko Pintera **************************************//
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
-#include "Prerequisites/BsPrerequisitesUtil.h"
 #include "Math/BsDegree.h"
 #include "Math/BsMath.h"
 
 namespace bs
 {
-	Degree::Degree(const Radian& r) 
-		:mDeg(r.valueDegrees()) 
+	Degree::Degree(const Radian& r)
+		:mDeg(r.valueDegrees())
 	{ }
 
 	Degree Degree::wrap()
@@ -20,29 +19,29 @@ namespace bs
 		return *this;
 	}
 
-	Degree& Degree::operator= (const Radian& r) 
-	{ 
-		mDeg = r.valueDegrees(); return *this; 
+	Degree& Degree::operator= (const Radian& r)
+	{
+		mDeg = r.valueDegrees(); return *this;
 	}
 
-	Degree Degree::operator+ (const Radian& r) const 
-	{ 
-		return Degree (mDeg + r.valueDegrees()); 
+	Degree Degree::operator+ (const Radian& r) const
+	{
+		return Degree (mDeg + r.valueDegrees());
 	}
 
-	Degree& Degree::operator+= (const Radian& r) 
-	{ 
-		mDeg += r.valueDegrees(); return *this; 
+	Degree& Degree::operator+= (const Radian& r)
+	{
+		mDeg += r.valueDegrees(); return *this;
 	}
 
-	Degree Degree::operator- (const Radian& r) const 
-	{ 
-		return Degree (mDeg - r.valueDegrees()); 
+	Degree Degree::operator- (const Radian& r) const
+	{
+		return Degree (mDeg - r.valueDegrees());
 	}
 
-	Degree& Degree::operator-= (const Radian& r) 
-	{ 
-		mDeg -= r.valueDegrees(); return *this; 
+	Degree& Degree::operator-= (const Radian& r)
+	{
+		mDeg -= r.valueDegrees(); return *this;
 	}
 
 	float Degree::valueRadians() const

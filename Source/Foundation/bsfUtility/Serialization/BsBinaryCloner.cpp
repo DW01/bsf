@@ -8,7 +8,8 @@
 #include "Reflection/BsRTTIReflectableField.h"
 #include "Reflection/BsRTTIReflectablePtrField.h"
 #include "Reflection/BsRTTIManagedDataBlockField.h"
-#include "Serialization/BsMemorySerializer.h"
+#include "Serialization/BsBinarySerializer.h"
+#include "FileSystem/BsDataStream.h"
 
 namespace bs
 {
@@ -27,12 +28,12 @@ namespace bs
 			alloc.clear();
 		}
 
-		std::function<void*(UINT32)> allocator = &MemoryAllocator<GenAlloc>::allocate;
+		SPtr<MemoryDataStream> stream = bs_shared_ptr_new<MemoryDataStream>();
+		BinarySerializer bs;
+		bs.encode(object, stream, shallow ? BinarySerializerFlag::Shallow : BinarySerializerFlag::None);
 
-		MemorySerializer ms;
-		UINT32 dataSize = 0;
-		UINT8* data = ms.encode(object, dataSize, allocator, shallow);
-		SPtr<IReflectable> clonedObj = ms.decode(data, dataSize);
+		stream->seek(0);
+		SPtr<IReflectable> clonedObj = bs.decode(stream, (UINT32)stream->size());
 
 		if (shallow)
 		{
@@ -43,7 +44,6 @@ namespace bs
 			alloc.clear();
 		}
 
-		bs_free(data);
 		return clonedObj;
 	}
 
@@ -69,7 +69,7 @@ namespace bs
 				fieldId.field = field;
 				fieldId.arrayIdx = -1;
 
-				if (field->isArray())
+				if (field->schema.isArray)
 				{
 					const UINT32 numElements = field->getArraySize(rttiInstance, object);
 
@@ -77,7 +77,7 @@ namespace bs
 					{
 						fieldId.arrayIdx = j;
 
-						if (field->mType == SerializableFT_ReflectablePtr)
+						if (field->schema.type == SerializableFT_ReflectablePtr)
 						{
 							auto* curField = static_cast<RTTIReflectablePtrFieldBase*>(field);
 							SPtr<IReflectable> childObj = curField->getArrayValue(rttiInstance, object, j);
@@ -97,7 +97,7 @@ namespace bs
 								reference.object = childObj;
 							}
 						}
-						else if (field->mType == SerializableFT_Reflectable)
+						else if (field->schema.type == SerializableFT_Reflectable)
 						{
 							auto* curField = static_cast<RTTIReflectableFieldBase*>(field);
 							IReflectable* childObj = &curField->getArrayValue(rttiInstance, object, j);
@@ -119,7 +119,7 @@ namespace bs
 				}
 				else
 				{
-					if (field->mType == SerializableFT_ReflectablePtr)
+					if (field->schema.type == SerializableFT_ReflectablePtr)
 					{
 						auto* curField = static_cast<RTTIReflectablePtrFieldBase*>(field);
 						SPtr<IReflectable> childObj = curField->getValue(rttiInstance, object);
@@ -139,7 +139,7 @@ namespace bs
 							reference.object = childObj;
 						}
 					}
-					else if (field->mType == SerializableFT_Reflectable)
+					else if (field->schema.type == SerializableFT_Reflectable)
 					{
 						auto* curField = static_cast<RTTIReflectableFieldBase*>(field);
 						IReflectable* childObj = &curField->getValue(rttiInstance, object);
@@ -189,7 +189,7 @@ namespace bs
 				{
 					auto* curField = static_cast<RTTIReflectablePtrFieldBase*>(reference.fieldId.field);
 
-					if (curField->isArray())
+					if (curField->schema.isArray)
 						curField->setArrayValue(rttiInstance, object, reference.fieldId.arrayIdx, reference.object);
 					else
 						curField->setValue(rttiInstance, object, reference.object);
@@ -212,7 +212,7 @@ namespace bs
 					auto* curField = static_cast<RTTIReflectableFieldBase*>(childObjectData.fieldId.field);
 
 					IReflectable* childObj = nullptr;
-					if (curField->isArray())
+					if (curField->schema.isArray)
 						childObj = &curField->getArrayValue(rttiInstance, object, childObjectData.fieldId.arrayIdx);
 					else
 						childObj = &curField->getValue(rttiInstance, object);

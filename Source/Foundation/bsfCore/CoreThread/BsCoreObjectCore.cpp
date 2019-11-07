@@ -5,7 +5,7 @@
 
 namespace bs
 {
-	namespace ct 
+	namespace ct
 	{
 	Signal CoreObject::mCoreGpuObjectLoadedCondition;
 	Mutex CoreObject::mCoreGpuObjectLoadedMutex;
@@ -15,7 +15,7 @@ namespace bs
 	{ }
 
 	CoreObject::~CoreObject()
-	{ 
+	{
 		THROW_IF_NOT_CORE_THREAD;
 	}
 
@@ -39,6 +39,8 @@ namespace bs
 			if (BS_THREAD_CURRENT_ID == CoreThread::instance().getCoreThreadId())
 				BS_EXCEPT(InternalErrorException, "You cannot call this method on the core thread. It will cause a deadlock!");
 #endif
+
+			gCoreThread().submitAll(true);
 
 			Lock lock(mCoreGpuObjectLoadedMutex);
 			while (!isInitialized())

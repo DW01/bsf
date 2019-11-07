@@ -15,10 +15,9 @@
 
 namespace bs { namespace ct
 {
-	GLTexture::GLTexture(GLSupport& support, const TEXTURE_DESC& desc, const SPtr<PixelData>& initialData, 
+	GLTexture::GLTexture(GLSupport& support, const TEXTURE_DESC& desc, const SPtr<PixelData>& initialData,
 		GpuDeviceFlags deviceMask)
-		: Texture(desc, initialData, deviceMask),
-		mTextureID(0), mGLFormat(0), mInternalFormat(PF_UNKNOWN), mGLSupport(support)
+		: Texture(desc, initialData, deviceMask), mGLSupport(support)
 	{
 		assert((deviceMask == GDF_DEFAULT || deviceMask == GDF_PRIMARY) && "Multiple GPUs not supported natively on OpenGL.");
 	}
@@ -44,20 +43,24 @@ namespace bs { namespace ct
 		UINT32 numMips = mProperties.getNumMipmaps();
 		UINT32 numFaces = mProperties.getNumFaces();
 
+		// 0-sized textures aren't supported by the API
+		width = std::max(width, 1U);
+		height = std::max(height, 1U);
+
 		PixelFormat pixFormat = mProperties.getFormat();
 		mInternalFormat = GLPixelUtil::getClosestSupportedPF(pixFormat, texType, usage);
 
 		if (pixFormat != mInternalFormat)
 		{
-			LOGWRN(StringUtil::format("Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.",
-									  pixFormat, mInternalFormat));
+			BS_LOG(Warning, RenderBackend, "Provided pixel format is not supported by the driver: {0}. "
+				"Falling back on: {1}.", pixFormat, mInternalFormat);
 		}
 
 		// Check requested number of mipmaps
 		UINT32 maxMips = PixelUtil::getMaxMipmaps(width, height, depth, mProperties.getFormat());
 		if (numMips > maxMips)
 		{
-			LOGERR("Invalid number of mipmaps. Maximum allowed is: " + toString(maxMips));
+			BS_LOG(Error, RenderBackend, "Invalid number of mipmaps. Maximum allowed is: {0}", maxMips);
 			numMips = maxMips;
 		}
 
@@ -65,7 +68,8 @@ namespace bs { namespace ct
 		{
 			if (texType != TEX_TYPE_2D && texType != TEX_TYPE_CUBE_MAP)
 			{
-				LOGERR("Only 2D and cubemap depth stencil textures are supported. Ignoring depth-stencil flag.");
+				BS_LOG(Error, RenderBackend,
+					"Only 2D and cubemap depth stencil textures are supported. Ignoring depth-stencil flag.");
 				usage &= ~TU_DEPTHSTENCIL;
 			}
 		}
@@ -172,7 +176,7 @@ namespace bs { namespace ct
 			}
 #else
 			if((usage & TU_DEPTHSTENCIL) != 0)
-			{ 
+			{
 				GLenum depthStencilType = GLPixelUtil::getDepthStencilTypeFromPF(mInternalFormat);
 				GLenum depthStencilFormat = GLPixelUtil::getDepthStencilFormatFromPF(mInternalFormat);
 
@@ -211,7 +215,7 @@ namespace bs { namespace ct
 				}
 				else
 				{
-					LOGERR("Unsupported texture type for depth-stencil attachment usage.");
+					BS_LOG(Error, RenderBackend, "Unsupported texture type for depth-stencil attachment usage.");
 				}
 			}
 			else
@@ -396,7 +400,7 @@ namespace bs { namespace ct
 	{
 		if (mLockedBuffer == nullptr)
 		{
-			LOGERR("Trying to unlock a buffer that's not locked.");
+			BS_LOG(Error, RenderBackend, "Trying to unlock a buffer that's not locked.");
 			return;
 		}
 
@@ -408,7 +412,7 @@ namespace bs { namespace ct
 	{
 		if (mProperties.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return;
 		}
 
@@ -429,7 +433,7 @@ namespace bs { namespace ct
 	{
 		if (mProperties.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return;
 		}
 
@@ -445,7 +449,7 @@ namespace bs { namespace ct
 			getBuffer(face, mipLevel)->upload(src, src.getExtents());
 	}
 
-	void GLTexture::copyImpl(const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc, 
+	void GLTexture::copyImpl(const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc,
 		const SPtr<CommandBuffer>& commandBuffer)
 	{
 		auto executeRef = [this](const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc)
@@ -454,8 +458,8 @@ namespace bs { namespace ct
 			GLTextureBuffer* dest = static_cast<GLTextureBuffer*>(destTex->getBuffer(desc.dstFace, desc.dstMip).get());
 			GLTextureBuffer* src = static_cast<GLTextureBuffer*>(getBuffer(desc.srcFace, desc.srcMip).get());
 
-			bool copyEntireSurface = desc.srcVolume.getWidth() == 0 || 
-				desc.srcVolume.getHeight() == 0 || 
+			bool copyEntireSurface = desc.srcVolume.getWidth() == 0 ||
+				desc.srcVolume.getHeight() == 0 ||
 				desc.srcVolume.getDepth() == 0;
 
 			PixelVolume srcVolume = desc.srcVolume;
@@ -505,8 +509,8 @@ namespace bs { namespace ct
 			for (UINT32 mip = 0; mip <= mProperties.getNumMipmaps(); mip++)
 			{
 				GLPixelBuffer *buf = bs_new<GLTextureBuffer>(getGLTextureTarget(), mTextureID, face, mip, mInternalFormat,
-					static_cast<GpuBufferUsage>(mProperties.getUsage()), 
-					mProperties.isHardwareGammaEnabled(), 
+					static_cast<GpuBufferUsage>(mProperties.getUsage()),
+					mProperties.isHardwareGammaEnabled(),
 					mProperties.getNumSamples());
 
 				mSurfaceList.push_back(bs_shared_ptr<GLPixelBuffer>(buf));

@@ -30,9 +30,14 @@
 		* Deferred decals
 	* Post processing effects
 		* Screen space ambient occlusion (SSAO)
-		* Depth of field
+		* Gaussian depth-of-field
+		* Bokeh depth-of-field
 		* Bloom
+		* Lens flare
 		* Fast approximate anti-aliasing (FXAA)
+		* Film grain
+		* Chromatic aberration
+		* Temporal anti-aliasing (TAA)
 	* Extensive material & shader system
 		* Custom high level shading language (BSL)
 			* Unified shader code for all render backends

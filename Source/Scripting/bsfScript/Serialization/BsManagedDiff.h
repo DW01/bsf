@@ -18,16 +18,15 @@ namespace bs
 	class BS_SCR_BE_EXPORT ManagedDiff : public IDiff
 	{
 	protected:
-		/** @copydoc IDiff::generateDiff(const SPtr<SerializedObject>&, const SPtr<SerializedObject>&, ObjectMap&) */
-		SPtr<SerializedObject> generateDiff(const SPtr<SerializedObject>& orgSerzObj,
-			const SPtr<SerializedObject>& newSerzObj, ObjectMap& objectMap) override;
+		/** @copydoc IDiff::generateDiff(IReflectable*, IReflectable*, ObjectMap&, bool) */
+		SPtr<SerializedObject> _generateDiff(IReflectable* orgObj, IReflectable* newObj,
+			ObjectMap& objectMap, bool replicableOnly) override;
 
 		/**
-		 * @copydoc	IDiff::applyDiff(const SPtr<IReflectable>&, const SPtr<SerializedObject>&, 
-		 *			FrameAlloc&, DiffObjectMap&, FrameVector<DiffCommand>&, SerializationContext*)
+		 * @copydoc	IDiff::applyDiff(const SPtr<IReflectable>&, const SPtr<SerializedObject>&, FrameAlloc&, DiffObjectMap&, FrameVector<DiffCommand>&, SerializationContext*)
 		 */
 		void applyDiff(const SPtr<IReflectable>& object, const SPtr<SerializedObject>& serzDiff,
-			FrameAlloc& alloc, DiffObjectMap& objectMap, FrameVector<DiffCommand>& diffCommands, 
+			FrameAlloc& alloc, DiffObjectMap& objectMap, FrameVector<DiffCommand>& diffCommands,
 			SerializationContext* context) override;
 	};
 

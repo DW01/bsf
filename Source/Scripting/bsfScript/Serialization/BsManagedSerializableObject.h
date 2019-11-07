@@ -37,13 +37,13 @@ namespace bs
 		/**	Generates a hash value for field key data identifying a single field in the object. */
 		struct BS_SCR_BE_EXPORT Hash
 		{
-			inline size_t operator()(const ManagedSerializableFieldKey& x) const;
+			size_t operator()(const ManagedSerializableFieldKey& x) const;
 		};
 
 		/**	Compares two field key objects. */
 		struct BS_SCR_BE_EXPORT Equals
 		{
-			inline bool operator()(const ManagedSerializableFieldKey& a, const ManagedSerializableFieldKey& b) const;
+			bool operator()(const ManagedSerializableFieldKey& a, const ManagedSerializableFieldKey& b) const;
 		};
 
 	public:
@@ -103,10 +103,13 @@ namespace bs
 		 */
 		void deserialize(MonoObject* instance, const SPtr<ManagedSerializableObjectInfo>& objInfo);
 
+		/** Checks if this object has the same contents as the provided object. */
+		bool equals(ManagedSerializableObject& other);
+
 		/**
 		 * Creates a managed serializable object that references an existing managed object. Created object will be in
 		 * linked mode.
-		 * 
+		 *
 		 * @param[in]	managedInstance		Constructed managed instance of the object to link with.
 		 */
 		static SPtr<ManagedSerializableObject> createFromExisting(MonoObject* managedInstance);

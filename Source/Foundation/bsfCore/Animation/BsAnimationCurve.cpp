@@ -358,7 +358,7 @@ namespace bs
 		}
 
 		template<>
-		INT32 evaluateAndUpdateCache(const TKeyframe<INT32>& lhs, const TKeyframe<INT32>& rhs, float time, 
+		INT32 evaluateAndUpdateCache(const TKeyframe<INT32>& lhs, const TKeyframe<INT32>& rhs, float time,
 			INT32 (&coeffs)[4])
 		{
 			coeffs[0] = lhs.value;
@@ -501,14 +501,14 @@ namespace bs
 		}
 
 		template <>
-		void calcMinMaxIntegrated(std::pair<INT32, INT32>& minmax, float start, float end, const INT32& sum, 
+		void calcMinMaxIntegrated(std::pair<INT32, INT32>& minmax, float start, float end, const INT32& sum,
 			INT32(&coeffs)[4])
 		{
 			assert(false && "Not implemented");
 		}
 
 		template <class T>
-		void calcMinMaxIntegratedDouble(std::pair<T, T>& minmax, float start, float end, const T& doubleSum, 
+		void calcMinMaxIntegratedDouble(std::pair<T, T>& minmax, float start, float end, const T& doubleSum,
 			const T& sum, T(&coeffs)[4])
 		{
 			// Differentiate
@@ -543,7 +543,7 @@ namespace bs
 						};
 
 						float root = roots[j];
-						float value = getComponent(doubleSum, i) + getComponent(sum, i) * root + 
+						float value = getComponent(doubleSum, i) + getComponent(sum, i) * root +
 							evaluateCubic(root, 0.0f, 0.0f, fltCoeffs) * root * root;
 
 						getComponent(minmax.first, i) = std::min(getComponent(minmax.first, i), value);
@@ -554,7 +554,7 @@ namespace bs
 		}
 
 		template <>
-		void calcMinMaxIntegratedDouble(std::pair<INT32, INT32>& minmax, float start, float end, 
+		void calcMinMaxIntegratedDouble(std::pair<INT32, INT32>& minmax, float start, float end,
 			const INT32& doubleSum, const INT32& sum, INT32(&coeffs)[4])
 		{
 			assert(false && "Not implemented");
@@ -875,16 +875,12 @@ namespace bs
 		start = Math::clamp(start, mStart, mEnd);
 		end = Math::clamp(end, mStart, mEnd);
 
-		if (Math::approxEquals(end - start, 0.0f))
-			return TAnimationCurve<T>();
-
 		UINT32 startKeyIdx = findKey(start);
 		UINT32 endKeyIdx = findKey(end);
 
 		keyFrames.reserve(endKeyIdx - startKeyIdx + 2);
 
 		const KeyFrame& startKey = mKeyframes[startKeyIdx];
-		const KeyFrame& endKey = mKeyframes[endKeyIdx];
 
 		if (!Math::approxEquals(startKey.time, start))
 		{
@@ -922,39 +918,43 @@ namespace bs
 			startKeyIdx++;
 		}
 
-		if(!Math::approxEquals(endKey.time, end))
+		if (!Math::approxEquals(end - start, 0.0f))
 		{
-			if(end > endKey.time)
+			const KeyFrame& endKey = mKeyframes[endKeyIdx];
+			if(!Math::approxEquals(endKey.time, end))
 			{
-				if (mKeyframes.size() > (endKeyIdx + 1))
-					keyFrames.push_back(evaluateKey(endKey, mKeyframes[endKeyIdx + 1], end));
-				else
+				if(end > endKey.time)
 				{
-					TKeyframe<T> keyCopy = endKey;
-					keyCopy.time = end;
+					if (mKeyframes.size() > (endKeyIdx + 1))
+						keyFrames.push_back(evaluateKey(endKey, mKeyframes[endKeyIdx + 1], end));
+					else
+					{
+						TKeyframe<T> keyCopy = endKey;
+						keyCopy.time = end;
 
-					keyFrames.push_back(keyCopy);
-				}
-			}
-			else
-			{
-				if(endKeyIdx > 0)
-				{
-					keyFrames.push_back(evaluateKey(mKeyframes[endKeyIdx - 1], endKey, end));
-					endKeyIdx--;
+						keyFrames.push_back(keyCopy);
+					}
 				}
 				else
 				{
-					TKeyframe<T> keyCopy = endKey;
-					keyCopy.time = end;
+					if(endKeyIdx > 0)
+					{
+						keyFrames.push_back(evaluateKey(mKeyframes[endKeyIdx - 1], endKey, end));
+						endKeyIdx--;
+					}
+					else
+					{
+						TKeyframe<T> keyCopy = endKey;
+						keyCopy.time = end;
 
-					keyFrames.push_back(keyCopy);
+						keyFrames.push_back(keyCopy);
+					}
 				}
 			}
+
+			if (startKeyIdx < (UINT32)mKeyframes.size() && endKeyIdx > startKeyIdx)
+				keyFrames.insert(keyFrames.begin() + 1, mKeyframes.begin() + startKeyIdx, mKeyframes.begin() + endKeyIdx + 1);
 		}
-
-		if(startKeyIdx < (UINT32)mKeyframes.size() && endKeyIdx > startKeyIdx)
-			keyFrames.insert(keyFrames.begin() + 1, mKeyframes.begin() + startKeyIdx, mKeyframes.begin() + endKeyIdx + 1);
 
 		for (auto& entry : keyFrames)
 			entry.time -= start;
@@ -1059,11 +1059,11 @@ namespace bs
 			const KeyFrame& rhs = mKeyframes[i];
 
 			T (&coeffs)[4] = cache.coeffs[i - 1];
-			impl::calcMinMaxIntegratedDouble(output, lhs.time, rhs.time, cache.doubleSegmentSums[i - 1], 
+			impl::calcMinMaxIntegratedDouble(output, lhs.time, rhs.time, cache.doubleSegmentSums[i - 1],
 				cache.segmentSums[i - 1], coeffs);
 
 			float t = rhs.time - lhs.time;
-			T endVal = (T)(cache.doubleSegmentSums[i - 1] + cache.segmentSums[i - 1] * t + 
+			T endVal = (T)(cache.doubleSegmentSums[i - 1] + cache.segmentSums[i - 1] * t +
 				impl::evaluateCubic(t, 0.0f, 0.0f, coeffs) * t * t);
 			impl::getMinMax(output, endVal);
 		}

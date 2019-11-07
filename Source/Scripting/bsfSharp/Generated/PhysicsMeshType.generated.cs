@@ -10,7 +10,7 @@ namespace bs
 	public enum PhysicsMeshType
 	{
 		/// <summary>
-		/// A regular triangle mesh. Mesh can be of arbitrary size but cannot be used for triggers and non-kinematic  objects. 
+		/// A regular triangle mesh. Mesh can be of arbitrary size but cannot be used for triggers and non-kinematic objects. 
 		/// Incurrs a significantly larger performance impact than convex meshes.
 		/// </summary>
 		Triangle = 0,

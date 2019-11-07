@@ -5,35 +5,28 @@
 namespace bs { namespace ct
 {
 	GLCommandBuffer::GLCommandBuffer(GpuQueueType type, UINT32 deviceIdx, UINT32 queueIdx, bool secondary)
-		: CommandBuffer(type, deviceIdx, queueIdx, secondary), mCurrentDrawOperation(DOT_TRIANGLE_LIST)
+		: CommandBuffer(type, deviceIdx, queueIdx, secondary)
 	{
 		if (deviceIdx != 0)
-			BS_EXCEPT(InvalidParametersException, "Only a single device supported on DX11.");
+			BS_EXCEPT(InvalidParametersException, "Only a single device supported on OpenGL.");
 	}
 
 	void GLCommandBuffer::queueCommand(const std::function<void()> command)
 	{
-		mCommands.push_back(command);
-	}
-
-	void GLCommandBuffer::appendSecondary(const SPtr<GLCommandBuffer>& secondaryBuffer)
-	{
 #if BS_DEBUG_MODE
-		if(!secondaryBuffer->mIsSecondary)
+		if (getState() == CommandBufferState::Executing)
 		{
-			LOGERR("Cannot append a command buffer that is not secondary.");
-			return;
-		}
-
-		if(mIsSecondary)
-		{
-			LOGERR("Cannot append a buffer to a secondary command buffer.");
+			BS_LOG(Error, RenderBackend, "Cannot modify a command buffer that's still executing.");
 			return;
 		}
 #endif
-
-		for (auto& entry : secondaryBuffer->mCommands)
-			mCommands.push_back(entry);
+		
+		// We don't support command buffer queuing on DX11, so we just execute the command right away. This means
+		// if caller uses a non-main command buffer the behaviour will likely be incorrect. To properly support
+		// command queuing we'd need to remember state of GpuParams when first bound and handles updates to
+		// buffers after they are bound (and potentially other things).
+		command();
+		mCommandQueued = true;
 	}
 
 	void GLCommandBuffer::executeCommands()
@@ -41,17 +34,43 @@ namespace bs { namespace ct
 #if BS_DEBUG_MODE
 		if (mIsSecondary)
 		{
-			LOGERR("Cannot execute commands on a secondary buffer.");
+			BS_LOG(Error, RenderBackend, "Cannot execute commands on a secondary buffer.");
+			return;
+		}
+
+		if (getState() == CommandBufferState::Executing)
+		{
+			BS_LOG(Error, RenderBackend, "Cannot submit a command buffer that's still executing.");
 			return;
 		}
 #endif
 
-		for (auto& entry : mCommands)
-			entry();
+		if (glIsSync(mFence))
+			glDeleteSync(mFence);
+
+		glFlush();
+		mFence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		mIsSubmitted = true;
 	}
 
-	void GLCommandBuffer::clear()
+	CommandBufferState GLCommandBuffer::getState() const
 	{
-		mCommands.clear();
+		if (mIsSubmitted)
+			return isComplete() ? CommandBufferState::Done : CommandBufferState::Executing;
+
+		return mCommandQueued ? CommandBufferState::Recording : CommandBufferState::Empty;
 	}
+
+	void GLCommandBuffer::reset()
+	{
+		mCommandQueued = false;
+		mIsSubmitted = false;
+	}
+
+	bool GLCommandBuffer::isComplete() const
+	{
+		GLenum result = glClientWaitSync(mFence, 0, 0);
+		return result == GL_ALREADY_SIGNALED || result == GL_CONDITION_SATISFIED;
+	}
+
 }}

@@ -11,7 +11,7 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Hinge joint removes all but a single rotation degree of freedom from its two attached bodies (for example a door  
+	/// Hinge joint removes all but a single rotation degree of freedom from its two attached bodies (for example a door 
 	/// hinge).
 	/// </summary>
 	[ShowInInspector]
@@ -57,8 +57,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the drive properties of the joint. It drives the joint's angular velocity towards a particular value.  You 
-		/// must enable the drive flag on the joint in order for the drive to be active.
+		/// Determines the drive properties of the joint. It drives the joint&apos;s angular velocity towards a particular value. 
+		/// You must enable the drive flag on the joint in order for the drive to be active.
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]

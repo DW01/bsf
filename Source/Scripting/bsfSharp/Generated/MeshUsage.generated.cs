@@ -11,8 +11,8 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Planned usage for the mesh. These options usually affect performance and you should specify static if you don't plan 
-	/// on modifying the mesh often, otherwise specify dynamic.
+	/// Planned usage for the mesh. These options usually affect performance and you should specify static if you don&apos;t 
+	/// plan on modifying the mesh often, otherwise specify dynamic.
 	/// </summary>
 	public enum MeshUsage
 	{
@@ -21,7 +21,7 @@ namespace bs
 		/// <summary>Specify for a mesh that is often updated from the CPU.</summary>
 		Dynamic = 2,
 		/// <summary>
-		/// All mesh data will also be cached in CPU memory, making it available for fast read access from the CPU. Can be  
+		/// All mesh data will also be cached in CPU memory, making it available for fast read access from the CPU. Can be 
 		/// combined with other usage flags.
 		/// </summary>
 		CPUCached = 4096

@@ -6,13 +6,12 @@
 #include "Win32/BsWin32RenderWindow.h"
 #elif BS_PLATFORM == BS_PLATFORM_LINUX
 #include "Linux/BsLinuxRenderWindow.h"
+#elif BS_PLATFORM == BS_PLATFORM_OSX
+#include "MacOS/BsMacOSRenderWindow.h"
 #endif
 
-namespace bs 
+namespace bs
 {
-	VulkanRenderWindowManager::VulkanRenderWindowManager()
-	{ }
-
 	SPtr<RenderWindow> VulkanRenderWindowManager::createImpl(RENDER_WINDOW_DESC& desc, UINT32 windowId, const SPtr<RenderWindow>& parentWindow)
 	{
 		if(parentWindow != nullptr)
@@ -29,6 +28,9 @@ namespace bs
 #elif BS_PLATFORM == BS_PLATFORM_LINUX
 		LinuxRenderWindow* renderWindow = new (bs_alloc<LinuxRenderWindow>()) LinuxRenderWindow(desc, windowId);
 		return bs_core_ptr<LinuxRenderWindow>(renderWindow);
+#elif BS_PLATFORM == BS_PLATFORM_OSX
+		MacOSRenderWindow* renderWindow = new (bs_alloc<MacOSRenderWindow>()) MacOSRenderWindow(desc, windowId);
+		return bs_core_ptr<MacOSRenderWindow>(renderWindow);
 #endif
 	}
 }

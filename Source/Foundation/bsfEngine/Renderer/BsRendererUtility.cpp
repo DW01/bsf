@@ -230,13 +230,13 @@ namespace bs { namespace ct
 		rapi.setDrawOperation(subMesh.drawOp);
 
 		UINT32 indexCount = subMesh.indexCount;
-		rapi.drawIndexed(subMesh.indexOffset + mesh->getIndexOffset(), indexCount, mesh->getVertexOffset(), 
+		rapi.drawIndexed(subMesh.indexOffset + mesh->getIndexOffset(), indexCount, mesh->getVertexOffset(),
 			vertexData->vertexCount, numInstances);
 
 		mesh->_notifyUsedOnGPU();
 	}
 
-	void RendererUtility::drawMorph(const SPtr<MeshBase>& mesh, const SubMesh& subMesh, 
+	void RendererUtility::drawMorph(const SPtr<MeshBase>& mesh, const SubMesh& subMesh,
 		const SPtr<VertexBuffer>& morphVertices, const SPtr<VertexDeclaration>& morphVertexDeclaration)
 	{
 		// Bind buffers and draw
@@ -280,7 +280,7 @@ namespace bs { namespace ct
 		mesh->_notifyUsedOnGPU();
 	}
 
-	void RendererUtility::blit(const SPtr<Texture>& texture, const Rect2I& area, bool flipUV, bool isDepth)
+	void RendererUtility::blit(const SPtr<Texture>& texture, const Rect2I& area, bool flipUV, bool isDepth, bool isFiltered)
 	{
 		auto& texProps = texture->getProperties();
 
@@ -293,7 +293,7 @@ namespace bs { namespace ct
 			fArea.height = (float)texProps.getHeight();
 		}
 
-		BlitMat* blitMat = BlitMat::getVariation(texProps.getNumSamples(), !isDepth);
+		BlitMat* blitMat = BlitMat::getVariation(texProps.getNumSamples(), !isDepth, isFiltered);
 		blitMat->execute(texture, fArea, flipUV);
 	}
 
@@ -384,6 +384,7 @@ namespace bs { namespace ct
 	BlitMat::BlitMat()
 	{
 		mParams->getTextureParam(GPT_FRAGMENT_PROGRAM, "gSource", mSource);
+		mIsFiltered = mVariation.getInt("MODE") == 1;
 	}
 
 	void BlitMat::execute(const SPtr<Texture>& source, const Rect2& area, bool flipUV)
@@ -393,24 +394,27 @@ namespace bs { namespace ct
 		mSource.set(source);
 		bind();
 
-		gRendererUtility().drawScreenQuad(area, Vector2I(1, 1), 1, flipUV);
+		if(!mIsFiltered)
+			gRendererUtility().drawScreenQuad(area, Vector2I(1, 1), 1, flipUV);
+		else
+			gRendererUtility().drawScreenQuad(Rect2(0, 0, 1, 1), Vector2I(1, 1), 1, flipUV);
 	}
 
-	BlitMat* BlitMat::getVariation(UINT32 msaaCount, bool isColor)
+	BlitMat* BlitMat::getVariation(UINT32 msaaCount, bool isColor, bool isFiltered)
 	{
 		if (msaaCount > 1)
 		{
 			if(isColor)
 			{
-				switch(msaaCount)
+				switch (msaaCount)
 				{
 				case 2:
-					return get(getVariation<2, true>());
+					return get(getVariation<2, 0>());
 				case 4:
-					return get(getVariation<4, true>());
+					return get(getVariation<4, 0>());
 				default:
 				case 8:
-					return get(getVariation<8, true>());
+					return get(getVariation<8, 0>());
 				}
 			}
 			else
@@ -418,17 +422,22 @@ namespace bs { namespace ct
 				switch(msaaCount)
 				{
 				case 2:
-					return get(getVariation<2, false>());
+					return get(getVariation<2, 2>());
 				case 4:
-					return get(getVariation<4, false>());
+					return get(getVariation<4, 2>());
 				default:
 				case 8:
-					return get(getVariation<8, false>());
+					return get(getVariation<8, 2>());
 				}
 			}
 		}
 		else
-			return get(getVariation<1, true>());
+		{
+			if(isFiltered)
+				return get(getVariation<1, 1>());
+			else
+				return get(getVariation<1, 0>());
+		}
 	}
 
 	ClearParamDef gClearParamDef;
@@ -448,4 +457,76 @@ namespace bs { namespace ct
 		bind();
 		gRendererUtility().drawScreenQuad();
 	}
+
+	CompositeParamDef gCompositeParamDef;
+
+	CompositeMat::CompositeMat()
+	{
+		mParamBuffer = gCompositeParamDef.createBuffer();
+		mParams->setParamBlockBuffer("Input", mParamBuffer);
+
+		mParams->getTextureParam(GPT_FRAGMENT_PROGRAM, "gSource", mSourceTex);
+	}
+
+	void CompositeMat::execute(const SPtr<Texture>& source, const SPtr<RenderTarget>& target, const Color& tint)
+	{
+		BS_RENMAT_PROFILE_BLOCK
+
+		// Set parameters
+		mSourceTex.set(source);
+
+		gCompositeParamDef.gTint.set(mParamBuffer, tint);
+
+		// Render
+		RenderAPI& rapi = RenderAPI::instance();
+		rapi.setRenderTarget(target);
+
+		bind();
+		gRendererUtility().drawScreenQuad();
+	}
+
+	BicubicUpsampleParamDef gBicubicUpsampleParamDef;
+
+	BicubicUpsampleMat::BicubicUpsampleMat()
+	{
+		mParamBuffer = gBicubicUpsampleParamDef.createBuffer();
+		mParams->setParamBlockBuffer("Input", mParamBuffer);
+
+		mParams->getTextureParam(GPT_FRAGMENT_PROGRAM, "gSource", mSourceTex);
+	}
+
+	void BicubicUpsampleMat::execute(const SPtr<Texture>& source, const SPtr<RenderTarget>& target, const Color& tint)
+	{
+		BS_RENMAT_PROFILE_BLOCK
+
+		// Set parameters
+		mSourceTex.set(source);
+
+		const TextureProperties& sourceProps = source->getProperties();
+
+		Vector2I texSize(sourceProps.getWidth(), sourceProps.getHeight());
+		Vector2 invPixelSize(1.0f / texSize.x, 1.0f / texSize.y);
+		Vector2 invTwoPixelSize(2.0f / texSize.x, 2.0f / texSize.y);
+
+		gBicubicUpsampleParamDef.gTint.set(mParamBuffer, tint);
+		gBicubicUpsampleParamDef.gTextureSize.set(mParamBuffer, texSize);
+		gBicubicUpsampleParamDef.gInvPixel.set(mParamBuffer, invPixelSize);
+		gBicubicUpsampleParamDef.gInvTwoPixels.set(mParamBuffer, invTwoPixelSize);
+
+		// Render
+		RenderAPI& rapi = RenderAPI::instance();
+		rapi.setRenderTarget(target);
+
+		bind();
+		gRendererUtility().drawScreenQuad();
+	}
+
+	BicubicUpsampleMat* BicubicUpsampleMat::getVariation(bool hermite)
+	{
+		if (hermite)
+			return get(getVariation<true>());
+
+		return get(getVariation<false>());
+	}
+
 }}

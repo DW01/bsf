@@ -4,6 +4,8 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringRTTI.h"
+#include "RTTI/BsStdRTTI.h"
 #include "Animation/BsAnimationClip.h"
 #include "Private/RTTI/BsAnimationCurveRTTI.h"
 
@@ -20,46 +22,47 @@ namespace bs
 		enum { id = TID_AnimationEvent }; enum { hasDynamicSize = 1 };
 
 		/** @copydoc RTTIPlainType::toMemory */
-		static void toMemory(const AnimationEvent& data, char* memory)
+		static BitLength toMemory(const AnimationEvent& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = sizeof(UINT32);
-			char* memoryStart = memory;
-			memory += sizeof(UINT32);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+				{
+					constexpr uint8_t VERSION = 0;
 
-			UINT8 version = 0;
-			memory = rttiWriteElem(version, memory, size);
-			memory = rttiWriteElem(data.time, memory, size);
-			rttiWriteElem(data.name, memory, size);
+					BitLength size = 0;
+					size += rtti_write(VERSION, stream);
+					size += rtti_write(data.time, stream);
+					size += rtti_write(data.name, stream);
 
-			memcpy(memoryStart, &size, sizeof(UINT32));
+					return size;
+				});
 		}
 
 		/** @copydoc RTTIPlainType::fromMemory */
-		static UINT32 fromMemory(AnimationEvent& data, char* memory)
+		static BitLength fromMemory(AnimationEvent& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = 0;
-			memory = rttiReadElem(size, memory);
-
-			UINT8 version;
-			memory = rttiReadElem(version, memory);
+			BitLength size;
+			rtti_read_size_header(stream, compress, size);
+			
+			uint8_t version;
+			rtti_read(version, stream);
 			assert(version == 0);
 
-			memory = rttiReadElem(data.time, memory);
-			rttiReadElem(data.name, memory);
+			rtti_read(data.time, stream);
+			rtti_read(data.name, stream);
 
 			return size;
 		}
 
-		/** @copydoc RTTIPlainType::getDynamicSize */
-		static UINT32 getDynamicSize(const AnimationEvent& data)
+		/** @copydoc RTTIPlainType::getSize */
+		static BitLength getSize(const AnimationEvent& data, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT64 dataSize = sizeof(UINT8) + sizeof(UINT32);
-			dataSize += rttiGetElemSize(data.time);
-			dataSize += rttiGetElemSize(data.name);
+			BitLength dataSize = sizeof(uint8_t);
+			dataSize += rtti_size(data.time);
+			dataSize += rtti_size(data.name);
 
-			assert(dataSize <= std::numeric_limits<UINT32>::max());
-
-			return (UINT32)dataSize;
+			rtti_add_header_size(dataSize, compress);
+			
+			return dataSize;
 		}
 	};
 

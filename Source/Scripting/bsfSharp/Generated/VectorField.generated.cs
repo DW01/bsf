@@ -23,7 +23,7 @@ namespace bs
 		/// <summary>Creates a new vector field.</summary>
 		/// <param name="desc">Description of the vector field to create.</param>
 		/// <param name="values">
-		/// Values to assign to the vector field. Number of entries must match  countX * countY * countZ.
+		/// Values to assign to the vector field. Number of entries must match countX * countY * countZ.
 		/// </param>
 		public VectorField(VectorFieldOptions desc, Vector3[] values)
 		{
@@ -38,7 +38,12 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<VectorField>(VectorField x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<VectorField> Internal_GetRef(IntPtr thisPtr);

@@ -68,7 +68,7 @@ namespace bs { namespace ct
 		vkCmdCopyBuffer(cb->getHandle(), mBuffer, destination->getHandle(), 1, &region);
 	}
 
-	void VulkanBuffer::copy(VulkanCmdBuffer* cb, VulkanImage* destination, const VkExtent3D& extent, 
+	void VulkanBuffer::copy(VulkanCmdBuffer* cb, VulkanImage* destination, const VkExtent3D& extent,
 		const VkImageSubresourceLayers& range, VkImageLayout layout)
 	{
 		VkBufferImageCopy region;
@@ -119,9 +119,9 @@ namespace bs { namespace ct
 		VulkanResource::notifyUnbound();
 	}
 
-	VkBufferView VulkanBuffer::createView(VkFormat format)
+	VkBufferView VulkanBuffer::getView(VkFormat format)
 	{
-		const auto iterFind = std::find_if(mViews.begin(), mViews.end(), 
+		const auto iterFind = std::find_if(mViews.begin(), mViews.end(),
 			[format](const ViewInfo& x) { return x.format == format; });
 
 		if(iterFind != mViews.end())
@@ -149,7 +149,7 @@ namespace bs { namespace ct
 
 	void VulkanBuffer::freeView(VkBufferView view)
 	{
-		const auto iterFind = std::find_if(mViews.begin(), mViews.end(), 
+		const auto iterFind = std::find_if(mViews.begin(), mViews.end(),
 			[view](const ViewInfo& x) { return x.view == view; });
 
 		if(iterFind != mViews.end())
@@ -177,7 +177,7 @@ namespace bs { namespace ct
 		}
 	}
 
-	VulkanHardwareBuffer::VulkanHardwareBuffer(BufferType type, GpuBufferFormat format, GpuBufferUsage usage, 
+	VulkanHardwareBuffer::VulkanHardwareBuffer(BufferType type, GpuBufferFormat format, GpuBufferUsage usage,
 		UINT32 size, GpuDeviceFlags deviceMask)
 		: HardwareBuffer(size, usage, deviceMask), mBuffers(), mStagingBuffer(nullptr), mStagingMemory(nullptr)
 		, mMappedDeviceIdx(-1), mMappedGlobalQueueIdx(-1), mMappedOffset(0), mMappedSize(0)
@@ -265,9 +265,27 @@ namespace bs { namespace ct
 
 		mBufferCI.size = size;
 
-		VkMemoryPropertyFlags flags = (mDirectlyMappable || staging) ?
-			(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) : // Note: Try using cached memory
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		VkMemoryPropertyFlags flags;
+		if(mDirectlyMappable || staging)
+		{
+			flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+#if BS_PLATFORM == BS_PLATFORM_OSX
+			// Note: Use non-coherent memory when the buffer will be used as a uniform texel buffer. This is because
+			// coherent memory gets allocated under 'shared' storage mode under Metal, which is not supported as backing
+			// storage mode for textures (and a uniform texel buffer is classified as a texture in Metal). Technically
+			// this still works but will cause a Metal validation error.
+			//
+			// Note that we also don't need to perform explicit flushing, despite being non-coherent, as that will be handled
+			// by MoltenVK internally.
+			if(staging || (usage & VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) == 0)
+				flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+#else
+			flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+#endif
+		}
+		else
+			flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 		VkDevice vkDevice = device.getLogical();
 
@@ -285,8 +303,8 @@ namespace bs { namespace ct
 	{
 		if ((offset + length) > mSize)
 		{
-			LOGERR("Provided offset(" + toString(offset) + ") + length(" + toString(length) + ") "
-				   "is larger than the buffer " + toString(mSize) + ".");
+			BS_LOG(Error, RenderBackend, "Provided offset({0}) + length({1}) is larger than the buffer {2}.",
+				offset, length, mSize);
 
 			return nullptr;
 		}
@@ -339,7 +357,7 @@ namespace bs { namespace ct
 			// We're safe to map directly since GPU isn't using the buffer
 			if (!isUsedOnGPU)
 			{
-				// If some CB has an operation queued that will be using the current contents of the buffer, create a new 
+				// If some CB has an operation queued that will be using the current contents of the buffer, create a new
 				// buffer so we don't modify the previous use of the buffer
 				if(buffer->isBound())
 				{
@@ -410,7 +428,7 @@ namespace bs { namespace ct
 				// Submit the command buffer and wait until it finishes
 				transferCB->flush(true);
 
-				// If writing and some CB has an operation queued that will be using the current contents of the buffer, 
+				// If writing and some CB has an operation queued that will be using the current contents of the buffer,
 				// create a new  buffer so we don't modify the previous use of the buffer
 				if (options == GBL_READ_WRITE && buffer->isBound())
 				{
@@ -494,13 +512,13 @@ namespace bs { namespace ct
 		if (!mIsMapped)
 			return;
 
-		// Note: If we did any writes they need to be made visible to the GPU. However there is no need to execute 
+		// Note: If we did any writes they need to be made visible to the GPU. However there is no need to execute
 		// a pipeline barrier because (as per spec) host writes are implicitly visible to the device.
 
 		if(mStagingMemory == nullptr && mStagingBuffer == nullptr) // We directly mapped the buffer
 		{
 			mBuffers[mMappedDeviceIdx]->unmap();
-		} 
+		}
 		else
 		{
 			if(mStagingBuffer != nullptr)
@@ -530,7 +548,7 @@ namespace bs { namespace ct
 					// Try to avoid the wait by checking for special write conditions
 
 					// Caller guarantees he won't touch the same data as the GPU, so just copy
-					if (mMappedLockOptions == GBL_WRITE_ONLY_NO_OVERWRITE) 
+					if (mMappedLockOptions == GBL_WRITE_ONLY_NO_OVERWRITE)
 					{
 						// Fall through to copy()
 					}
@@ -541,7 +559,7 @@ namespace bs { namespace ct
 
 						buffer = createBuffer(device, mSize, false, true);
 						mBuffers[mMappedDeviceIdx] = buffer;
-					} 
+					}
 					else // Otherwise we have no choice but to issue a dependency between the queues
 					{
 						transferCB->appendMask(useMask);
@@ -617,16 +635,16 @@ namespace bs { namespace ct
 	{
 		if ((dstOffset + length) > mSize)
 		{
-			LOGERR("Provided offset(" + toString(dstOffset) + ") + length(" + toString(length) + ") "
-				   "is larger than the destination buffer " + toString(mSize) + ". Copy operation aborted.");
+			BS_LOG(Error, RenderBackend, "Provided offset({0}) + length({1}) is larger than the destination buffer {2}. "
+				"Copy operation aborted.", dstOffset, length, mSize);
 
 			return;
 		}
 
 		if ((srcOffset + length) > srcBuffer.getSize())
 		{
-			LOGERR("Provided offset(" + toString(srcOffset) + ") + length(" + toString(length) + ") "
-				   "is larger than the source buffer " + toString(srcBuffer.getSize()) + ". Copy operation aborted.");
+			BS_LOG(Error, RenderBackend, "Provided offset({0}) + length({1}) is larger than the source buffer {2}. "
+				"Copy operation aborted.", srcOffset, length, srcBuffer.getSize());
 
 			return;
 		}
@@ -665,7 +683,7 @@ namespace bs { namespace ct
 		unlock();
 	}
 
-	void VulkanHardwareBuffer::writeData(UINT32 offset, UINT32 length, const void* source, BufferWriteType writeFlags, 
+	void VulkanHardwareBuffer::writeData(UINT32 offset, UINT32 length, const void* source, BufferWriteType writeFlags,
 		UINT32 queueIdx)
 	{
 		GpuLockOptions lockOptions = GBL_WRITE_ONLY_DISCARD_RANGE;

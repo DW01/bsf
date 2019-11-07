@@ -96,7 +96,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the amount to rotate the vector field every second, in degrees, around XYZ axis respectively.  Evaluated 
+		/// Determines the amount to rotate the vector field every second, in degrees, around XYZ axis respectively. Evaluated 
 		/// over the particle system lifetime.
 		/// </summary>
 		[ShowInInspector]

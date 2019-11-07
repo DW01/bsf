@@ -9,12 +9,8 @@
 
 namespace bs { namespace ct
 {
-	VulkanTransferBuffer::VulkanTransferBuffer()
-		:mDevice(nullptr), mType(GQT_GRAPHICS), mQueueIdx(0), mQueue(nullptr), mQueueMask(0), mCB(nullptr), mSyncMask(0)
-	{ }
-
 	VulkanTransferBuffer::VulkanTransferBuffer(VulkanDevice* device, GpuQueueType type, UINT32 queueIdx)
-		:mDevice(device), mType(type), mQueueIdx(queueIdx), mQueue(nullptr), mQueueMask(0), mCB(nullptr), mSyncMask(0)
+		:mDevice(device), mType(type), mQueueIdx(queueIdx)
 	{
 		UINT32 numQueues = device->getNumQueues(mType);
 		if (numQueues == 0)
@@ -49,13 +45,13 @@ namespace bs { namespace ct
 		mCB->memoryBarrier(buffer, srcAccessFlags, dstAccessFlags, srcStage, dstStage);
 	}
 
-	void VulkanTransferBuffer::setLayout(VkImage image, VkAccessFlags srcAccessFlags, VkAccessFlags dstAccessFlags, 
+	void VulkanTransferBuffer::setLayout(VkImage image, VkAccessFlags srcAccessFlags, VkAccessFlags dstAccessFlags,
 		VkImageLayout oldLayout, VkImageLayout newLayout, const VkImageSubresourceRange& range)
 	{
 		mCB->setLayout(image, srcAccessFlags, dstAccessFlags, oldLayout, newLayout, range);
 	}
 
-	void VulkanTransferBuffer::setLayout(VulkanImage* image, const VkImageSubresourceRange& range, 
+	void VulkanTransferBuffer::setLayout(VulkanImage* image, const VkImageSubresourceRange& range,
 										 VkAccessFlags newAccessMask, VkImageLayout newLayout)
 	{
 		image->getBarriers(range, mBarriersTemp);
@@ -146,15 +142,15 @@ namespace bs { namespace ct
 		UINT32 numDevices = mRapi._getNumDevices();
 		if(deviceIdx >= numDevices)
 		{
-			LOGERR("Cannot create command buffer, invalid device index: " + toString(deviceIdx) + 
-				". Valid range: [0, " + toString(numDevices) + ").");
+			BS_LOG(Error, RenderBackend, "Cannot create command buffer, invalid device index: {0}. Valid range: [0, {1}).",
+				deviceIdx, numDevices);
 
 			return nullptr;
 		}
 
 		SPtr<VulkanDevice> device = mRapi._getDevice(deviceIdx);
 
-		CommandBuffer* buffer = 
+		CommandBuffer* buffer =
 			new (bs_alloc<VulkanCommandBuffer>()) VulkanCommandBuffer(*device, type, deviceIdx, queueIdx, secondary);
 
 		return bs_shared_ptr(buffer);
@@ -201,10 +197,10 @@ namespace bs { namespace ct
 
 		if (semaphoreRequestFailed)
 		{
-			LOGERR("Failed to allocate semaphores for a command buffer sync. This means some of the dependency requests "
-				"will not be fulfilled. This happened because a command buffer has too many dependant command "
-				"buffers. The maximum allowed number is " + toString(BS_MAX_VULKAN_CB_DEPENDENCIES) + " but can be "
-				"increased by incrementing the value of BS_MAX_VULKAN_CB_DEPENDENCIES.");
+			BS_LOG(Error, RenderBackend, "Failed to allocate semaphores for a command buffer sync. This means some of the "
+				"dependency requests will not be fulfilled. This happened because a command buffer has too many "
+				"dependant command buffers. The maximum allowed number is {0} but can be increased by incrementing the "
+				"value of BS_MAX_VULKAN_CB_DEPENDENCIES.", BS_MAX_VULKAN_CB_DEPENDENCIES);
 		}
 	}
 

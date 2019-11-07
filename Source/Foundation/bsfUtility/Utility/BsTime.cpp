@@ -3,6 +3,7 @@
 #include "Utility/BsTime.h"
 #include "Utility/BsTimer.h"
 #include "Math/BsMath.h"
+#include "String/BsString.h"
 
 namespace bs
 {
@@ -63,7 +64,7 @@ namespace bs
 
 			// Prevent physics from completely hogging the CPU. If the framerate is low, the physics will want to run many
 			// iterations per frame, slowing down the game even further. Therefore we limit the number of physics updates
-			// to a certain number (at the cost of simulation stability). 
+			// to a certain number (at the cost of simulation stability).
 			
 			// However we don't use a fixed number per frame because performance spikes can cause some frames to take a very
 			// long time. These spikes can happen even in an otherwise well-performing application and will can wreak havoc
@@ -108,35 +109,20 @@ namespace bs
 	String Time::getCurrentDateTimeString(bool isUTC)
 	{
 		std::time_t t = std::time(nullptr);
-		char out[100];
-		if (isUTC)
-			std::strftime(out, sizeof(out), "%A, %B %d, %Y %T", std::gmtime(&t));
-		else
-			std::strftime(out, sizeof(out), "%A, %B %d, %Y %T", std::localtime(&t));
-		return String(out);
+		return toString(t, isUTC, false, TimeToStringConversionType::Full);
 	}
 
 	String Time::getCurrentTimeString(bool isUTC)
 	{
 		std::time_t t = std::time(nullptr);
-		char out[15];
-		if (isUTC)
-			std::strftime(out, sizeof(out), "%T", std::gmtime(&t));
-		else
-			std::strftime(out, sizeof(out), "%T", std::localtime(&t));
-		return String(out);
+		return toString(t, isUTC, false, TimeToStringConversionType::Time);
 	}
 
 	String Time::getAppStartUpDateString(bool isUTC)
 	{
-		char out[100];
-		if (isUTC)
-			std::strftime(out, sizeof(out), "%A, %B %d, %Y %T", std::gmtime(&mAppStartUpDate));
-		else
-			std::strftime(out, sizeof(out), "%A, %B %d, %Y %T", std::localtime(&mAppStartUpDate));
-		return String(out);
+		return toString(mAppStartUpDate,isUTC, false, TimeToStringConversionType::Full);
 	}
-
+	
 	Time& gTime()
 	{
 		return Time::instance();

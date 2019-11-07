@@ -38,31 +38,17 @@ namespace bs
 
 	Vector3 FBXToNativeType(const FbxVector4& value)
 	{
-		Vector3 native;
-		native.x = (float)value[0];
-		native.y = (float)value[1];
-		native.z = (float)value[2];
-
-		return native;
+		return Vector3((float)value[0], (float)value[1], (float)value[2]);
 	}
 
 	Vector3 FBXToNativeType(const FbxDouble3& value)
 	{
-		Vector3 native;
-		native.x = (float)value[0];
-		native.y = (float)value[1];
-		native.z = (float)value[2];
-
-		return native;
+		return Vector3((float)value[0], (float)value[1], (float)value[2]);
 	}
 
 	Vector2 FBXToNativeType(const FbxVector2& value)
 	{
-		Vector2 native;
-		native.x = (float)value[0];
-		native.y = (float)value[1];
-
-		return native;
+		return Vector2((float)value[0], (float)value[1]);
 	}
 
 	RGBA FBXToNativeType(const FbxColor& value)
@@ -87,7 +73,6 @@ namespace bs
 	}
 
 	FBXImporter::FBXImporter()
-		: mFBXManager(nullptr)
 	{
 		mExtensions.push_back(u8"fbx");
 		mExtensions.push_back(u8"obj");
@@ -117,7 +102,7 @@ namespace bs
 		MESH_DESC desc;
 
 		Vector<FBXAnimationClipData> dummy;
-		SPtr<RendererMeshData> rendererMeshData = importMeshData(filePath, importOptions, desc.subMeshes, dummy, 
+		SPtr<RendererMeshData> rendererMeshData = importMeshData(filePath, importOptions, desc.subMeshes, dummy,
 			desc.skeleton, desc.morphShapes);
 
 		const MeshImportOptions* meshImportOptions = static_cast<const MeshImportOptions*>(importOptions.get());
@@ -139,7 +124,7 @@ namespace bs
 		MESH_DESC desc;
 
 		Vector<FBXAnimationClipData> animationClips;
-		SPtr<RendererMeshData> rendererMeshData = importMeshData(filePath, importOptions, desc.subMeshes, animationClips, 
+		SPtr<RendererMeshData> rendererMeshData = importMeshData(filePath, importOptions, desc.subMeshes, animationClips,
 			desc.skeleton, desc.morphShapes);
 
 		const MeshImportOptions* meshImportOptions = static_cast<const MeshImportOptions*>(importOptions.get());
@@ -163,7 +148,7 @@ namespace bs
 			{
 				if(Physics::isStarted())
 				{
-					PhysicsMeshType type = collisionMeshType == CollisionMeshType::Convex ? 
+					PhysicsMeshType type = collisionMeshType == CollisionMeshType::Convex ?
 						PhysicsMeshType::Convex : PhysicsMeshType::Triangle;
 
 					SPtr<PhysicsMesh> physicsMesh = PhysicsMesh::_createPtr(rendererMeshData->getData(), type);
@@ -172,15 +157,16 @@ namespace bs
 				}
 				else
 				{
-					LOGWRN("Cannot generate a collision mesh as the physics module was not started.");
+					BS_LOG(Warning, FBXImporter, "Cannot generate a collision mesh as the physics module was not started.");
 				}
 			}
 
 			Vector<ImportedAnimationEvents> events = meshImportOptions->animationEvents;
 			for(auto& entry : animationClips)
 			{
-				SPtr<AnimationClip> clip = AnimationClip::_createPtr(entry.curves, entry.isAdditive, entry.sampleRate, 
+				SPtr<AnimationClip> clip = AnimationClip::_createPtr(entry.curves, entry.isAdditive, entry.sampleRate,
 					entry.rootMotion);
+				clip->setName(entry.name);
 				
 				for(auto& eventsEntry : events)
 				{
@@ -198,8 +184,8 @@ namespace bs
 		return output;
 	}
 
-	SPtr<RendererMeshData> FBXImporter::importMeshData(const Path& filePath, SPtr<const ImportOptions> importOptions, 
-		Vector<SubMesh>& subMeshes, Vector<FBXAnimationClipData>& animation, SPtr<Skeleton>& skeleton, 
+	SPtr<RendererMeshData> FBXImporter::importMeshData(const Path& filePath, SPtr<const ImportOptions> importOptions,
+		Vector<SubMesh>& subMeshes, Vector<FBXAnimationClipData>& animation, SPtr<Skeleton>& skeleton,
 		SPtr<MorphShapes>& morphShapes)
 	{
 		FbxScene* fbxScene = nullptr;
@@ -351,7 +337,7 @@ namespace bs
 			if (numProcessedBones == numAllBones)
 				return Skeleton::create(allBones.data(), numAllBones);
 
-			LOGERR("Not all bones were found in the node hierarchy. Skeleton invalid.");
+			BS_LOG(Error, FBXImporter, "Not all bones were found in the node hierarchy. Skeleton invalid.");
 		}
 
 		return nullptr;
@@ -423,7 +409,7 @@ namespace bs
 						}
 						else
 						{
-							LOGERR("Corrupt blend shape frame. Number of vertices doesn't match the number of mesh vertices.");
+							BS_LOG(Error, FBXImporter, "Corrupt blend shape frame. Number of vertices doesn't match the number of mesh vertices.");
 						}
 					}
 				}
@@ -465,7 +451,7 @@ namespace bs
 		mFBXManager = FbxManager::Create();
 		if (mFBXManager == nullptr)
 		{
-			LOGERR("FBX import failed: FBX SDK failed to initialize. FbxManager::Create() failed.");
+			BS_LOG(Error, FBXImporter, "FBX import failed: FBX SDK failed to initialize. FbxManager::Create() failed.");
 			return false;
 		}
 
@@ -475,7 +461,7 @@ namespace bs
 		scene = FbxScene::Create(mFBXManager, "Import Scene");
 		if (scene == nullptr)
 		{
-			LOGWRN("FBX import failed: Failed to create FBX scene.");
+			BS_LOG(Warning, FBXImporter, "FBX import failed: Failed to create FBX scene.");
 			return false;
 		}
 
@@ -502,8 +488,8 @@ namespace bs
 
 		if(!importStatus)
 		{
-			LOGERR("FBX import failed: Call to FbxImporter::Initialize() failed.\n" +
-				String("Error returned: %s\n\n") + String(importer->GetStatus().GetErrorString()));
+			BS_LOG(Error, FBXImporter, "FBX import failed: Call to FbxImporter::Initialize() failed.\n"
+				"Error returned: %s\n\n{0}", importer->GetStatus().GetErrorString());
 			return false;
 		}
 
@@ -516,8 +502,8 @@ namespace bs
 		{
 			importer->Destroy();
 			
-			LOGERR("FBX import failed: Call to FbxImporter::Import() failed.\n" +
-				String("Error returned: %s\n\n") + String(importer->GetStatus().GetErrorString()));
+			BS_LOG(Error, FBXImporter, "FBX import failed: Call to FbxImporter::Import() failed.\n"
+				"Error returned: %s\n\n{0}", importer->GetStatus().GetErrorString());
 			return false;
 		}
 
@@ -624,7 +610,7 @@ namespace bs
 		Vector3 rotationEuler = FBXToNativeType(fbxNode->EvaluateLocalRotation(FbxTime(0)));
 		Vector3 scale = FBXToNativeType(fbxNode->EvaluateLocalScaling(FbxTime(0)));
 
-		Quaternion rotation((Degree)rotationEuler.x, (Degree)rotationEuler.y, (Degree)rotationEuler.z, 
+		Quaternion rotation((Degree)rotationEuler.x, (Degree)rotationEuler.y, (Degree)rotationEuler.z,
 			EulerAngleOrder::XYZ);
 
 		node->name = fbxNode->GetNameWithoutNameSpacePrefix().Buffer();
@@ -869,7 +855,7 @@ namespace bs
 		}
 	}
 
-	SPtr<RendererMeshData> FBXImporter::generateMeshData(const FBXImportScene& scene, const FBXImportOptions& options, 
+	SPtr<RendererMeshData> FBXImporter::generateMeshData(const FBXImportScene& scene, const FBXImportOptions& options,
 		Vector<SubMesh>& outputSubMeshes)
 	{
 		Vector<SPtr<MeshData>> allMeshData;
@@ -898,10 +884,14 @@ namespace bs
 			Vector<Vector<UINT32>> indicesPerMaterial;
 			for (UINT32 i = 0; i < (UINT32)mesh->indices.size(); i++)
 			{
-				while ((UINT32)mesh->materials[i] >= (UINT32)indicesPerMaterial.size())
+				UINT32 materialIdx = 0;
+				if (i < (UINT32)mesh->materials.size())
+					materialIdx = (UINT32)mesh->materials[i];
+				
+				while (materialIdx >= (UINT32)indicesPerMaterial.size())
 					indicesPerMaterial.push_back(Vector<UINT32>());
 
-				indicesPerMaterial[mesh->materials[i]].push_back(mesh->indices[i]);
+				indicesPerMaterial[materialIdx].push_back(mesh->indices[i]);
 			}
 
 			UINT32* orderedIndices = (UINT32*)bs_alloc((UINT32)mesh->indices.size() * sizeof(UINT32));
@@ -1245,7 +1235,7 @@ namespace bs
 		}
 			break;
 		default:
-			LOGWRN("FBX Import: Unsupported layer mapping mode.");
+			BS_LOG(Warning, FBXImporter, "FBX Import: Unsupported layer mapping mode.");
 			break;
 		}
 	}
@@ -1260,7 +1250,7 @@ namespace bs
 		else if (refMode == FbxLayerElement::eIndexToDirect)
 			readLayerData<TFBX, TNative, FBXIndexIndexer<TFBX, TNative> >(layer, output, indices);
 		else
-			LOGWRN("FBX Import: Unsupported layer reference mode.");
+			BS_LOG(Warning, FBXImporter,"FBX Import: Unsupported layer reference mode.");
 	}
 
 	void FBXImporter::parseMesh(FbxMesh* mesh, FBXImportNode* parentNode, const FBXImportOptions& options, FBXImportScene& outputScene)
@@ -1399,7 +1389,7 @@ namespace bs
 
 						if (!importMesh->smoothingGroups.empty())
 						{
-							FBXUtility::normalsFromSmoothing(importMesh->positions, importMesh->indices, 
+							FBXUtility::normalsFromSmoothing(importMesh->positions, importMesh->indices,
 								importMesh->smoothingGroups, importMesh->normals);
 						}
 					}
@@ -1602,7 +1592,7 @@ namespace bs
 				// each such mesh, since they will all require their own bind poses. Animation curves will also need to be
 				// handled specially (likely by allowing them to be applied to multiple bones at once). The other option is
 				// not to bake the node transform into mesh vertices and handle it on a Scene Object level.
-				LOGWRN("Skinned mesh has multiple different instances. This is not supported.");
+				BS_LOG(Warning, FBXImporter,"Skinned mesh has multiple different instances. This is not supported.");
 			}
 
 			FBXImportNode* parentNode = mesh.referencedBy[0];
@@ -1670,7 +1660,10 @@ namespace bs
 
 		UINT32 numBones = (UINT32)mesh.bones.size();
 		if (numBones > 256)
-			LOGWRN("A maximum of 256 bones per skeleton are supported. Imported skeleton has " + toString(numBones) + " bones");
+		{
+			BS_LOG(Warning, FBXImporter,
+				"A maximum of 256 bones per skeleton are supported. Imported skeleton has {0} bones.", numBones);
+		}
 
 		// Normalize weights
 		UINT32 numInfluences = (UINT32)mesh.boneInfluences.size();
@@ -1705,7 +1698,7 @@ namespace bs
 				mesh->tangents.resize(numVertices);
 				mesh->bitangents.resize(numVertices);
 
-				MeshUtility::calculateTangents(mesh->positions.data(), mesh->normals.data(), mesh->UV[0].data(), (UINT8*)mesh->indices.data(), 
+				MeshUtility::calculateTangents(mesh->positions.data(), mesh->normals.data(), mesh->UV[0].data(), (UINT8*)mesh->indices.data(),
 					numVertices, numIndices, mesh->tangents.data(), mesh->bitangents.data());
 			}
 
@@ -1833,7 +1826,7 @@ namespace bs
 				float defaultValues[3];
 				memcpy(defaultValues, &defaultTranslation, sizeof(defaultValues));
 
-				boneAnim.translation = importCurve<Vector3, 3>(translation, defaultValues, importOptions, 
+				boneAnim.translation = importCurve<Vector3, 3>(translation, defaultValues, importOptions,
 					clip.start, clip.end);
 			}
 			else
@@ -1919,7 +1912,7 @@ namespace bs
 
 							FbxAnimCurve* curves[1] = { curve };
 							float defaultValues[1] = { 0.0f };
-							blendShapeAnim.curve = importCurve<float, 1>(curves, defaultValues, importOptions, clip.start, 
+							blendShapeAnim.curve = importCurve<float, 1>(curves, defaultValues, importOptions, clip.start,
 								clip.end);
 
 							// FBX contains data in [0, 100] range, but we need it in [0, 1] range
@@ -2064,7 +2057,7 @@ namespace bs
 				keyCounts[i] = 0;
 		}
 
-		// If curve key-counts don't match, we need to force resampling 
+		// If curve key-counts don't match, we need to force resampling
 		bool forceResample = false;
 		if (!forceResample)
 		{
@@ -2194,7 +2187,7 @@ namespace bs
 
 		// Resample keys
 		if (!importOptions.animResample && forceResample)
-			LOGWRN_VERBOSE("Animation has different keyframes for different curve components, forcing resampling.");
+			BS_LOG(Verbose, FBXImporter, "Animation has different keyframes for different curve components, forcing resampling.");
 
 		// Make sure to resample along the length of the entire clip
 		curveStart = std::min(curveStart, clipStart);
@@ -2206,7 +2199,7 @@ namespace bs
 		// We don't use the exact provided sample rate but instead modify it slightly so it
 		// completely covers the curve range including start/end points while maintaining
 		// constant time step between keyframes.
-		float dt = curveLength / (float)(numSamples - 1); 
+		float dt = curveLength / (float)(numSamples - 1);
 
 		INT32 lastKeyframe[] = { 0, 0, 0 };
 		INT32 lastLeftTangent[] = { 0, 0, 0 };

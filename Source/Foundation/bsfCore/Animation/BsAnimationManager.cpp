@@ -70,9 +70,11 @@ namespace bs
 			for (auto& anim : mAnimations)
 			{
 				anim.second->updateFromProxy();
-				anim.second->triggerEvents(mAnimationTime, gTime().getFrameDelta());
+				anim.second->triggerEvents(mLastAnimationDeltaTime);
 			}
 		}
+
+		mLastAnimationDeltaTime = timeDelta;
 
 		// Update animation proxies from the latest data
 		mProxies.clear();
@@ -88,6 +90,7 @@ namespace bs
 		auto& allCameras = gSceneManager().getAllCameras();
 		for(auto& entry : allCameras)
 		{
+			// Note: This should also check on-demand cameras as there's no point in updating them if they wont render this frame
 			bool isOverlayCamera = entry.second->getRenderSettings()->overlayOnly;
 			if (isOverlayCamera)
 				continue;
@@ -154,20 +157,25 @@ namespace bs
 			for (auto& anim : mAnimations)
 			{
 				anim.second->updateFromProxy();
-				anim.second->triggerEvents(mAnimationTime, gTime().getFrameDelta());
+				anim.second->triggerEvents(timeDelta);
 			}
 		}
 
 		mSwapBuffers = true;
 
+		EvaluatedAnimationData* output;
 		if(!async)
-			return &mAnimData[mPoseWriteBufferIdx];
+			output = &mAnimData[mPoseWriteBufferIdx];
 		else
-			return &mAnimData[mPoseReadBufferIdx];
+			output = &mAnimData[mPoseReadBufferIdx];
+
+		output->async = async;
+		return output;
 	}
 
 	void AnimationManager::evaluateAnimation(AnimationProxy* anim, UINT32& curBoneIdx)
 	{
+		// Culling
 		if (anim->mCullEnabled)
 		{
 			bool isVisible = false;
@@ -181,9 +189,15 @@ namespace bs
 			}
 
 			if (!isVisible)
+			{
+				anim->wasCulled = true;
 				return;
+			}
 		}
 
+		anim->wasCulled = false;
+
+		// Evaluation
 		EvaluatedAnimationData& renderData = mAnimData[mPoseWriteBufferIdx];
 		
 		UINT32 prevPoseBufferIdx = (mPoseWriteBufferIdx + CoreThread::NUM_SYNC_BUFFERS) % (CoreThread::NUM_SYNC_BUFFERS + 1);
@@ -265,7 +279,7 @@ namespace bs
 				if (curveIdx != (UINT32)-1)
 				{
 					const TAnimationCurve<Vector3>& curve = state.curves->position[curveIdx].curve;
-					anim->sceneObjectPose.positions[curveIdx] = curve.evaluate(state.time, state.positionCaches[curveIdx], state.loop);
+					anim->sceneObjectPose.positions[curveIdx] = curve.evaluate(state.time, state.positionCaches[curveIdx], false);
 					anim->sceneObjectPose.hasOverride[i * 3 + 0] = false;
 				}
 			}
@@ -275,7 +289,7 @@ namespace bs
 				if (curveIdx != (UINT32)-1)
 				{
 					const TAnimationCurve<Quaternion>& curve = state.curves->rotation[curveIdx].curve;
-					anim->sceneObjectPose.rotations[curveIdx] = curve.evaluate(state.time, state.rotationCaches[curveIdx], state.loop);
+					anim->sceneObjectPose.rotations[curveIdx] = curve.evaluate(state.time, state.rotationCaches[curveIdx], false);
 					anim->sceneObjectPose.rotations[curveIdx].normalize();
 					anim->sceneObjectPose.hasOverride[i * 3 + 1] = false;
 				}
@@ -286,7 +300,7 @@ namespace bs
 				if (curveIdx != (UINT32)-1)
 				{
 					const TAnimationCurve<Vector3>& curve = state.curves->scale[curveIdx].curve;
-					anim->sceneObjectPose.scales[curveIdx] = curve.evaluate(state.time, state.scaleCaches[curveIdx], state.loop);
+					anim->sceneObjectPose.scales[curveIdx] = curve.evaluate(state.time, state.scaleCaches[curveIdx], false);
 					anim->sceneObjectPose.hasOverride[i * 3 + 2] = false;
 				}
 			}
@@ -303,7 +317,7 @@ namespace bs
 				for (UINT32 i = 0; i < numCurves; i++)
 				{
 					const TAnimationCurve<float>& curve = state.curves->generic[i].curve;
-					anim->genericCurveOutputs[i] = curve.evaluate(state.time, state.genericCaches[i], state.loop);
+					anim->genericCurveOutputs[i] = curve.evaluate(state.time, state.genericCaches[i], false);
 				}
 			}
 		}

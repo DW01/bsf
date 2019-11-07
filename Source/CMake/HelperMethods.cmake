@@ -7,7 +7,7 @@ function(add_prefix var prefix)
 endfunction()
 
 function(add_engine_dependencies target_name)
-	add_engine_dependencies2(${target_name} FALSE)
+	add_engine_dependencies2(${target_name} ${BUILD_ALL_RENDER_API})
 endfunction()
 
 function(add_engine_dependencies2 target_name all_render_api)
@@ -109,14 +109,8 @@ MACRO(add_imported_library LIB_NAME RELEASE_NAME DEBUG_NAME IS_SHARED)
 		add_library(${LIB_NAME} STATIC IMPORTED)
 	endif()
 
-	if(CMAKE_CONFIGURATION_TYPES) # Multiconfig generator?
-		set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION_DEBUG "${DEBUG_NAME}")
-		set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION_RELWITHDEBINFO "${RELEASE_NAME}")
-		set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION_MINSIZEREL "${RELEASE_NAME}")
-		set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION_RELEASE "${RELEASE_NAME}")
-	else()
-		set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION "${RELEASE_NAME}")
-	endif()
+	set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION "${RELEASE_NAME}")
+	set_target_properties(${LIB_NAME} PROPERTIES IMPORTED_LOCATION_DEBUG "${DEBUG_NAME}")
 ENDMACRO()
 
 MACRO(find_imported_library3 FOLDER_NAME LIB_NAME DEBUG_LIB_NAME IS_SHARED)
@@ -218,7 +212,12 @@ function(install_dependency_binary FILE_PATH CONFIG)
 		set(FULL_FILE_NAME ${FILE_NAME}.dll)
 
 		set(SRC_PATH "${BSF_SOURCE_DIR}/../bin/${PLATFORM}/${CONFIG}/${FULL_FILE_NAME}")
-		set(DEST_DIR bin)
+
+		if(NOT BS_IS_BANSHEE3D)
+			set(DEST_DIR bin)
+		else()
+			set(DEST_DIR .)
+		endif()
 	else()
 		# Check if there are so-versioned files in the source directory, and if so use the filename including
 		# the major soversion, because that's what the linker will use.
@@ -279,19 +278,25 @@ MACRO(install_dependency_dll FOLDER_NAME SRC_DIR LIB_NAME)
 		set(PLATFORM "x86")
 	endif()
 
+	if(NOT BS_IS_BANSHEE3D)
+		set(BIN_DIR bin)
+	else()
+		set(BIN_DIR .)
+	endif()
+
 	set(FULL_FILE_NAME ${LIB_NAME}.dll)
 	set(SRC_RELEASE "${SRC_DIR}/bin/${PLATFORM}/Release/${FULL_FILE_NAME}")
 	set(SRC_DEBUG "${SRC_DIR}/bin/${PLATFORM}/Debug/${FULL_FILE_NAME}")
 	
 	install(
 		FILES ${SRC_RELEASE}
-		DESTINATION bin
+		DESTINATION ${BIN_DIR}
 		CONFIGURATIONS Release RelWithDebInfo MinSizeRel
 	)
 		
 	install(
 		FILES ${SRC_DEBUG}
-		DESTINATION bin
+		DESTINATION ${BIN_DIR}
 		CONFIGURATIONS Debug
 	)
 ENDMACRO()
@@ -324,7 +329,7 @@ function(update_binary_deps DEP_PREFIX DEP_NAME DEP_FOLDER DEP_VERSION)
 	endif()
 
 	set(BINARY_DEPENDENCIES_URL ${BS_BINARY_DEP_WEBSITE}/${DEP_PREFIX}_${DEP_TYPE}_Master_${DEP_VERSION}.zip)
-	file(DOWNLOAD ${BINARY_DEPENDENCIES_URL} ${PROJECT_SOURCE_DIR}/Temp/Dependencies.zip 
+	file(DOWNLOAD ${BINARY_DEPENDENCIES_URL} ${PROJECT_SOURCE_DIR}/Temp/Dependencies.zip
 		SHOW_PROGRESS
 		STATUS DOWNLOAD_STATUS)
 		
@@ -367,7 +372,7 @@ function(check_and_update_binary_deps DEP_PREFIX DEP_NAME DEP_FOLDER DEP_VERSION
 endfunction()
 
 function(strip_symbols targetName outputFilename)
-	if(UNIX)
+	if(UNIX AND BSF_STRIP_DEBUG_INFO)
 		if(CMAKE_BUILD_TYPE STREQUAL Release)
 			set(fileToStrip $<TARGET_FILE:${targetName}>)
 
@@ -378,7 +383,7 @@ function(strip_symbols targetName outputFilename)
 				add_custom_command(
 					TARGET ${targetName}
 					POST_BUILD
-					VERBATIM 
+					VERBATIM
 					COMMAND ${DSYMUTIL_TOOL} --flat --minimize ${fileToStrip}
 					COMMAND ${STRIP_TOOL} -u -r ${fileToStrip}
 					COMMENT Stripping symbols from ${fileToStrip} into file ${symbolsFile}
@@ -391,7 +396,7 @@ function(strip_symbols targetName outputFilename)
 				add_custom_command(
 					TARGET ${targetName}
 					POST_BUILD
-					VERBATIM 
+					VERBATIM
 					COMMAND ${OBJCOPY_TOOL} --only-keep-debug ${fileToStrip} ${symbolsFile}
 					COMMAND ${OBJCOPY_TOOL} --strip-unneeded ${fileToStrip}
 					COMMAND ${OBJCOPY_TOOL} --add-gnu-debuglink=${symbolsFile} ${fileToStrip}
@@ -408,59 +413,71 @@ function(install_bsf_target targetName)
 	strip_symbols(${targetName} symbolsFile)
 	
 	if(NOT BS_IS_BANSHEE3D)
+		set(BIN_DIR bin)
 		install(
 			TARGETS ${targetName}
 			EXPORT bsf
-			RUNTIME DESTINATION bin
+			RUNTIME DESTINATION ${BIN_DIR}
 			LIBRARY DESTINATION lib
 			ARCHIVE DESTINATION lib
 		)
 	else()
+		set(BIN_DIR .)
 		install(
 			TARGETS ${targetName}
 			EXPORT bsf
-			RUNTIME DESTINATION bin
+			RUNTIME DESTINATION ${BIN_DIR}
 			LIBRARY DESTINATION lib
 		)
 	endif()
 	
 	if(MSVC)
 		install(
-			FILES $<TARGET_PDB_FILE:${targetName}> 
-			DESTINATION bin 
+			FILES $<TARGET_PDB_FILE:${targetName}>
+			DESTINATION ${BIN_DIR}
 			OPTIONAL
 		)
 	else()
 		install(
-			FILES ${symbolsFile} 
+			FILES ${symbolsFile}
 			DESTINATION lib
 			OPTIONAL)
 	endif()
 endfunction()
 
+function(install_binaries_on_build target srcDir subDir extension)
+	set(BIN_SRC_DIR "${srcDir}/${subDir}")
+	set(BIN_DST_DIR ${PROJECT_BINARY_DIR}/${subDir})
+
+	file(GLOB_RECURSE BIN_FILES RELATIVE ${BIN_SRC_DIR} "${BIN_SRC_DIR}/*.${extension}")
+
+	foreach(CUR_PATH ${BIN_FILES})
+		get_filename_component(FILENAME ${CUR_PATH} NAME)
+
+		if(FILENAME MATCHES "^bsf.*")
+			continue()
+		endif()
+
+		set(SRC ${BIN_SRC_DIR}/${CUR_PATH})
+		set(DST ${BIN_DST_DIR}/${CUR_PATH})
+		add_custom_command(
+			TARGET ${target} POST_BUILD
+			COMMAND ${CMAKE_COMMAND}
+			ARGS    -E copy_if_different ${SRC} ${DST}
+			COMMENT "Copying ${SRC} ${DST}"
+		)
+	endforeach()
+endfunction()
+
 function(install_dll_on_build target srcDir)
 	if(WIN32)
-		set(BIN_SRC_DIR "${srcDir}/bin")
-		set(BIN_DST_DIR ${PROJECT_BINARY_DIR}/bin)
-		
-		file(GLOB_RECURSE BIN_FILES RELATIVE ${BIN_SRC_DIR} "${BIN_SRC_DIR}/*.dll")
+		install_binaries_on_build(${target} ${srcDir} bin dll)
+	endif()
+endfunction()
 
-		foreach(CUR_PATH ${BIN_FILES})
-			get_filename_component(FILENAME ${CUR_PATH} NAME)
-		
-			if(FILENAME MATCHES "^bsf.*")
-				continue()
-			endif()
-		
-			set(SRC ${BIN_SRC_DIR}/${CUR_PATH})
-			set(DST ${BIN_DST_DIR}/${CUR_PATH})
-			add_custom_command(
-			   TARGET ${target} POST_BUILD
-			   COMMAND ${CMAKE_COMMAND}
-			   ARGS    -E copy_if_different ${SRC} ${DST}
-			   COMMENT "Copying ${SRC} ${DST}\n"
-			   )
-		endforeach()
+function(install_dylib_on_build target srcDir)
+	if(APPLE)
+		install_binaries_on_build(${target} ${srcDir} lib dylib)
 	endif()
 endfunction()
 
@@ -479,13 +496,13 @@ function(copy_folder_on_build target srcDir dstDir name filter)
 		   TARGET ${target} POST_BUILD
 		   COMMAND ${CMAKE_COMMAND}
 		   ARGS    -E copy_if_different ${SRC} ${DST}
-		   COMMENT "Copying ${SRC} ${DST}\n"
+		   COMMENT "Copying ${SRC} ${DST}"
 		   )
 	endforeach()
 endfunction()
 
-function(generate_csharp_project folder project_name namespace assembly)
-	file(GLOB_RECURSE ALL_FILES RELATIVE ${folder} ${folder}/*.cs)
+function(generate_csharp_project folder project_name namespace assembly refs projectRefs)
+	file(GLOB_RECURSE ALL_FILES ${folder} ${folder}/*.cs)
 		
 	set(BS_SHARP_FILE_LIST "")
 	foreach(CUR_FILE ${ALL_FILES})
@@ -506,10 +523,12 @@ function(generate_csharp_project folder project_name namespace assembly)
 
 	string(REGEX REPLACE "/" "\\\\" BINARY_DIR_PATH ${PROJECT_BINARY_DIR})
 	set(BS_SHARP_ASSEMBLY_OUTPUT "${BINARY_DIR_PATH}\\bin\\Assemblies")
+	set(BS_SHARP_PROJECT_REFS ${projectRefs})
+	set(BS_SHARP_REFS ${refs})
 
 	configure_file(
 		${folder}/${project_name}.csproj.in
-		${folder}/${BS_SHARP_ASSEMBLY_NAME}.csproj)
+		${PROJECT_BINARY_DIR}/${BS_SHARP_ASSEMBLY_NAME}.csproj)
 endfunction()
 
 function(add_common_flags target)
@@ -635,7 +654,7 @@ function(update_builtin_assets ASSET_PREFIX ASSET_FOLDER FOLDER_NAME ASSET_VERSI
 	execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/Temp)	
 	
 	set(ASSET_DEPENDENCIES_URL ${BS_BINARY_DEP_WEBSITE}/${ASSET_PREFIX}Data_Master_${ASSET_VERSION}.zip)
-	file(DOWNLOAD ${ASSET_DEPENDENCIES_URL} ${PROJECT_SOURCE_DIR}/Temp/Dependencies.zip 
+	file(DOWNLOAD ${ASSET_DEPENDENCIES_URL} ${PROJECT_SOURCE_DIR}/Temp/Dependencies.zip
 		SHOW_PROGRESS
 		STATUS DOWNLOAD_STATUS)
 		

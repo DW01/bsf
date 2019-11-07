@@ -41,7 +41,7 @@ namespace bs
 					for (UINT32 x = dest.getLeft(); x < dest.getRight(); x++, curX += stepX)
 					{
 						UINT32 offsetX = (UINT32)(curX >> 48);
-						UINT32 offsetBytes = elementSize*(offsetX + offsetY + offsetZ);
+						UINT32 offsetBytes = elementSize*offsetX + offsetY + offsetZ;
 
 						UINT8* curSourcePtr = sourceData + offsetBytes;
 
@@ -49,10 +49,10 @@ namespace bs
 						destPtr += elementSize;
 					}
 
-					destPtr += elementSize*dest.getRowSkip();
+					destPtr += dest.getRowSkip();
 				}
 
-				destPtr += elementSize*dest.getSliceSkip();
+				destPtr += dest.getSliceSkip();
 			}
 		}
 	};
@@ -109,7 +109,7 @@ namespace bs
 						Color x1y1z1, x2y1z1, x1y2z1, x2y2z1;
 						Color x1y1z2, x2y1z2, x1y2z2, x2y2z2;
 
-#define GETSOURCEDATA(x, y, z) sourceData + sourceElemSize*((x)+(y)*source.getRowPitch() + (z)*source.getSlicePitch())
+#define GETSOURCEDATA(x, y, z) sourceData + sourceElemSize*(x)+(y)*source.getRowPitch() + (z)*source.getSlicePitch()
 
 						PixelUtil::unpackColor(&x1y1z1, source.getFormat(), GETSOURCEDATA(sampleCoordX1, sampleCoordY1, sampleCoordZ1));
 						PixelUtil::unpackColor(&x2y1z1, source.getFormat(), GETSOURCEDATA(sampleCoordX2, sampleCoordY1, sampleCoordZ1));
@@ -136,10 +136,10 @@ namespace bs
 						destPtr += destElemSize;
 					}
 
-					destPtr += destElemSize * dest.getRowSkip();
+					destPtr += dest.getRowSkip();
 				}
 
-				destPtr += destElemSize * dest.getSliceSkip();
+				destPtr += dest.getSliceSkip();
 			}
 		}
 	};
@@ -153,8 +153,11 @@ namespace bs
 	{
 		static void scale(const PixelData& source, const PixelData& dest)
 		{
-			UINT32 numSourceChannels = PixelUtil::getNumElemBytes(source.getFormat()) / sizeof(float);
-			UINT32 numDestChannels = PixelUtil::getNumElemBytes(dest.getFormat()) / sizeof(float);
+			UINT32 sourcePixelSize = PixelUtil::getNumElemBytes(source.getFormat());
+			UINT32 destPixelSize = PixelUtil::getNumElemBytes(dest.getFormat());
+
+			UINT32 numSourceChannels = sourcePixelSize / sizeof(float);
+			UINT32 numDestChannels = destPixelSize / sizeof(float);
 
 			float* sourceData = (float*)source.getData();
 			float* destPtr = (float*)dest.getData();
@@ -163,6 +166,9 @@ namespace bs
 			UINT64 stepX = ((UINT64)source.getWidth() << 48) / dest.getWidth();
 			UINT64 stepY = ((UINT64)source.getHeight() << 48) / dest.getHeight();
 			UINT64 stepZ = ((UINT64)source.getDepth() << 48) / dest.getDepth();
+
+			UINT32 sourceRowPitch = source.getRowPitch() / sourcePixelSize;
+			UINT32 sourceSlicePitch = source.getSlicePitch() / sourcePixelSize;
 
 			// Contains 16/16 fixed point precision format. Most significant
 			// 16 bits will contain the coordinate in the source image, and the
@@ -203,13 +209,13 @@ namespace bs
 
 #define ACCUM3(x,y,z,factor) \
 						{ float f = factor; \
-						UINT32 offset = (x + y*source.getRowPitch() + z*source.getSlicePitch())*numSourceChannels; \
+						UINT32 offset = (x + y*sourceRowPitch + z*sourceSlicePitch)*numSourceChannels; \
 						accum[0] += sourceData[offset + 0] * f; accum[1] += sourceData[offset + 1] * f; \
 						accum[2] += sourceData[offset + 2] * f; }
 
 #define ACCUM4(x,y,z,factor) \
 						{ float f = factor; \
-						UINT32 offset = (x + y*source.getRowPitch() + z*source.getSlicePitch())*numSourceChannels; \
+						UINT32 offset = (x + y*sourceRowPitch + z*sourceSlicePitch)*numSourceChannels; \
 						accum[0] += sourceData[offset + 0] * f; accum[1] += sourceData[offset + 1] * f; \
 						accum[2] += sourceData[offset + 2] * f; accum[3] += sourceData[offset + 3] * f; }
 
@@ -247,10 +253,10 @@ namespace bs
 						destPtr += numDestChannels;
 					}
 
-					destPtr += numDestChannels*dest.getRowSkip();
+					destPtr += dest.getRowSkip() / sizeof(float);
 				}
 
-				destPtr += numDestChannels*dest.getSliceSkip();
+				destPtr += dest.getSliceSkip() / sizeof(float);
 			}
 		}
 	};
@@ -318,17 +324,17 @@ namespace bs
 					for (UINT32 k = 0; k < channels; k++)
 					{
 						UINT32 accum =
-							sourceData[(sampleCoordX1 + sampleY1Offset)*channels+k]*(0x1000000-(sampleWeightX<<12)-(sampleWeightY<<12)+sxfsyf) +
-							sourceData[(sampleCoordX2 + sampleY1Offset)*channels+k]*((sampleWeightX<<12)-sxfsyf) +
-							sourceData[(sampleCoordX1 + sampleY2Offset)*channels+k]*((sampleWeightY<<12)-sxfsyf) +
-							sourceData[(sampleCoordX2 + sampleY2Offset)*channels+k]*sxfsyf;
+							sourceData[sampleCoordX1 * channels + sampleY1Offset + k]*(0x1000000-(sampleWeightX<<12)-(sampleWeightY<<12)+sxfsyf) +
+							sourceData[sampleCoordX2 * channels + sampleY1Offset + k]*((sampleWeightX<<12)-sxfsyf) +
+							sourceData[sampleCoordX1 * channels + sampleY2Offset + k]*((sampleWeightY<<12)-sxfsyf) +
+							sourceData[sampleCoordX2 * channels + sampleY2Offset + k]*sxfsyf;
 
 						// Round up to byte size
 						*destPtr = (UINT8)((accum + 0x800000) >> 24);
 						destPtr++;
 					}
 				}
-				destPtr += channels*dest.getRowSkip();
+				destPtr += dest.getRowSkip();
 			}
 		}
 	};
@@ -1329,43 +1335,80 @@ namespace bs
 		return getDescriptionFor(format).elemBytes;
 	}
 
+	UINT32 PixelUtil::getBlockSize(PixelFormat format)
+	{
+		switch (format)
+		{
+		case PF_BC1:
+		case PF_BC1a:
+		case PF_BC4:
+			return 8;
+		case PF_BC2:
+		case PF_BC3:
+		case PF_BC5:
+		case PF_BC6H:
+		case PF_BC7:
+			return 16;
+		default:
+			return getNumElemBytes(format);
+		}
+
+	}
+
+	Vector2I PixelUtil::getBlockDimensions(PixelFormat format)
+	{
+		switch (format)
+		{
+		case PF_BC1:
+		case PF_BC1a:
+		case PF_BC4:
+		case PF_BC2:
+		case PF_BC3:
+		case PF_BC5:
+		case PF_BC6H:
+		case PF_BC7:
+			return Vector2I(4, 4);
+		default:
+			return Vector2I(1, 1);
+		}
+	}
+
 	UINT32 PixelUtil::getMemorySize(UINT32 width, UINT32 height, UINT32 depth, PixelFormat format)
 	{
 		if(isCompressed(format))
 		{
 			switch(format)
 			{
-				// BC formats work by dividing the image into 4x4 blocks, then encoding each
-				// 4x4 block with a certain number of bytes.
+				// BC formats work by dividing the image into 4x4 blocks
 				case PF_BC1:
 				case PF_BC1a:
 				case PF_BC4:
-					return ((width+3)/4)*((height+3)/4)*8 * depth;
 				case PF_BC2:
 				case PF_BC3:
 				case PF_BC5:
 				case PF_BC6H:
 				case PF_BC7:
-					return ((width+3)/4)*((height+3)/4)*16 * depth;
-
+					width = Math::divideAndRoundUp(width, 4U);
+					height = Math::divideAndRoundUp(height, 4U);
+					break;
 				default:
-					BS_EXCEPT(InvalidParametersException, "Invalid compressed pixel format");
-					return 0;
+					break;
 			}
 		}
 
-		return width*height*depth*getNumElemBytes(format);
+		return width*height*depth*getBlockSize(format);
 	}
 
 	void PixelUtil::getPitch(UINT32 width, UINT32 height, UINT32 depth, PixelFormat format,
 						 UINT32& rowPitch, UINT32& depthPitch)
 	{
+		UINT32 blockSize = getBlockSize(format);
+
 		if (isCompressed(format))
 		{
 			switch (format)
 			{
-				// BC formats work by dividing the image into 4x4 blocks, then encoding each
-				// 4x4 block with a certain number of bytes.
+				// BC formats work by dividing the image into 4x4 blocks
 			case PF_BC1:
 			case PF_BC1a:
 			case PF_BC4:
@@ -1374,18 +1417,16 @@ namespace bs
 			case PF_BC5:
 			case PF_BC6H:
 			case PF_BC7:
-				rowPitch = div(width + 3, 4).quot * 4;
-				depthPitch = div(height + 3, 4).quot * 4 * rowPitch;
-				return;
-
+				width = Math::divideAndRoundUp(width, 4U);
+				height = Math::divideAndRoundUp(height, 4U);
+				break;
 			default:
-				BS_EXCEPT(InvalidParametersException, "Invalid compressed pixel format");
-				return;
+				break;
 			}
 		}
 
-		rowPitch = width;
-		depthPitch = width * height;
+		rowPitch = width * blockSize;
+		depthPitch = width * height * blockSize;
 	}
 
 	void PixelUtil::getSizeForMipLevel(UINT32 width, UINT32 height, UINT32 depth, UINT32 mipLevel,
@@ -1644,7 +1685,7 @@ namespace bs
 
 		if (format == PF_RGB10A2)
 		{
-			LOGERR("packColor() not implemented for format \"" + getFormatName(PF_RGB10A2) + "\".");
+			BS_LOG(Error, PixelUtility, "packColor() not implemented for format \"{0}\".", getFormatName(PF_RGB10A2));
 			return;
 		}
 
@@ -1703,7 +1744,7 @@ namespace bs
 			}
 			else
 			{
-				LOGERR("packColor() not implemented for format \"" + getFormatName(format) + "\".");
+				BS_LOG(Error, PixelUtility, "packColor() not implemented for format \"{0}\".", getFormatName(format));
 				return;
 			}
 
@@ -1771,7 +1812,7 @@ namespace bs
 
 		if(format == PF_RGB10A2)
 		{
-			LOGERR("unpackColor() not implemented for format \"" + getFormatName(PF_RGB10A2) + "\".");
+			BS_LOG(Error, PixelUtility,"unpackColor() not implemented for format \"{0}\".", getFormatName(PF_RGB10A2));
 			return;
 		}
 
@@ -1819,7 +1860,7 @@ namespace bs
 			}
 			else
 			{
-				LOGERR("unpackColor() not implemented for format \"" + getFormatName(format) + "\".");
+				BS_LOG(Error, PixelUtility, "unpackColor() not implemented for format \"{0}\".", getFormatName(format));
 				return;
 			}
 
@@ -1838,11 +1879,11 @@ namespace bs
 	{
 		if (!isDepth(format))
 		{
-			LOGERR("Cannot convert depth to " + getFormatName(format) + ": it is not a depth format");
+			BS_LOG(Error, PixelUtility, "Cannot convert depth to {0}: it is not a depth format", getFormatName(format));
 			return;
 		}
 
-		LOGERR("Method is not implemented");
+		BS_LOG(Error, PixelUtility, "Method is not implemented");
 		//TODO implement depth packing
 	}
 
@@ -1850,7 +1891,7 @@ namespace bs
 	{
 		if (!isDepth(format))
 		{
-			LOGERR("Cannot unpack from " + getFormatName(format) + ": it is not a depth format");
+			BS_LOG(Error, PixelUtility, "Cannot unpack from {0}: it is not a depth format", getFormatName(format));
 			return 0;
 		}
 
@@ -1873,7 +1914,7 @@ namespace bs
 			return *( (float*) &masked );
 			break;
 		default:
-			LOGERR("Cannot unpack from " + getFormatName(format));
+			BS_LOG(Error, PixelUtility, "Cannot unpack from {0}", getFormatName(format));
 			return 0;
 			break;
 		}
@@ -1881,41 +1922,10 @@ namespace bs
 
 	void PixelUtil::bulkPixelConversion(const PixelData &src, PixelData &dst)
 	{
-		assert(src.getWidth() == dst.getWidth() &&
-			src.getHeight() == dst.getHeight() &&
-			src.getDepth() == dst.getDepth());
-
-		// Check for compressed formats, we don't support decompression
-		if (PixelUtil::isCompressed(src.getFormat()))
+		if(src.getWidth() != dst.getWidth() || src.getHeight() != dst.getHeight() || src.getDepth() != dst.getDepth())
 		{
-			if (src.getFormat() == dst.getFormat())
-			{
-				memcpy(dst.getData(), src.getData(), src.getConsecutiveSize());
-				return;
-			}
-			else
-			{
-				LOGERR("bulkPixelConversion() cannot be used to compress or decompress images");
-				return;
-			}
-		}
-
-		// Check for compression
-		if (PixelUtil::isCompressed(dst.getFormat()))
-		{
-			if (src.getFormat() == dst.getFormat())
-			{
-				memcpy(dst.getData(), src.getData(), src.getConsecutiveSize());
-				return;
-			}
-			else
-			{
-				CompressionOptions co;
-				co.format = dst.getFormat();
-				compress(src, dst, co);
-
-				return;
-			}
+			BS_LOG(Error, PixelUtility, "Cannot convert pixels between buffers of different sizes.");
+			return;
 		}
 
 		// The easy case
@@ -1928,51 +1938,94 @@ namespace bs
 				return;
 			}
 
-			const UINT32 srcPixelSize = PixelUtil::getNumElemBytes(src.getFormat());
-			const UINT32 dstPixelSize = PixelUtil::getNumElemBytes(dst.getFormat());
-			UINT8 *srcptr = static_cast<UINT8*>(src.getData())
-				+ (src.getLeft() + src.getTop() * src.getRowPitch() + src.getFront() * src.getSlicePitch()) * srcPixelSize;
-			UINT8 *dstptr = static_cast<UINT8*>(dst.getData())
-				+ (dst.getLeft() + dst.getTop() * dst.getRowPitch() + dst.getFront() * dst.getSlicePitch()) * dstPixelSize;
+			PixelFormat format = src.getFormat();
+			UINT32 pixelSize = getNumElemBytes(format);
 
-			// Calculate pitches+skips in bytes
-			const UINT32 srcRowPitchBytes = src.getRowPitch()*srcPixelSize;
-			const UINT32 srcSliceSkipBytes = src.getSliceSkip()*srcPixelSize;
-
-			const UINT32 dstRowPitchBytes = dst.getRowPitch()*dstPixelSize;
-			const UINT32 dstSliceSkipBytes = dst.getSliceSkip()*dstPixelSize;
-
-			// Otherwise, copy per row
-			const UINT32 rowSize = src.getWidth()*srcPixelSize;
-			for (UINT32 z = src.getFront(); z < src.getBack(); z++)
+			Vector2I blockDim = getBlockDimensions(format);
+			if(isCompressed(format))
 			{
-				for (UINT32 y = src.getTop(); y < src.getBottom(); y++)
-				{
-					memcpy(dstptr, srcptr, rowSize);
+				UINT32 blockSize = getBlockSize(format);
+				pixelSize = blockSize / blockDim.x;
 
-					srcptr += srcRowPitchBytes;
-					dstptr += dstRowPitchBytes;
+				if(src.getLeft() % blockDim.x != 0 || src.getTop() % blockDim.y != 0)
+				{
+					BS_LOG(Error, PixelUtility,
+						"Source offset must be a multiple of block size for compressed formats.");
 				}
 
-				srcptr += srcSliceSkipBytes;
-				dstptr += dstSliceSkipBytes;
+				if(dst.getLeft() % blockDim.x != 0 || dst.getTop() % blockDim.y != 0)
+				{
+					BS_LOG(Error, PixelUtility,
+						"Destination offset must be a multiple of block size for compressed formats.");
+				}
+			}
+
+			UINT8* srcPtr = static_cast<UINT8*>(src.getData())
+				+ src.getLeft() * pixelSize + src.getTop() * src.getRowPitch() + src.getFront() * src.getSlicePitch();
+			UINT8* dstPtr = static_cast<UINT8*>(dst.getData())
+				+ dst.getLeft() * pixelSize + dst.getTop() * dst.getRowPitch() + dst.getFront() * dst.getSlicePitch();
+
+			// Get pitches+skips in bytes
+			const UINT32 srcRowPitchBytes = src.getRowPitch();
+			const UINT32 srcSliceSkipBytes = src.getSliceSkip();
+
+			const UINT32 dstRowPitchBytes = dst.getRowPitch();
+			const UINT32 dstSliceSkipBytes = dst.getSliceSkip();
+
+			// Otherwise, copy per row
+			const UINT32 rowSize = src.getWidth()*pixelSize;
+			for (UINT32 z = src.getFront(); z < src.getBack(); z++)
+			{
+				for (UINT32 y = src.getTop(); y < src.getBottom(); y += blockDim.y)
+				{
+					memcpy(dstPtr, srcPtr, rowSize);
+
+					srcPtr += srcRowPitchBytes;
+					dstPtr += dstRowPitchBytes;
+				}
+
+				srcPtr += srcSliceSkipBytes;
+				dstPtr += dstSliceSkipBytes;
 			}
 
 			return;
 		}
 
-		UINT32 srcPixelSize = PixelUtil::getNumElemBytes(src.getFormat());
-		UINT32 dstPixelSize = PixelUtil::getNumElemBytes(dst.getFormat());
-		UINT8 *srcptr = static_cast<UINT8*>(src.getData())
-			+ (src.getLeft() + src.getTop() * src.getRowPitch() + src.getFront() * src.getSlicePitch()) * srcPixelSize;
-		UINT8 *dstptr = static_cast<UINT8*>(dst.getData())
-			+ (dst.getLeft() + dst.getTop() * dst.getRowPitch() + dst.getFront() * dst.getSlicePitch()) * dstPixelSize;
+		// Check for compressed formats, we don't support decompression
+		if (isCompressed(src.getFormat()))
+		{
+			if (src.getFormat() != dst.getFormat())
+			{
+				BS_LOG(Error, PixelUtility, "Cannot convert from a compressed format to another format.");
+				return;
+			}
+		}
 
-		// Calculate pitches+skips in bytes
-		UINT32 srcRowSkipBytes = src.getRowSkip()*srcPixelSize;
-		UINT32 srcSliceSkipBytes = src.getSliceSkip()*srcPixelSize;
-		UINT32 dstRowSkipBytes = dst.getRowSkip()*dstPixelSize;
-		UINT32 dstSliceSkipBytes = dst.getSliceSkip()*dstPixelSize;
+		// Check for compression
+		if (isCompressed(dst.getFormat()))
+		{
+			if (src.getFormat() != dst.getFormat())
+			{
+				CompressionOptions co;
+				co.format = dst.getFormat();
+				compress(src, dst, co);
+
+				return;
+			}
+		}
+
+		UINT32 srcPixelSize = getNumElemBytes(src.getFormat());
+		UINT32 dstPixelSize = getNumElemBytes(dst.getFormat());
+		UINT8 *srcptr = static_cast<UINT8*>(src.getData())
+			+ src.getLeft() * srcPixelSize + src.getTop() * src.getRowPitch() + src.getFront() * src.getSlicePitch();
+		UINT8 *dstptr = static_cast<UINT8*>(dst.getData())
+			+ dst.getLeft() * dstPixelSize + dst.getTop() * dst.getRowPitch() + dst.getFront() * dst.getSlicePitch();
+
+		// Get pitches+skips in bytes
+		UINT32 srcRowSkipBytes = src.getRowSkip();
+		UINT32 srcSliceSkipBytes = src.getSliceSkip();
+		UINT32 dstRowSkipBytes = dst.getRowSkip();
+		UINT32 dstSliceSkipBytes = dst.getSliceSkip();
 
 		// The brute force fallback
 		float r, g, b, a;
@@ -2002,14 +2055,14 @@ namespace bs
 	{
 		if (isCompressed(data.getFormat()))
 		{
-			LOGERR("flipComponentOrder() not supported on compressed images.");
+			BS_LOG(Error, PixelUtility, "flipComponentOrder() not supported on compressed images.");
 			return;
 		}
 
 		const PixelFormatDescription& pfd = getDescriptionFor(data.getFormat());
 		if(pfd.elemBytes > 4)
 		{
-			LOGERR("flipComponentOrder() only supported on 4 byte or smaller pixel formats.");
+			BS_LOG(Error, PixelUtility, "flipComponentOrder() only supported on 4 byte or smaller pixel formats.");
 			return;
 		}
 
@@ -2028,7 +2081,8 @@ namespace bs
 
 		if(bitCountMismatch)
 		{
-			LOGERR("flipComponentOrder() not supported for formats that don't have the same number of bytes for all components.");
+			BS_LOG(Error, PixelUtility, "flipComponentOrder() not supported for formats that don't have the same number "
+				"of bytes for all components.");
 			return;
 		}
 
@@ -2060,8 +2114,8 @@ namespace bs
 		UINT8* dataPtr = data.getData();
 
 		UINT32 pixelSize = pfd.elemBytes;
-		UINT32 rowSkipBytes = data.getRowSkip()*pixelSize;
-		UINT32 sliceSkipBytes = data.getSliceSkip()*pixelSize;
+		UINT32 rowSkipBytes = data.getRowSkip();
+		UINT32 sliceSkipBytes = data.getSliceSkip();
 
 		for (UINT32 z = 0; z < data.getDepth(); z++)
 		{
@@ -2223,8 +2277,8 @@ namespace bs
 	{
 		if(src.getFormat() != dst.getFormat())
 		{
-			LOGERR("Source format is different from destination format for copy(). This operation cannot be used for "
-				   "a format conversion. Aborting copy.");
+			BS_LOG(Error, PixelUtility, "Source format is different from destination format for copy(). This operation "
+				"cannot be used for a format conversion. Aborting copy.");
 			return;
 		}
 
@@ -2234,8 +2288,8 @@ namespace bs
 
 		if(right > src.getWidth() || bottom > src.getHeight() || back > src.getDepth())
 		{
-			LOGERR("Provided offset or destination size is too large and is referencing pixels that are out of bounds"
-				   " on the source texture. Aborting copy().");
+			BS_LOG(Error, PixelUtility, "Provided offset or destination size is too large and is referencing pixels that "
+				"are out of bounds on the source texture. Aborting copy().");
 			return;
 		}
 
@@ -2247,19 +2301,19 @@ namespace bs
 
 		for(UINT32 z = 0; z < dst.getDepth(); z++)
 		{
-			UINT8* srcRowPtr = srcPtr + offsetY * src.getRowPitch() * elemSize;
+			UINT8* srcRowPtr = srcPtr + offsetY * src.getRowPitch();
 			UINT8* dstRowPtr = dstPtr;
 
 			for(UINT32 y = 0; y < dst.getHeight(); y++)
 			{
 				memcpy(dstRowPtr, srcRowPtr + offsetX * elemSize, rowSize);
 
-				srcRowPtr += src.getRowPitch() * elemSize;
-				dstRowPtr += dst.getRowPitch() * elemSize;
+				srcRowPtr += src.getRowPitch();
+				dstRowPtr += dst.getRowPitch();
 			}
 
-			srcPtr += src.getSlicePitch() * elemSize;
-			dstPtr += dst.getSlicePitch() * elemSize;
+			srcPtr += src.getSlicePitch();
+			dstPtr += dst.getSlicePitch();
 		}
 	}
 
@@ -2314,7 +2368,7 @@ namespace bs
 
 				// Note: If flipping X as well I could do it here without an extra set of memcpys
 
-				slicePtr += pixelData.getSlicePitch() * elemSize;
+				slicePtr += pixelData.getSlicePitch();
 			}
 
 			bs_stack_free(rowTemp);
@@ -2341,56 +2395,14 @@ namespace bs
 						memcpy(&rowPtr[srcX], elemTemp, elemSize);
 					}
 
-					rowPtr += pixelData.getRowPitch() * elemSize;
+					rowPtr += pixelData.getRowPitch();
 				}
 
-				slicePtr += pixelData.getSlicePitch() * elemSize;
+				slicePtr += pixelData.getSlicePitch();
 			}
 
 			bs_stack_free(elemTemp);
 		}
-	}
-
-	float linearToSRGB(float x)
-	{
-		if (x <= 0.0f)
-			return 0.0f;
-		else if (x >= 1.0f)
-			return 1.0f;
-		else if (x < 0.0031308f)
-			return x * 12.92f;
-		else
-			return std::pow(x, 1.0f / 2.4f) * 1.055f - 0.055f;
-	}
-
-	float SRGBToLinear(float x)
-	{
-		if (x <= 0.0f)
-			return 0.0f;
-		else if (x >= 1.0f)
-			return 1.0f;
-		else if (x < 0.04045f)
-			return x / 12.92f;
-		else
-			return std::pow((x + 0.055f) / 1.055f, 2.4f);
-	}
-
-	Color PixelUtil::linearToSRGB(const bs::Color& color)
-	{
-		return Color(
-				bs::linearToSRGB(color.r),
-				bs::linearToSRGB(color.g),
-				bs::linearToSRGB(color.b),
-				color.a);
-	}
-
-	Color PixelUtil::SRGBToLinear(const bs::Color& color)
-	{
-		return Color(
-				bs::SRGBToLinear(color.r),
-				bs::SRGBToLinear(color.g),
-				bs::SRGBToLinear(color.b),
-				color.a);
 	}
 
 	void PixelUtil::linearToSRGB(PixelData& pixelData)
@@ -2404,11 +2416,11 @@ namespace bs
 
 		for (UINT32 z = 0; z < depth; z++)
 		{
-			UINT32 zDataIdx = z * pixelData.getSlicePitch() * pixelSize;
+			UINT32 zDataIdx = z * pixelData.getSlicePitch();
 
 			for (UINT32 y = 0; y < height; y++)
 			{
-				UINT32 yDataIdx = y * pixelData.getRowPitch() * pixelSize;
+				UINT32 yDataIdx = y * pixelData.getRowPitch();
 
 				for (UINT32 x = 0; x < width; x++)
 				{
@@ -2418,7 +2430,7 @@ namespace bs
 					Color color;
 
 					PixelUtil::unpackColor(&color, pixelData.getFormat(), dest);
-					color = linearToSRGB(color);
+					color = color.getGamma();
 					PixelUtil::packColor(color, pixelData.getFormat(), dest);
 				}
 			}
@@ -2436,11 +2448,11 @@ namespace bs
 
 		for (UINT32 z = 0; z < depth; z++)
 		{
-			UINT32 zDataIdx = z * pixelData.getSlicePitch() * pixelSize;
+			UINT32 zDataIdx = z * pixelData.getSlicePitch();
 
 			for (UINT32 y = 0; y < height; y++)
 			{
-				UINT32 yDataIdx = y * pixelData.getRowPitch() * pixelSize;
+				UINT32 yDataIdx = y * pixelData.getRowPitch();
 
 				for (UINT32 x = 0; x < width; x++)
 				{
@@ -2450,7 +2462,7 @@ namespace bs
 					Color color;
 
 					PixelUtil::unpackColor(&color, pixelData.getFormat(), dest);
-					color = SRGBToLinear(color);
+					color = color.getLinear();
 					PixelUtil::packColor(color, pixelData.getFormat(), dest);
 				}
 			}
@@ -2461,19 +2473,19 @@ namespace bs
 	{
 		if (!isCompressed(options.format))
 		{
-			LOGERR("Compression failed. Destination format is not a valid compressed format.")
+			BS_LOG(Error, PixelUtility, "Compression failed. Destination format is not a valid compressed format.");
 			return;
 		}
 
 		if (src.getDepth() != 1)
 		{
-			LOGERR("Compression failed. 3D texture compression not supported.")
+			BS_LOG(Error, PixelUtility, "Compression failed. 3D texture compression not supported.");
 			return;
 		}
 
 		if (isCompressed(src.getFormat()))
 		{
-			LOGERR("Compression failed. Source data cannot be compressed.");
+			BS_LOG(Error, PixelUtility, "Compression failed. Source data cannot be compressed.");
 			return;
 		}
 
@@ -2514,7 +2526,7 @@ namespace bs
 		nvtt::Compressor compressor;
 		if (!compressor.process(io, co, oo))
 		{
-			LOGERR("Compression failed. Internal error.");
+			BS_LOG(Error, PixelUtility, "Compression failed. Internal error.");
 			return;
 		}
 	}
@@ -2525,19 +2537,19 @@ namespace bs
 
 		if (src.getDepth() != 1)
 		{
-			LOGERR("Mipmap generation failed. 3D texture formats not supported.")
+			BS_LOG(Error, PixelUtility, "Mipmap generation failed. 3D texture formats not supported.");
 			return outputMipBuffers;
 		}
 
 		if (isCompressed(src.getFormat()))
 		{
-			LOGERR("Mipmap generation failed. Source data cannot be compressed.")
+			BS_LOG(Error, PixelUtility, "Mipmap generation failed. Source data cannot be compressed.");
 			return outputMipBuffers;
 		}
 
 		if (!Bitwise::isPow2(src.getWidth()) || !Bitwise::isPow2(src.getHeight()))
 		{
-			LOGERR("Mipmap generation failed. Texture width & height must be powers of 2.");
+			BS_LOG(Error, PixelUtility, "Mipmap generation failed. Texture width & height must be powers of 2.");
 			return outputMipBuffers;
 		}
 
@@ -2616,7 +2628,7 @@ namespace bs
 		nvtt::Compressor compressor;
 		if (!compressor.process(io, co, oo))
 		{
-			LOGERR("Mipmap generation failed. Internal error.");
+			BS_LOG(Error, PixelUtility, "Mipmap generation failed. Internal error.");
 			return outputMipBuffers;
 		}
 

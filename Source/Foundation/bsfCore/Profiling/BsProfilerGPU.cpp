@@ -11,7 +11,6 @@ namespace bs
 	const UINT32 ProfilerGPU::MAX_QUEUE_ELEMENTS = 5;
 
 	ProfilerGPU::ProfilerGPU()
-		:mIsFrameActive(false), mReadyReports(nullptr), mReportHeadPos(0), mReportCount(0)
 	{
 		mReadyReports = bs_newN<GPUProfilerReport>(MAX_QUEUE_ELEMENTS);
 	}
@@ -20,9 +19,9 @@ namespace bs
 	{
 		while (!mUnresolvedFrames.empty())
 		{
-			ProfiledSample& frameSample = mUnresolvedFrames.front();
+			ProfiledFrame& frame = mUnresolvedFrames.front();
 
-			freeSample(frameSample);
+			freeFrame(frame);
 			mUnresolvedFrames.pop();
 		}
 
@@ -33,39 +32,83 @@ namespace bs
 	{
 		if (mIsFrameActive)
 		{
-			LOGERR("Cannot begin a frame because another frame is active.");
+			BS_LOG(Error, Profiler, "Cannot begin a frame because another frame is active.");
 			return;
 		}
 
-		mFrameSample = ProfiledSample();
-		mFrameSample.name = "Frame";
-		beginSampleInternal(mFrameSample, true);
-
 		mIsFrameActive = true;
+		mActiveFrame.uncategorizedSamples.clear();
+		mActiveFrame.viewSamples.clear();
 	}
 
-	void ProfilerGPU::endFrame()
+	void ProfilerGPU::endFrame(bool discard)
 	{
 		if (!mActiveSamples.empty())
 		{
-			LOGERR("Attempting to end a frame while a sample is active.");
+			BS_LOG(Error, Profiler, "Attempting to end a frame while a sample is active.");
+			return;
+		}
+
+		if (mIsViewActive)
+		{
+			BS_LOG(Error, Profiler, "Attempting to end a frame while a view is active.");
 			return;
 		}
 
 		if (!mIsFrameActive)
 			return;
 
-		endSampleInternal(mFrameSample);
+		if(!discard)
+			mUnresolvedFrames.push(mActiveFrame);
+		else
+			freeFrame(mActiveFrame);
 
-		mUnresolvedFrames.push(mFrameSample);
 		mIsFrameActive = false;
+	}
+
+	void ProfilerGPU::beginView(UINT64 id, ProfilerString title)
+	{
+		if (!mIsFrameActive)
+		{
+			BS_LOG(Error, Profiler, "Cannot begin a view because no frame is active.");
+			return;
+		}
+
+		if (mIsViewActive)
+		{
+			BS_LOG(Error, Profiler, "Cannot begin a view because another view is active.");
+			return;
+		}
+
+		auto sample = mViewSamplePool.construct<ProfiledViewSample>();
+		sample->viewId = id;
+
+		mActiveFrame.viewSamples.push_back(sample);
+
+		beginSampleInternal(*sample, true);
+		mIsViewActive = true;
+	}
+
+	void ProfilerGPU::endView()
+	{
+		if (!mActiveSamples.empty())
+		{
+			BS_LOG(Error, Profiler, "Attempting to end a view while a sample is active.");
+			return;
+		}
+
+		if (!mIsViewActive)
+			return;
+
+		endSampleInternal(*mActiveFrame.viewSamples.back());
+		mIsViewActive = false;
 	}
 
 	void ProfilerGPU::beginSample(ProfilerString name)
 	{
 		if (!mIsFrameActive)
 		{
-			LOGERR("Cannot begin a sample because no frame is active.");
+			BS_LOG(Error, Profiler, "Cannot begin a sample because no frame is active.");
 			return;
 		}
 
@@ -73,8 +116,13 @@ namespace bs
 		sample->name = std::move(name);
 		beginSampleInternal(*sample, false);
 
-		if(mActiveSamples.empty())
-			mFrameSample.children.push_back(sample);
+		if (mActiveSamples.empty())
+		{
+			if (mIsViewActive)
+				mActiveFrame.viewSamples.back()->children.push_back(sample);
+			else
+				mActiveFrame.uncategorizedSamples.push_back(sample);
+		}
 		else
 		{
 			ProfiledSample* parent = mActiveSamples.top();
@@ -92,10 +140,8 @@ namespace bs
 		ProfiledSample* lastSample = mActiveSamples.top();
 		if (lastSample->name != name)
 		{
-			String errorStr = "Attempting to end a sample that doesn't match. Got: " +
-				String(name.c_str()) + ". Expected: " + String(lastSample->name.c_str());
-
-			LOGERR(errorStr);
+			BS_LOG(Error, Profiler, "Attempting to end a sample that doesn't match. Got: {0}. Expected: {1}",
+				name.c_str(), lastSample->name.c_str());
 			return;
 		}
 
@@ -116,7 +162,7 @@ namespace bs
 
 		if (mReportCount == 0)
 		{
-			LOGERR("No reports are available.")
+			BS_LOG(Error, Profiler, "No reports are available.");
 			return GPUProfilerReport();
 		}
 
@@ -132,29 +178,53 @@ namespace bs
 	{
 		while (!mUnresolvedFrames.empty())
 		{
-			ProfiledSample& frameSample = mUnresolvedFrames.front();
+			ProfiledFrame& frame = mUnresolvedFrames.front();
 
-			// Frame sample timer query is the last query we issued
-			// so if it is complete, we may assume all queries are complete.
-			if (frameSample.activeTimeQuery->isReady())
+			// Make sure all the top-level queries have finished. If they have that implies
+			// all their children have finished as well
+			bool isReady = true;
+			for(auto& entry : frame.viewSamples)
 			{
-				GPUProfilerReport report;
-				resolveSample(frameSample, report.frameSample);
-
-				freeSample(frameSample);
-				mUnresolvedFrames.pop();
-
+				if (!entry->activeTimeQuery->isReady())
 				{
-					Lock lock(mMutex);
-					mReadyReports[(mReportHeadPos + mReportCount) % MAX_QUEUE_ELEMENTS] = report;
-					if (mReportCount == MAX_QUEUE_ELEMENTS)
-						mReportHeadPos = (mReportHeadPos + 1) % MAX_QUEUE_ELEMENTS;
-					else
-						mReportCount++;
+					isReady = false;
+					break;
 				}
 			}
-			else
+
+			for(auto& entry : frame.uncategorizedSamples)
+			{
+				if (!entry->activeTimeQuery->isReady())
+				{
+					isReady = false;
+					break;
+				}
+			}
+
+			if (!isReady)
 				break;
+			
+			GPUProfilerReport report;
+			report.viewSamples.resize(frame.viewSamples.size());
+			report.uncategorizedSamples.resize(frame.uncategorizedSamples.size());
+			
+			for (size_t i = 0; i < frame.viewSamples.size(); i++)
+				resolveSample(*frame.viewSamples[i], report.viewSamples[i]);
+				
+			for (size_t i = 0; i < frame.uncategorizedSamples.size(); i++)
+				resolveSample(*frame.uncategorizedSamples[i], report.uncategorizedSamples[i]);
+				
+			freeFrame(frame);
+			mUnresolvedFrames.pop();
+
+			{
+				Lock lock(mMutex);
+				mReadyReports[(mReportHeadPos + mReportCount) % MAX_QUEUE_ELEMENTS] = report;
+				if (mReportCount == MAX_QUEUE_ELEMENTS)
+					mReportHeadPos = (mReportHeadPos + 1) % MAX_QUEUE_ELEMENTS;
+				else
+					mReportCount++;
+			}
 		}
 	}
 
@@ -172,6 +242,24 @@ namespace bs
 
 		if(sample.activeOcclusionQuery)
 			mFreeOcclusionQueries.push(sample.activeOcclusionQuery);
+	}
+
+	void ProfilerGPU::freeFrame(ProfiledFrame& frame)
+	{
+		for (size_t i = 0; i < frame.viewSamples.size(); i++)
+		{
+			freeSample(*frame.viewSamples[i]);
+			mViewSamplePool.destruct(frame.viewSamples[i]);
+		}
+			
+		for (size_t i = 0; i < frame.uncategorizedSamples.size(); i++)
+		{
+			freeSample(*frame.uncategorizedSamples[i]);
+			mSamplePool.destruct(frame.uncategorizedSamples[i]);
+		}
+
+		frame.viewSamples.clear();
+		frame.uncategorizedSamples.clear();
 	}
 
 	void ProfilerGPU::resolveSample(const ProfiledSample& sample, GPUProfileSample& reportSample)

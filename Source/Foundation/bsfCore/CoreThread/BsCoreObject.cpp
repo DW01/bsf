@@ -16,7 +16,7 @@ namespace bs
 	{
 	}
 
-	CoreObject::~CoreObject() 
+	CoreObject::~CoreObject()
 	{
 		if(!isDestroyed())
 		{
@@ -41,7 +41,9 @@ namespace bs
 
 		if(requiresInitOnCoreThread())
 		{
+#if !BS_FORCE_SINGLETHREADED_RENDERING
 			assert(BS_THREAD_CURRENT_ID != CoreThread::instance().getCoreThreadId() && "Cannot destroy sim thead object from core thread.");
+#endif
 
 			// This will only destroy the ct::CoreObject if this was the last reference
 			queueDestroyGpuCommand(mCoreSpecific);
@@ -61,7 +63,9 @@ namespace bs
 			{
 				mCoreSpecific->setScheduledToBeInitialized(true);
 
+#if !BS_FORCE_SINGLETHREADED_RENDERING
 				assert(BS_THREAD_CURRENT_ID != CoreThread::instance().getCoreThreadId() && "Cannot initialize sim thread object from core thread.");
+#endif
 
 				queueInitializeGpuCommand(mCoreSpecific);
 			}
@@ -71,7 +75,7 @@ namespace bs
 
 				// Even though this object might not require initialization on the core thread, it will be used on it, therefore
 				// do a memory barrier to ensure any stores are finished before continuing (When it requires init on core thread
-				// we use the core queue which uses a mutex, and therefore executes all stores as well, so we dont need to 
+				// we use the core queue which uses a mutex, and therefore executes all stores as well, so we dont need to
 				// do this explicitly)
 				std::atomic_thread_fence(std::memory_order_release); // TODO - Need atomic variable, currently this does nothing
 			}
@@ -131,7 +135,7 @@ namespace bs
 	{
 		std::function<void()> func = std::bind(&ct::CoreObject::initialize, obj.get());
 
-		CoreThread::instance().queueCommand(std::bind(&CoreObject::executeGpuCommand, obj, func), CTQF_InternalQueue);
+		CoreThread::instance().queueCommand(std::bind(&CoreObject::executeGpuCommand, obj, func));
 	}
 
 	void CoreObject::queueDestroyGpuCommand(const SPtr<ct::CoreObject>& obj)
@@ -148,7 +152,7 @@ namespace bs
 		func();
 	}
 
-	void CoreObject::executeReturnGpuCommand(const SPtr<ct::CoreObject>& obj, std::function<void(AsyncOp&)> func, 
+	void CoreObject::executeReturnGpuCommand(const SPtr<ct::CoreObject>& obj, std::function<void(AsyncOp&)> func,
 		AsyncOp& op)
 	{
 		volatile SPtr<ct::CoreObject> objParam = obj; // Makes sure obj isn't optimized out?

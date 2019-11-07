@@ -10,6 +10,8 @@
 #include "String/BsUnicode.h"
 #include "RenderAPI/BsRenderWindow.h"
 
+#import <QuartzCore/CAMetalLayer.h>
+
 using namespace bs;
 
 /** Converts a keycode reported by Cocoa into a potential input command. */
@@ -227,8 +229,8 @@ enum class MouseEventType
 	buttonStates.ctrl = (modifierFlags & NSEventModifierFlagControl) != 0;
 	buttonStates.shift = (modifierFlags & NSEventModifierFlagShift) != 0;
 	buttonStates.mouseButtons[0] = (pressedButtons & (1 << 0)) != 0;
-	buttonStates.mouseButtons[1] = (pressedButtons & (1 << 1)) != 0;
-	buttonStates.mouseButtons[2] = (pressedButtons & (1 << 2)) != 0;
+	buttonStates.mouseButtons[1] = (pressedButtons & (1 << 2)) != 0;
+	buttonStates.mouseButtons[2] = (pressedButtons & (1 << 1)) != 0;
 
 	NSWindow* window = [event window];
 	NSScreen* screen = window ? [window screen] : [NSScreen mainScreen];
@@ -657,6 +659,7 @@ namespace bs
 		[m->window setDelegate:m->delegate];
 
 		m->view = [[BSView alloc] init];
+
 		[m->window setContentView:m->view];
 
 		if(desc.background)
@@ -690,11 +693,12 @@ namespace bs
 	{
         if (m->window != nil)
             _destroy();
-        
+
         m->delegate = nil;
         m->responder = nil;
         m->view = nil;
-        
+        m->layer = nil;
+
         bs_delete(m);
 	}
 
@@ -905,5 +909,18 @@ namespace bs
 	{
 		NSOpenGLContext* glContext = (__bridge_transfer NSOpenGLContext* )context;
 		[m->view setGLContext:glContext];
+	}
+
+	void CocoaWindow::_setLayer(void* layer)
+	{
+		[m->view setLayer:(__bridge CALayer*)layer];
+		[m->view setWantsLayer:TRUE];
+
+        m->layer = (__bridge CALayer*)layer;
+	}
+
+	void* CocoaWindow::_getLayer() const
+	{
+		return (__bridge void *)m->layer;
 	}
 }

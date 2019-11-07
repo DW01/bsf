@@ -13,7 +13,7 @@
 namespace bs { namespace ct
 {
 	GLPixelBuffer::GLPixelBuffer(UINT32 inWidth, UINT32 inHeight, UINT32 inDepth, PixelFormat inFormat, GpuBufferUsage usage)
-		: mUsage(usage), mIsLocked(false), mWidth(inWidth), mHeight(inHeight), mDepth(inDepth), mFormat(inFormat)
+		: mUsage(usage), mWidth(inWidth), mHeight(inHeight), mDepth(inDepth), mFormat(inFormat)
 		, mBuffer(inWidth, inHeight, inDepth, inFormat)
 	{
 		mSizeInBytes = mHeight*mWidth*PixelUtil::getNumElemBytes(mFormat);
@@ -95,8 +95,8 @@ namespace bs { namespace ct
 
 	void GLPixelBuffer::blitFromTexture(GLTextureBuffer* src)
 	{
-		blitFromTexture(src, 
-			PixelVolume(0, 0, 0, src->getWidth(), src->getHeight(), src->getDepth()), 
+		blitFromTexture(src,
+			PixelVolume(0, 0, 0, src->getWidth(), src->getHeight(), src->getDepth()),
 			PixelVolume(0, 0, 0, mWidth, mHeight, mDepth)
 			);
 	}
@@ -111,9 +111,9 @@ namespace bs { namespace ct
 		BS_EXCEPT(RenderingAPIException, "Framebuffer bind not possible for this pixel buffer type");
 	}
 
-	GLTextureBuffer::GLTextureBuffer(GLenum target, GLuint id, GLint face, GLint level, PixelFormat format, 
+	GLTextureBuffer::GLTextureBuffer(GLenum target, GLuint id, GLint face, GLint level, PixelFormat format,
 		GpuBufferUsage usage, bool hwGamma, UINT32 multisampleCount)
-		: GLPixelBuffer(0, 0, 0, format, usage), mTarget(target), mFaceTarget(0), mTextureID(id), mFace(face)
+		: GLPixelBuffer(0, 0, 0, format, usage), mTarget(target), mTextureID(id), mFace(face)
 		, mLevel(level), mMultisampleCount(multisampleCount), mHwGamma(hwGamma)
 	{
 		GLint value = 0;
@@ -165,7 +165,7 @@ namespace bs { namespace ct
 	{
 		if ((mUsage & TU_DEPTHSTENCIL) != 0)
 		{
-			LOGERR("Writing to depth stencil texture from CPU not supported.");
+			BS_LOG(Error, RenderBackend, "Writing to depth stencil texture from CPU not supported.");
 			return;
 		}
 
@@ -175,21 +175,22 @@ namespace bs { namespace ct
 		if(PixelUtil::isCompressed(data.getFormat()))
 		{
 			// Block-compressed data cannot be smaller than 4x4, and must be a multiple of 4
-			const UINT32 actualWidth = Math::divideAndRoundUp(std::max(mWidth, 4U), 4U) * 4U;
-			const UINT32 actualHeight = Math::divideAndRoundUp(std::max(mHeight, 4U), 4U) * 4U;
+			const UINT32 widthInBlocks = Math::divideAndRoundUp(std::max(mWidth, 4U), 4U);
+			const UINT32 heightInBlocks = Math::divideAndRoundUp(std::max(mHeight, 4U), 4U);
 
-			const UINT32 expectedRowPitch = actualWidth;
-			const UINT32 expectedSlicePitch = actualWidth * actualHeight;
+			const UINT32 blockSize = PixelUtil::getBlockSize(data.getFormat());
+			const UINT32 expectedRowPitch = widthInBlocks * blockSize;
+			const UINT32 expectedSlicePitch = widthInBlocks * heightInBlocks * blockSize;
 
 			const bool isConsecutive = data.getRowPitch() == expectedRowPitch && data.getSlicePitch() == expectedSlicePitch;
 			if (data.getFormat() != mFormat || !isConsecutive)
 			{
-				LOGERR("Compressed images must be consecutive, in the source format");
+				BS_LOG(Error, RenderBackend, "Compressed images must be consecutive, in the source format");
 				return;
 			}
 
 			GLenum format = GLPixelUtil::getGLInternalFormat(mFormat, mHwGamma);
-			switch(mTarget) 
+			switch(mTarget)
 			{
 				case GL_TEXTURE_1D:
 					glCompressedTexSubImage1D(GL_TEXTURE_1D, mLevel,
@@ -220,30 +221,34 @@ namespace bs { namespace ct
 					break;
 			}
 		
-		} 
+		}
 		else
 		{
-			if (data.getWidth() != data.getRowPitch())
+			UINT32 pixelSize = PixelUtil::getNumElemBytes(data.getFormat());
+			UINT32 rowPitchInPixels = data.getRowPitch() / pixelSize;
+			UINT32 slicePitchInPixels = data.getSlicePitch() / pixelSize;
+
+			if (data.getWidth() != rowPitchInPixels)
 			{
-				glPixelStorei(GL_UNPACK_ROW_LENGTH, data.getRowPitch());
+				glPixelStorei(GL_UNPACK_ROW_LENGTH, rowPitchInPixels);
 				BS_CHECK_GL_ERROR();
 			}
 
-			if (data.getHeight()*data.getWidth() != data.getSlicePitch())
+			if (data.getHeight()*data.getWidth() != slicePitchInPixels)
 			{
-				glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (data.getSlicePitch() / data.getWidth()));
+				glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (slicePitchInPixels / data.getWidth()));
 				BS_CHECK_GL_ERROR();
 			}
 
 			if (data.getLeft() > 0 || data.getTop() > 0 || data.getFront() > 0)
 			{
 				glPixelStorei(
-					GL_UNPACK_SKIP_PIXELS, 
-					data.getLeft() + data.getRowPitch() * data.getTop() + data.getSlicePitch() * data.getFront());
+					GL_UNPACK_SKIP_PIXELS,
+					data.getLeft() + rowPitchInPixels * data.getTop() + slicePitchInPixels * data.getFront());
 				BS_CHECK_GL_ERROR();
 			}
 
-			if ((data.getWidth()*PixelUtil::getNumElemBytes(data.getFormat())) & 3)
+			if ((data.getWidth()*pixelSize) & 3)
 			{
 				glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 				BS_CHECK_GL_ERROR();
@@ -251,7 +256,7 @@ namespace bs { namespace ct
 
 			switch(mTarget) {
 				case GL_TEXTURE_1D:
-					glTexSubImage1D(GL_TEXTURE_1D, mLevel, 
+					glTexSubImage1D(GL_TEXTURE_1D, mLevel,
 						dest.left,
 						dest.getWidth(),
 						GLPixelUtil::getGLOriginFormat(data.getFormat()), GLPixelUtil::getGLOriginDataType(data.getFormat()),
@@ -260,8 +265,8 @@ namespace bs { namespace ct
 					break;
 				case GL_TEXTURE_2D:
 				case GL_TEXTURE_CUBE_MAP:
-					glTexSubImage2D(mFaceTarget, mLevel, 
-						dest.left, dest.top, 
+					glTexSubImage2D(mFaceTarget, mLevel,
+						dest.left, dest.top,
 						dest.getWidth(), dest.getHeight(),
 						GLPixelUtil::getGLOriginFormat(data.getFormat()), GLPixelUtil::getGLOriginDataType(data.getFormat()),
 						data.getData());
@@ -300,7 +305,7 @@ namespace bs { namespace ct
 	{
 		if (data.getWidth() != getWidth() || data.getHeight() != getHeight() || data.getDepth() != getDepth())
 		{
-			LOGERR("Only download of entire buffer is supported by OpenGL.");
+			BS_LOG(Error, RenderBackend, "Only download of entire buffer is supported by OpenGL.");
 			return;
 		}
 
@@ -310,16 +315,17 @@ namespace bs { namespace ct
 		if(PixelUtil::isCompressed(data.getFormat()))
 		{
 			// Block-compressed data cannot be smaller than 4x4, and must be a multiple of 4
-			const UINT32 actualWidth = Math::divideAndRoundUp(std::max(mWidth, 4U), 4U) * 4U;
-			const UINT32 actualHeight = Math::divideAndRoundUp(std::max(mHeight, 4U), 4U) * 4U;
+			const UINT32 widthInBlocks = Math::divideAndRoundUp(std::max(mWidth, 4U), 4U);
+			const UINT32 heightInBlocks = Math::divideAndRoundUp(std::max(mHeight, 4U), 4U);
 
-			const UINT32 expectedRowPitch = actualWidth;
-			const UINT32 expectedSlicePitch = actualWidth * actualHeight;
+			const UINT32 blockSize = PixelUtil::getBlockSize(data.getFormat());
+			const UINT32 expectedRowPitch = widthInBlocks * blockSize;
+			const UINT32 expectedSlicePitch = widthInBlocks * heightInBlocks * blockSize;
 
 			const bool isConsecutive = data.getRowPitch() == expectedRowPitch && data.getSlicePitch() == expectedSlicePitch;
 			if (data.getFormat() != mFormat || !isConsecutive)
 			{
-				LOGERR("Compressed images must be consecutive, in the source format");
+				BS_LOG(Error, RenderBackend, "Compressed images must be consecutive, in the source format");
 				return;
 			}
 
@@ -327,37 +333,41 @@ namespace bs { namespace ct
 			// for compressed formate
 			glGetCompressedTexImage(mFaceTarget, mLevel, data.getData());
 			BS_CHECK_GL_ERROR();
-		} 
+		}
 		else
 		{
-			if (data.getWidth() != data.getRowPitch())
+			UINT32 pixelSize = PixelUtil::getNumElemBytes(data.getFormat());
+			UINT32 rowPitchInPixels = data.getRowPitch() / pixelSize;
+			UINT32 slicePitchInPixels = data.getSlicePitch() / pixelSize;
+
+			if (data.getWidth() != rowPitchInPixels)
 			{
-				glPixelStorei(GL_PACK_ROW_LENGTH, data.getRowPitch());
+				glPixelStorei(GL_PACK_ROW_LENGTH, rowPitchInPixels);
 				BS_CHECK_GL_ERROR();
 			}
 
-			if (data.getHeight()*data.getWidth() != data.getSlicePitch())
+			if (data.getHeight()*data.getWidth() != slicePitchInPixels)
 			{
-				glPixelStorei(GL_PACK_IMAGE_HEIGHT, (data.getSlicePitch() / data.getWidth()));
+				glPixelStorei(GL_PACK_IMAGE_HEIGHT, (slicePitchInPixels / data.getWidth()));
 				BS_CHECK_GL_ERROR();
 			}
 
 			if (data.getLeft() > 0 || data.getTop() > 0 || data.getFront() > 0)
 			{
 				glPixelStorei(
-					GL_PACK_SKIP_PIXELS, 
-					data.getLeft() + data.getRowPitch() * data.getTop() + data.getSlicePitch() * data.getFront());
+					GL_PACK_SKIP_PIXELS,
+					data.getLeft() + rowPitchInPixels * data.getTop() + slicePitchInPixels * data.getFront());
 				BS_CHECK_GL_ERROR();
 			}
 
-			if ((data.getWidth()*PixelUtil::getNumElemBytes(data.getFormat())) & 3)
+			if ((data.getWidth()*pixelSize) & 3)
 			{
 				glPixelStorei(GL_PACK_ALIGNMENT, 1);
 				BS_CHECK_GL_ERROR();
 			}
 
 			// We can only get the entire texture
-			glGetTexImage(mFaceTarget, mLevel, GLPixelUtil::getGLOriginFormat(data.getFormat()), 
+			glGetTexImage(mFaceTarget, mLevel, GLPixelUtil::getGLOriginFormat(data.getFormat()),
 				GLPixelUtil::getGLOriginDataType(data.getFormat()), data.getData());
 			BS_CHECK_GL_ERROR();
 
@@ -499,7 +509,7 @@ namespace bs { namespace ct
 			glDrawBuffer(GL_COLOR_ATTACHMENT0);
 			BS_CHECK_GL_ERROR();
 
-			glBlitFramebuffer(srcBox.left, srcBox.top, srcBox.right, srcBox.bottom, 
+			glBlitFramebuffer(srcBox.left, srcBox.top, srcBox.right, srcBox.bottom,
 				dstBox.left, dstBox.top, dstBox.right, dstBox.bottom, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 			BS_CHECK_GL_ERROR();
 

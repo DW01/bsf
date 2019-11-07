@@ -5,16 +5,18 @@
 
 namespace bs
 {
+	UnorderedMap<UINT32, String> Log::sCategories;
+
 	Log::~Log()
 	{
 		clear();
 	}
 
-	void Log::logMsg(const String& message, UINT32 channel)
+	void Log::logMsg(const String& message, LogVerbosity verbosity, UINT32 category)
 	{
 		RecursiveLock lock(mMutex);
 
-		mUnreadEntries.push(LogEntry(message, channel));
+		mUnreadEntries.push(LogEntry(message, verbosity, category));
 	}
 
 	void Log::clear()
@@ -29,14 +31,15 @@ namespace bs
 		mHash++;
 	}
 
-	void Log::clear(UINT32 channel)
+	void Log::clear(LogVerbosity verbosity, UINT32 category)
 	{
 		RecursiveLock lock(mMutex);
 
 		Vector<LogEntry> newEntries;
 		for(auto& entry : mEntries)
 		{
-			if (entry.getChannel() == channel)
+			if (((verbosity == LogVerbosity::Any) || entry.getVerbosity() == verbosity) &&
+				(category == (UINT32)-1 || entry.getCategory() == category))
 				continue;
 
 			newEntries.push_back(entry);
@@ -50,7 +53,8 @@ namespace bs
 			LogEntry entry = mUnreadEntries.front();
 			mUnreadEntries.pop();
 
-			if (entry.getChannel() == channel)
+			if (((verbosity == LogVerbosity::Any) || entry.getVerbosity() == verbosity) &&
+				(category == (UINT32)-1 || entry.getCategory() == category))
 				continue;
 
 			newUnreadEntries.push(entry);
@@ -90,7 +94,36 @@ namespace bs
 
 		return mEntries;
 	}
+	
+	bool Log::_registerCategory(UINT32 id, const char* name)
+	{
+		if (!categoryExists(id))
+		{
+			sCategories.emplace(id, name);
+			return true;
+		}
 
+		return false;
+	}
+	
+	bool Log::categoryExists(UINT32 id)
+	{
+		return sCategories.find(id) != sCategories.end();
+	}
+	
+	bool Log::getCategoryName(UINT32 id, String& name)
+	{
+		auto search = sCategories.find(id);
+		if (search != sCategories.end())
+		{
+			name = search->second;
+			return true;
+		}
+
+		name = "Unknown";
+		return false;
+	}
+	
 	Vector<LogEntry> Log::getAllEntries() const
 	{
 		Vector<LogEntry> entries;
@@ -107,6 +140,7 @@ namespace bs
 				unreadEntries.pop();
 			}
 		}
+
 		return entries;
 	}
 }

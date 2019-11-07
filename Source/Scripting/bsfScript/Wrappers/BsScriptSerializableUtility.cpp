@@ -7,7 +7,8 @@
 #include "BsMonoUtil.h"
 #include "Serialization/BsScriptAssemblyManager.h"
 #include "Serialization/BsManagedSerializableField.h"
-#include "Serialization/BsMemorySerializer.h"
+#include "Serialization/BsBinarySerializer.h"
+#include "FileSystem/BsDataStream.h"
 
 namespace bs
 {
@@ -32,19 +33,21 @@ namespace bs
 		SPtr<ManagedSerializableTypeInfo> typeInfo = ScriptAssemblyManager::instance().getTypeInfo(engineClass);
 		if (typeInfo == nullptr)
 		{
-			LOGWRN("Cannot clone an instance of type \"" +
-				engineClass->getFullName() + "\", it is not marked as serializable.");
+			BS_LOG(Warning, Script, "Cannot clone an instance of type \"{0}\", it is not marked as serializable.",
+				engineClass->getFullName());
 			return nullptr;
 		}
 
 		SPtr<ManagedSerializableFieldData> data = ManagedSerializableFieldData::create(typeInfo, original);
-		MemorySerializer ms;
+		BinarySerializer bs;
 
 		// Note: This code unnecessarily encodes to binary and decodes from it. I could have added a specialized clone method that does it directly,
 		// but didn't feel the extra code was justified.
-		UINT32 size = 0;
-		UINT8* encodedData = ms.encode(data.get(), size);
-		SPtr<ManagedSerializableFieldData> clonedData = std::static_pointer_cast<ManagedSerializableFieldData>(ms.decode(encodedData, size));
+		SPtr<MemoryDataStream> stream = bs_shared_ptr_new<MemoryDataStream>();
+		bs.encode(data.get(), stream);
+
+		stream->seek(0);
+		SPtr<ManagedSerializableFieldData> clonedData = std::static_pointer_cast<ManagedSerializableFieldData>(bs.decode(stream, (UINT32)stream->size()));
 		clonedData->deserialize();
 
 		return clonedData->getValueBoxed(typeInfo);
@@ -61,19 +64,21 @@ namespace bs
 		SPtr<ManagedSerializableTypeInfo> typeInfo = ScriptAssemblyManager::instance().getTypeInfo(engineClass);
 		if (typeInfo == nullptr)
 		{
-			LOGWRN("Cannot create an instance of type \"" + 
-				engineClass->getFullName() + "\", it is not marked as serializable.");
+			BS_LOG(Warning, Script, "Cannot create an instance of type \"{0}\", it is not marked as serializable.",
+				engineClass->getFullName());
 			return nullptr;
 		}
 			
 		SPtr<ManagedSerializableFieldData> data = ManagedSerializableFieldData::createDefault(typeInfo);
-		MemorySerializer ms;
+		BinarySerializer bs;
 
 		// Note: This code unnecessarily encodes to binary and decodes from it. I could have added a specialized create method that does it directly,
 		// but didn't feel the extra code was justified.
-		UINT32 size = 0;
-		UINT8* encodedData = ms.encode(data.get(), size);
-		SPtr<ManagedSerializableFieldData> createdData = std::static_pointer_cast<ManagedSerializableFieldData>(ms.decode(encodedData, size));
+		SPtr<MemoryDataStream> stream = bs_shared_ptr_new<MemoryDataStream>();
+		bs.encode(data.get(), stream);
+
+		stream->seek(0);
+		SPtr<ManagedSerializableFieldData> createdData = std::static_pointer_cast<ManagedSerializableFieldData>(bs.decode(stream, (UINT32)stream->size()));
 		createdData->deserialize();
 
 		return createdData->getValueBoxed(typeInfo);

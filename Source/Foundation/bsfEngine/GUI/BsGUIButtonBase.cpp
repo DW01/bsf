@@ -50,68 +50,17 @@ namespace bs
 			_markContentAsDirty();
 	}
 
-	void GUIButtonBase::_setOn(bool on) 
-	{ 
+	void GUIButtonBase::_setOn(bool on)
+	{
 		if(on)
-			_setState((GUIElementState)((INT32)mActiveState | (INT32)GUIElementState::OnFlag)); 
+			_setState((GUIElementState)((INT32)mActiveState | (INT32)GUIElementState::OnFlag));
 		else
-			_setState((GUIElementState)((INT32)mActiveState & ~(INT32)GUIElementState::OnFlag)); 
+			_setState((GUIElementState)((INT32)mActiveState & ~(INT32)GUIElementState::OnFlag));
 	}
 
 	bool GUIButtonBase::_isOn() const
 	{
 		return ((INT32)mActiveState & (INT32)GUIElementState::OnFlag) != 0;
-	}
-
-	UINT32 GUIButtonBase::_getNumRenderElements() const
-	{
-		UINT32 numElements = mImageSprite->getNumRenderElements();
-		numElements += mTextSprite->getNumRenderElements();
-
-		if(mContentImageSprite != nullptr)
-			numElements += mContentImageSprite->getNumRenderElements();
-
-		return numElements;
-	}
-
-	const SpriteMaterialInfo& GUIButtonBase::_getMaterial(UINT32 renderElementIdx, SpriteMaterial** material) const
-	{
-		UINT32 textSpriteIdx = mImageSprite->getNumRenderElements();
-		UINT32 contentImgSpriteIdx = textSpriteIdx + mTextSprite->getNumRenderElements();
-
-		if (renderElementIdx >= contentImgSpriteIdx)
-		{
-			*material = mContentImageSprite->getMaterial(contentImgSpriteIdx - renderElementIdx);
-			return mContentImageSprite->getMaterialInfo(contentImgSpriteIdx - renderElementIdx);
-		}
-		else if (renderElementIdx >= textSpriteIdx)
-		{
-			*material = mTextSprite->getMaterial(textSpriteIdx - renderElementIdx);
-			return mTextSprite->getMaterialInfo(textSpriteIdx - renderElementIdx);
-		}
-		else
-		{
-			*material = mImageSprite->getMaterial(renderElementIdx);
-			return mImageSprite->getMaterialInfo(renderElementIdx);
-		}
-	}
-
-	void GUIButtonBase::_getMeshInfo(UINT32 renderElementIdx, UINT32& numVertices, UINT32& numIndices, GUIMeshType& type) const
-	{
-		UINT32 textSpriteIdx = mImageSprite->getNumRenderElements();
-		UINT32 contentImgSpriteIdx = textSpriteIdx + mTextSprite->getNumRenderElements();
-
-		UINT32 numQuads = 0;
-		if(renderElementIdx >= contentImgSpriteIdx)
-			numQuads = mContentImageSprite->getNumQuads(contentImgSpriteIdx - renderElementIdx);
-		else if(renderElementIdx >= textSpriteIdx)
-			numQuads = mTextSprite->getNumQuads(textSpriteIdx - renderElementIdx);
-		else
-			numQuads = mImageSprite->getNumQuads(renderElementIdx);
-
-		numVertices = numQuads * 4;
-		numIndices = numQuads * 6;
-		type = GUIMeshType::Triangle;
 	}
 
 	void GUIButtonBase::updateRenderElementsInternal()
@@ -132,7 +81,6 @@ namespace bs
 		mImageDesc.color = getTint();
 
 		mImageSprite->update(mImageDesc, (UINT64)_getParentWidget());
-
 		mTextSprite->update(getTextDesc(), (UINT64)_getParentWidget());
 
 		if(mContentImageSprite != nullptr)
@@ -170,6 +118,12 @@ namespace bs
 			mContentImageSprite->update(contentImgDesc, (UINT64)_getParentWidget());
 		}
 
+		// Populate GUI render elements from the sprites
+		{
+			using T = impl::GUIRenderElementHelper;
+			T::populate({ T::SpriteInfo(mImageSprite, 1), T::SpriteInfo(mTextSprite), T::SpriteInfo(mContentImageSprite) }, mRenderElements);
+		}
+
 		GUIElement::updateRenderElementsInternal();
 	}
 
@@ -192,26 +146,20 @@ namespace bs
 		return Vector2I(contentWidth, contentHeight);
 	}
 
-	UINT32 GUIButtonBase::_getRenderElementDepth(UINT32 renderElementIdx) const
-	{
-		UINT32 textSpriteIdx = mImageSprite->getNumRenderElements();
-		UINT32 contentImgSpriteIdx = textSpriteIdx + mTextSprite->getNumRenderElements();
-
-		if(renderElementIdx >= contentImgSpriteIdx)
-			return _getDepth();
-		else if(renderElementIdx >= textSpriteIdx)
-			return _getDepth();
-		else
-			return _getDepth() + 1;
-	}
-
 	UINT32 GUIButtonBase::_getRenderElementDepthRange() const
 	{
 		return 2;
 	}
 
-	void GUIButtonBase::_fillBuffer(UINT8* vertices, UINT32* indices, UINT32 vertexOffset, UINT32 indexOffset,
-		UINT32 maxNumVerts, UINT32 maxNumIndices, UINT32 renderElementIdx) const
+	void GUIButtonBase::_fillBuffer(
+		UINT8* vertices,
+		UINT32* indices,
+		UINT32 vertexOffset,
+		UINT32 indexOffset,
+		const Vector2I& offset,
+		UINT32 maxNumVerts,
+		UINT32 maxNumIndices,
+		UINT32 renderElementIdx) const
 	{
 		UINT8* uvs = vertices + sizeof(Vector2);
 		UINT32 vertexStride = sizeof(Vector2) * 2;
@@ -222,10 +170,10 @@ namespace bs
 
 		if(renderElementIdx < textSpriteIdx)
 		{
-			Vector2I offset(mLayoutData.area.x, mLayoutData.area.y);
+			Vector2I imageOffset = Vector2I(mLayoutData.area.x, mLayoutData.area.y) + offset;
 
 			mImageSprite->fillBuffer(vertices, uvs, indices, vertexOffset, indexOffset, maxNumVerts, maxNumIndices,
-				vertexStride, indexStride, renderElementIdx, offset, mLayoutData.getLocalClipRect());
+				vertexStride, indexStride, renderElementIdx, imageOffset, mLayoutData.getLocalClipRect());
 
 			return;
 		}
@@ -237,7 +185,7 @@ namespace bs
 		Vector2I textOffset;
 		Rect2I textClipRect;
 
-		Vector2I imageOffset;
+		Vector2I contentOffset;
 		Rect2I imageClipRect;
 		if(mContentImageSprite != nullptr)
 		{
@@ -261,7 +209,7 @@ namespace bs
 				textClipRect = contentClipRect;
 				textClipRect.width = std::min(contentBounds.width - imageReservedWidth, textClipRect.width);
 
-				imageOffset = Vector2I(contentBounds.x + textBounds.width + imageXOffset + textImageSpacing, contentBounds.y);
+				contentOffset = Vector2I(contentBounds.x + textBounds.width + imageXOffset + textImageSpacing, contentBounds.y) + offset;
 				imageClipRect = contentClipRect;
 				imageClipRect.x -= textBounds.width + imageXOffset;
 			}
@@ -269,7 +217,7 @@ namespace bs
 			{
 				INT32 imageReservedWidth = imageBounds.width + imageXOffset;
 
-				imageOffset = Vector2I(contentBounds.x + imageXOffset, contentBounds.y);
+				contentOffset = Vector2I(contentBounds.x + imageXOffset, contentBounds.y) + offset;
 				imageClipRect = contentClipRect;
 				imageClipRect.x -= imageXOffset;
 				imageClipRect.width = std::min(imageReservedWidth, (INT32)imageClipRect.width);
@@ -281,18 +229,18 @@ namespace bs
 
 			INT32 imageYOffset = (contentBounds.height - imageBounds.height) / 2;
 			imageClipRect.y -= imageYOffset;
-			imageOffset.y += imageYOffset;
+			contentOffset.y += imageYOffset;
 		}
 		else
 		{
-			textOffset = Vector2I(contentBounds.x, contentBounds.y);
+			textOffset = Vector2I(contentBounds.x, contentBounds.y) + offset;
 			textClipRect = contentClipRect;
 		}
 
 		if(renderElementIdx >= contentImgSpriteIdx)
 		{
 			mContentImageSprite->fillBuffer(vertices, uvs, indices, vertexOffset, indexOffset, maxNumVerts, maxNumIndices,
-				vertexStride, indexStride, contentImgSpriteIdx - renderElementIdx, imageOffset, imageClipRect);
+				vertexStride, indexStride, contentImgSpriteIdx - renderElementIdx, contentOffset, imageClipRect);
 		}
 		else
 		{

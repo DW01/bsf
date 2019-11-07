@@ -28,7 +28,7 @@ namespace bs
 		/// <summary>Determines from which portion of the mesh are the particles emitted from.</summary>
 		public ParticleEmitterMeshType type;
 		/// <summary>
-		/// When enabled the particles will be emitted sequentially from mesh vertices in the order they are defined.  Only 
+		/// When enabled the particles will be emitted sequentially from mesh vertices in the order they are defined. Only 
 		/// relevant for the Vertex emit mode.
 		/// </summary>
 		public bool sequential;

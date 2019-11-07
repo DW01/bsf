@@ -11,7 +11,7 @@
 
 namespace bs
 {
-	inline size_t ManagedSerializableObject::Hash::operator()(const ManagedSerializableFieldKey& x) const
+	size_t ManagedSerializableObject::Hash::operator()(const ManagedSerializableFieldKey& x) const
 	{
 		size_t seed = 0;
 		bs_hash_combine(seed, (UINT32)x.mFieldId);
@@ -20,7 +20,7 @@ namespace bs
 		return seed;
 	}
 
-	inline bool ManagedSerializableObject::Equals::operator()(const ManagedSerializableFieldKey& a, const ManagedSerializableFieldKey& b) const
+	bool ManagedSerializableObject::Equals::operator()(const ManagedSerializableFieldKey& a, const ManagedSerializableFieldKey& b) const
 	{
 		return a.mFieldId == b.mFieldId && a.mTypeId == b.mTypeId;
 	}
@@ -134,7 +134,7 @@ namespace bs
 	{
 		// See if this type even still exists
 		SPtr<ManagedSerializableObjectInfo> currentObjInfo = nullptr;
-		if (!ScriptAssemblyManager::instance().getSerializableObjectInfo(mObjInfo->mTypeInfo->mTypeNamespace, 
+		if (!ScriptAssemblyManager::instance().getSerializableObjectInfo(mObjInfo->mTypeInfo->mTypeNamespace,
 			mObjInfo->mTypeInfo->mTypeName, currentObjInfo))
 		{
 			return nullptr;
@@ -179,6 +179,42 @@ namespace bs
 
 			curType = curType->mBaseClass;
 		}
+	}
+
+	bool ManagedSerializableObject::equals(ManagedSerializableObject& other)
+	{
+		SPtr<ManagedSerializableObjectInfo> otherObjInfo = other.getObjectInfo();
+
+		if (!mObjInfo->mTypeInfo->matches(otherObjInfo->mTypeInfo))
+			return false;
+
+		SPtr<ManagedSerializableObjectInfo> curObjInfo = mObjInfo;
+		while (curObjInfo != nullptr)
+		{
+			for (auto& field : curObjInfo->mFields)
+			{
+				if (!field.second->isSerializable())
+					continue;
+
+				SPtr<ManagedSerializableFieldData> oldData = getFieldData(field.second);
+				SPtr<ManagedSerializableFieldData> newData = other.getFieldData(field.second);
+
+				if (!oldData)
+					return !newData;
+				else
+				{
+					if (!newData)
+						return false;
+				}
+
+				if(!oldData->equals(newData))
+					return false;
+			}
+
+			curObjInfo = curObjInfo->mBaseClass;
+		}
+
+		return true;
 	}
 
 	void ManagedSerializableObject::setFieldData(const SPtr<ManagedSerializableMemberInfo>& fieldInfo, const SPtr<ManagedSerializableFieldData>& val)

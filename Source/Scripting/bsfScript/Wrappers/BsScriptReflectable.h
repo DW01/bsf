@@ -14,7 +14,7 @@ namespace bs
 
 	/**	
 	 * Base class for all interop object that derive from IReflectable (except for those that have their own specialized
-	 * base classes, such as resources and components). 
+	 * base classes, such as resources and components).
 	 */
 	class BS_SCR_BE_EXPORT ScriptReflectableBase : public ScriptObjectBase
 	{
@@ -38,13 +38,13 @@ namespace bs
 	{
 	public:
 		/** Returns the wrapped reflectable object. */
-		SPtr<InternalType> getInternal() const { return std::static_pointer_cast<InternalType>(mInternal); }
+		SPtr<InternalType> getInternal() const { return std::static_pointer_cast<InternalType>(this->mInternal); }
 
 	protected:
 		TScriptReflectable(MonoObject* instance, const SPtr<IReflectable>& reflectable)
 			:ScriptObject<ScriptClass, BaseType>(instance)
 		{
-			mInternal = reflectable;
+			this->mInternal = reflectable;
 		}
 
 		virtual ~TScriptReflectable() = default;

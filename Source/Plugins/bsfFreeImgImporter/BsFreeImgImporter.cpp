@@ -21,18 +21,14 @@ using namespace std::placeholders;
 
 namespace bs
 {
-	void FreeImageLoadErrorHandler(FREE_IMAGE_FORMAT fif, const char *message) 
+	void FreeImageLoadErrorHandler(FREE_IMAGE_FORMAT fif, const char *message)
 	{
 		// Callback method as required by FreeImage to report problems
 		const char* typeName = FreeImage_GetFormatFromFIF(fif);
 		if (typeName)
-		{
-			gDebug().logError("FreeImage error: '" + String(message) + "' when loading format " + typeName);
-		}
+			BS_LOG(Error, FreeImageImporter, "FreeImage error: '{0}' when loading format {1}", message, typeName);
 		else
-		{
-			gDebug().logError("FreeImage error: '" + String(message) + "'");
-		}
+			BS_LOG(Error, FreeImageImporter, "FreeImage error: '{0}'", message);
 	}
 
 	FreeImgImporter::FreeImgImporter()
@@ -45,7 +41,7 @@ namespace bs
 		bool first = true;
 		for (int i = 0; i < FreeImage_GetFIFCount(); ++i)
 		{
-			// Skip DDS codec since FreeImage does not have the option 
+			// Skip DDS codec since FreeImage does not have the option
 			// to keep DXT data compressed, we'll use our own codec
 			if ((FREE_IMAGE_FORMAT)i == FIF_DDS)
 				continue;
@@ -78,7 +74,7 @@ namespace bs
 		FreeImage_SetOutputMessage(FreeImageLoadErrorHandler);
 	}
 
-	FreeImgImporter::~FreeImgImporter() 
+	FreeImgImporter::~FreeImgImporter()
 	{
 		FreeImage_DeInitialise();
 	}
@@ -103,7 +99,7 @@ namespace bs
 		// Set error handler
 		FreeImage_SetOutputMessage(FreeImageLoadErrorHandler);
 
-		FIMEMORY* fiMem = 
+		FIMEMORY* fiMem =
 			FreeImage_OpenMemory((BYTE*)magic, static_cast<DWORD>(maxBytes));
 
 		FREE_IMAGE_FORMAT fif = FreeImage_GetFileTypeFromMemory(fiMem, (int)maxBytes);
@@ -159,10 +155,10 @@ namespace bs
 		}
 
 		UINT32 numMips = 0;
-		if (textureImportOptions->generateMips && 
+		if (textureImportOptions->generateMips &&
 			Bitwise::isPow2(faceData[0]->getWidth()) && Bitwise::isPow2(faceData[0]->getHeight()))
 		{
-			UINT32 maxPossibleMip = PixelUtil::getMaxMipmaps(faceData[0]->getWidth(), faceData[0]->getHeight(), 
+			UINT32 maxPossibleMip = PixelUtil::getMaxMipmaps(faceData[0]->getWidth(), faceData[0]->getHeight(),
 				faceData[0]->getDepth(), faceData[0]->getFormat());
 
 			if (textureImportOptions->maxMip == 0)
@@ -219,7 +215,7 @@ namespace bs
 
 	SPtr<PixelData> FreeImgImporter::importRawImage(const Path& filePath)
 	{
-		UPtr<MemoryDataStream> memStream(nullptr, nullptr);
+		UPtr<MemoryDataStream> memStream;
 		FREE_IMAGE_FORMAT imageFormat;
 		{
 			Lock lock = FileScheduler::getLock(filePath);
@@ -255,7 +251,7 @@ namespace bs
 		if(!memStream)
 			return nullptr;
 
-		FIMEMORY* fiMem = FreeImage_OpenMemory(memStream->getPtr(), static_cast<DWORD>(memStream->size()));
+		FIMEMORY* fiMem = FreeImage_OpenMemory(memStream->data(), static_cast<DWORD>(memStream->size()));
 
 		FIBITMAP* fiBitmap = FreeImage_LoadFromMemory(
 			(FREE_IMAGE_FORMAT)imageFormat, fiMem);
@@ -430,9 +426,9 @@ namespace bs
 		return texData;
 	}
 
-	/** 
-	 * Reads the source texture as a horizontal or vertical list of 6 cubemap faces. 
-	 * 
+	/**
+	 * Reads the source texture as a horizontal or vertical list of 6 cubemap faces.
+	 *
 	 * @param[in]	source		Source texture to read.
 	 * @param[out]	output		Output array that will contain individual cubemap faces.
 	 * @param[in]	faceSize	Size of a single face, in pixels. Both width & height must match.
@@ -455,20 +451,20 @@ namespace bs
 		}
 	}
 
-	/** 
-	 * Reads the source texture as a horizontal or vertical "cross" of 6 cubemap faces. 
-	 * 
+	/**
+	 * Reads the source texture as a horizontal or vertical "cross" of 6 cubemap faces.
+	 *
 	 * Vertical layout:
 	 *    +Y
 	 * -X +Z +X
 	 *    -Y
 	 *    -Z
-	 * 
+	 *
 	 * Horizontal layout:
 	 *    +Y
 	 * -X +Z +X -Z
 	 *    -Y
-	 * 
+	 *
 	 * @param[in]	source		Source texture to read.
 	 * @param[out]	output		Output array that will contain individual cubemap faces.
 	 * @param[in]	faceSize	Size of a single face, in pixels. Both width & height must match.
@@ -514,9 +510,9 @@ namespace bs
 		return Vector2(u, v);
 	}
 
-	/** 
+	/**
 	 * Method that maps a direction to a point on a plane in range [0, 1] using cylindrical mapping. This mapping is also
-	 * know as longitude-latitude mapping, Blinn/Newell mapping or equirectangular cylindrical mapping. 
+	 * know as longitude-latitude mapping, Blinn/Newell mapping or equirectangular cylindrical mapping.
 	 */
 	Vector2 mapCubemapDirToCylindrical(const Vector3& dir)
 	{
@@ -538,15 +534,15 @@ namespace bs
 		}
 	}
 
-	/** 
+	/**
 	 * Reads the source texture and remaps its data into six faces of a cubemap.
-	 * 
+	 *
 	 * @param[in]	source		Source texture to remap.
 	 * @param[out]	output		Remapped faces of the cubemap.
 	 * @param[in]	faceSize	Width/height of each individual face, in pixels.
 	 * @param[in]	remap		Function to use for remapping the cubemap direction to UV.
 	 */
-	void readCubemapUVRemap(const SPtr<PixelData>& source, std::array<SPtr<PixelData>, 6>& output, UINT32 faceSize, 
+	void readCubemapUVRemap(const SPtr<PixelData>& source, std::array<SPtr<PixelData>, 6>& output, UINT32 faceSize,
 		const std::function<Vector2(Vector3)>& remap)
 	{
 		struct RemapInfo
@@ -557,7 +553,7 @@ namespace bs
 
 		// Mapping from default (X, Y, 1.0f) plane to relevant cube face. Also flipping Y so it corresponds to how pixel
 		// coordinates are mapped.
-		static const RemapInfo remapLookup[] = 
+		static const RemapInfo remapLookup[] =
 		{
 			{ {2, 1, 0}, { -1.0f, -1.0f,  1.0f }}, // X+
 			{ {2, 1, 0}, {  1.0f, -1.0f, -1.0f }}, // X-
@@ -642,7 +638,7 @@ namespace bs
 				}
 				else
 				{
-					LOGWRN("Unable to generate a cubemap: unrecognized face configuration.");
+					BS_LOG(Warning, FreeImageImporter, "Unable to generate a cubemap: unrecognized face configuration.");
 					return false;
 				}
 			}
@@ -667,13 +663,13 @@ namespace bs
 
 		if (faceSize.x != faceSize.y)
 		{
-			LOGWRN("Unable to generate a cubemap: width & height must match.");
+			BS_LOG(Warning, FreeImageImporter, "Unable to generate a cubemap: width & height must match.");
 			return false;
 		}
 
 		if (!Bitwise::isPow2(faceSize.x))
 		{
-			LOGWRN("Unable to generate a cubemap: width & height must be powers of 2.");
+			BS_LOG(Warning, FreeImageImporter, "Unable to generate a cubemap: width & height must be powers of 2.");
 			return false;
 		}
 

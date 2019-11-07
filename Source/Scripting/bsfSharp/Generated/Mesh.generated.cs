@@ -11,7 +11,7 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Primary class for holding geometry. Stores data in the form of vertex buffers and optionally an index buffer, which  
+	/// Primary class for holding geometry. Stores data in the form of vertex buffers and optionally an index buffer, which 
 	/// may be bound to the pipeline for drawing. May contain multiple sub-meshes.
 	/// </summary>
 	[ShowInInspector]
@@ -132,7 +132,8 @@ namespace bs
 
 		/// <summary>
 		/// Accesses the vertex and index data of the mesh. If reading, mesh must have been created with the MeshUsage::CPUCached 
-		/// flag. If writing the caller must ensure the data matches mesh's vertex/index counts, vertex layout and index format.
+		/// flag. If writing the caller must ensure the data matches mesh&apos;s vertex/index counts, vertex layout and index 
+		/// format.
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -144,7 +145,12 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<Mesh>(Mesh x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<Mesh> Internal_GetRef(IntPtr thisPtr);

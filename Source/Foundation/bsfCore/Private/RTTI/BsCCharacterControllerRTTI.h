@@ -4,8 +4,10 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Components/BsCCharacterController.h"
 #include "Private/RTTI/BsGameObjectRTTI.h"
+#include "RTTI/BsMathRTTI.h"
 
 namespace bs
 {
@@ -45,7 +47,7 @@ namespace bs
 
 		SPtr<IReflectable> newRTTIObject() override
 		{
-			return GameObjectRTTI::createGameObject<CCharacterController>();
+			return SceneObject::createEmptyComponent<CCharacterController>();
 		}
 	};
 

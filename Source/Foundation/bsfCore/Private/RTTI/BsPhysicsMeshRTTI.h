@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Physics/BsPhysicsMesh.h"
 #include "Physics/BsPhysics.h"
 

@@ -40,7 +40,7 @@ namespace bs
 		/// </summary>
 		/// <param name="time">%Time to evaluate the curve at.</param>
 		/// <param name="loop">
-		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve  value will be clamped.
+		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve value will be clamped.
 		/// </param>
 		/// <returns>Interpolated value from the curve at provided time.</returns>
 		public float Evaluate(float time, bool loop = true)
@@ -92,7 +92,7 @@ namespace bs
 		/// </summary>
 		/// <param name="time">%Time to evaluate the curve at.</param>
 		/// <param name="loop">
-		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve  value will be clamped.
+		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve value will be clamped.
 		/// </param>
 		/// <returns>Interpolated value from the curve at provided time.</returns>
 		public Vector3 Evaluate(float time, bool loop = true)
@@ -146,7 +146,7 @@ namespace bs
 		/// </summary>
 		/// <param name="time">%Time to evaluate the curve at.</param>
 		/// <param name="loop">
-		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve  value will be clamped.
+		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve value will be clamped.
 		/// </param>
 		/// <returns>Interpolated value from the curve at provided time.</returns>
 		public Vector2 Evaluate(float time, bool loop = true)
@@ -200,7 +200,7 @@ namespace bs
 		/// </summary>
 		/// <param name="time">%Time to evaluate the curve at.</param>
 		/// <param name="loop">
-		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve  value will be clamped.
+		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve value will be clamped.
 		/// </param>
 		/// <returns>Interpolated value from the curve at provided time.</returns>
 		public Quaternion Evaluate(float time, bool loop = true)
@@ -254,7 +254,7 @@ namespace bs
 		/// </summary>
 		/// <param name="time">%Time to evaluate the curve at.</param>
 		/// <param name="loop">
-		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve  value will be clamped.
+		/// If true the curve will loop when it goes past the end or beggining. Otherwise the curve value will be clamped.
 		/// </param>
 		/// <returns>Interpolated value from the curve at provided time.</returns>
 		public int Evaluate(float time, bool loop = true)

@@ -98,7 +98,7 @@ namespace bs
 
 	void Skybox::setTexture(const HTexture& texture)
 	{
-		mTexture = texture; 
+		mTexture = texture;
 
 		mFilteredRadiance = nullptr;
 		mIrradiance = nullptr;
@@ -134,7 +134,7 @@ namespace bs
 	SPtr<ct::CoreObject> Skybox::createCore() const
 	{
 		SPtr<ct::Texture> radiance;
-		if (mTexture)
+		if (mTexture.isLoaded(false))
 			radiance = mTexture->getCore();
 
 		SPtr<ct::Texture> filteredRadiance;
@@ -155,16 +155,16 @@ namespace bs
 	CoreSyncData Skybox::syncToCore(FrameAlloc* allocator)
 	{
 		UINT32 size = 0;
-		size += rttiGetElemSize(getCoreDirtyFlags());
-		size += coreSyncGetElemSize((SceneActor&)*this);
-		size += coreSyncGetElemSize(*this);
+		size += rtti_size(getCoreDirtyFlags()).bytes;
+		size += csync_size((SceneActor&)*this);
+		size += csync_size(*this);
 
 		UINT8* buffer = allocator->alloc(size);
 
-		char* dataPtr = (char*)buffer;
-		dataPtr = rttiWriteElem(getCoreDirtyFlags(), dataPtr);
-		dataPtr = coreSyncWriteElem((SceneActor&)*this, dataPtr);
-		dataPtr = coreSyncWriteElem(*this, dataPtr);
+		Bitstream stream(buffer, size);
+		rtti_write(getCoreDirtyFlags(), stream);
+		csync_write((SceneActor&)*this, stream);
+		csync_write(*this, stream);
 
 		return CoreSyncData(buffer, size);
 	}
@@ -206,14 +206,14 @@ namespace bs
 
 		void Skybox::syncToCore(const CoreSyncData& data)
 		{
-			char* dataPtr = (char*)data.getBuffer();
+			Bitstream stream(data.getBuffer(), data.getBufferSize());
 
 			SkyboxDirtyFlag dirtyFlags;
 			bool oldIsActive = mActive;
 
-			dataPtr = rttiReadElem(dirtyFlags, dataPtr);
-			dataPtr = coreSyncReadElem((SceneActor&)*this, dataPtr);
-			dataPtr = coreSyncReadElem(*this, dataPtr);
+			rtti_read(dirtyFlags, stream);
+			csync_read((SceneActor&)*this, stream);
+			csync_read(*this, stream);
 
 			if (oldIsActive != mActive)
 			{

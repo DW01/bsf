@@ -5,7 +5,6 @@
 #include "Prerequisites/BsPlatformDefines.h"
 #include "String/BsString.h"
 #include "Prerequisites/BsTypes.h"
-#include "Prerequisites/BsRTTIPrerequisites.h"
 #include "Utility/BsUtil.h"
 
 namespace bs
@@ -70,8 +69,6 @@ namespace bs
 		UINT32 mData[4] = {0, 0, 0, 0};
 	};
 
-	BS_ALLOW_MEMCPY_SERIALIZATION(UUID)
-
 	/**
 	 * Utility class for generating universally unique identifiers.
 	 *
@@ -85,6 +82,7 @@ namespace bs
 	};
 
 	/** @} */
+
 }
 
 /** @cond STDLIB */

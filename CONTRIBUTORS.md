@@ -11,35 +11,44 @@ Huge thanks to all the patrons, contributors and donators!
  - @guestnone - Logging system improvements.
  - @Meumeu - Modernizing & clean-up of the build system.
  - @ataulien - Added distance culling.
+ - @remoe - Initial work on MoltenVK render backend.
  
 # Commercial Tier 2 Patron
 - Chance McDonald [Founder] [Inactive]
 
 # Commercial Tier 1 Patrons
-- Nathan Warden [Founder]
+- Nathan Warden [Founder] [Inactive]
  
 # Tier X Patrons
+- Henri Hyyryläinen
 - Dreyton Brereton
-- Andreas Schüle [Founder]
-- John Lagerquist [Founder]
 - Christian Clavet [Founder]
 - jeaninde [Founder]
-- Robert Campbell [Founder]
 - Galnart
+----------------------------------------
+- Paul Gruenbacher [Inactive]
+- Robert Campbell [Founder] [Inactive]
+- John Lagerquist [Founder] [Inactive]
+- Andreas Schüle [Founder] [Inactive]
+
 
 # Tier 3 Patrons
 
 # Tier 2 Patrons
-- Andrzej Oraniewicz [Founder]
+- Adisibo
+- Andre Taulien
 - Nemerle [Founder]
 - Thomas Tang [Founder]
+----------------------------------------
+- Andrzej Oraniewicz [Founder] [Inactive]
 
 # Tier 1 Patrons
-- Nekith [Founder]
-- Vladimir Zakharov [Founder]
+- Andreas Schüle
 - Timothy Green
 - Marko Kovačić
 -----------------------------------------
+- Nekith [Founder] [Inactive]
+- Vladimir Zakharov [Founder] [Inactive]
 - Akaoray [Founder] [Inactive]
 - Danijel Ribić [Founder] [Inactive]
 - Summer Softleigh [Founder] [Inactive]

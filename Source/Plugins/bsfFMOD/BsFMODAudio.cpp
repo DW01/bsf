@@ -43,7 +43,6 @@ namespace bs
 	}
 
 	FMODAudio::FMODAudio()
-		:mFMOD(nullptr), mMasterChannelGroup(nullptr), mVolume(1.0f), mIsPaused(false)
 	{
 		FMOD::Memory_Initialize(nullptr, 0, &FMODAlloc, &FMODRealloc, &FMODFree);
 		FMOD::System_Create(&mFMOD);
@@ -128,7 +127,7 @@ namespace bs
 			}
 		}
 
-		LOGWRN("Failed changing audio device to: " + device.name);
+		BS_LOG(Warning, Audio, "Failed changing audio device to: {0}", device.name);
 	}
 
 	SPtr<AudioClip> FMODAudio::createClip(const SPtr<DataStream>& samples, UINT32 streamSize, UINT32 numSamples,

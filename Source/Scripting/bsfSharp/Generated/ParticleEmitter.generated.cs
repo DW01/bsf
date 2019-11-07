@@ -63,7 +63,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Sets the initial speed of the particles, in meters/second. The speed is applied along the particle's velocity 
+		/// Sets the initial speed of the particles, in meters/second. The speed is applied along the particle&apos;s velocity 
 		/// direction, which is determined by the emission shape and potentially other properties.
 		/// </summary>
 		[ShowInInspector]
@@ -117,8 +117,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the rotation of the particles when initially spawned, in degrees. The rotation is applied around the  
-		/// particle's local Z axis. Only used if 3D rotation is disabled.
+		/// Determines the rotation of the particles when initially spawned, in degrees. The rotation is applied around the 
+		/// particle&apos;s local Z axis. Only used if 3D rotation is disabled.
 		/// </summary>
 		[ShowInInspector]
 		[NotNull]
@@ -144,7 +144,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines should the initial particle rotation be a single angle applied around a Z axis (if disabled), or a  set of 
+		/// Determines should the initial particle rotation be a single angle applied around a Z axis (if disabled), or a set of 
 		/// Euler angles that allow you to rotate around every axis (if enabled).
 		/// </summary>
 		[ShowInInspector]
@@ -167,7 +167,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines a range of values determining a random offset to apply to particle position after it has been emitted.  
+		/// Determines a range of values determining a random offset to apply to particle position after it has been emitted. 
 		/// Offset will be randomly selected in all three axes in range [-value, value].
 		/// </summary>
 		[ShowInInspector]

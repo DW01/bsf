@@ -18,7 +18,7 @@ namespace bs
 		bs_frame_mark();
 		{
 			const U32String utf32text = UTF8::toUTF32(desc.text);
-			TextData<FrameAlloc> textData(utf32text, desc.font, desc.fontSize, desc.width, desc.height, desc.wordWrap, 
+			TextData<FrameAlloc> textData(utf32text, desc.font, desc.fontSize, desc.width, desc.height, desc.wordWrap,
 				desc.wordBreak);
 
 			UINT32 numPages = textData.getNumPages();
@@ -64,7 +64,7 @@ namespace bs
 			// Calc alignment and anchor offsets and set final line positions
 			for (UINT32 j = 0; j < numPages; j++)
 			{
-				SpriteRenderElement& renderElem = mCachedRenderElements[j];
+				SpriteRenderElementData& renderElem = mCachedRenderElements[j];
 
 				genTextQuads(j, textData, desc.width, desc.height, desc.horzAlign, desc.vertAlign, desc.anchor,
 					renderElem.vertices, renderElem.uvs, renderElem.indexes, renderElem.numQuads);

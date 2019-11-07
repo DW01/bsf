@@ -4,6 +4,10 @@
 
 #include "Serialization/BsBuiltinReflectableTypesLookup.h"
 #include "Reflection/BsRTTIType.h"
+#include "../../../Foundation/bsfCore/Animation/BsSkeleton.h"
+#include "BsScriptSkeleton.generated.h"
+#include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
+#include "BsScriptMotionBlurSettings.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
 #include "BsScriptAmbientOcclusionSettings.generated.h"
 #include "../../../Foundation/bsfCore/Particles/BsParticleEvolver.h"
@@ -14,30 +18,34 @@
 #include "../../../Foundation/bsfCore/Importer/BsImportOptions.h"
 #endif
 #include "BsScriptImportOptions.generated.h"
+#include "../../../Foundation/bsfCore/Particles/BsParticleEmitter.h"
+#include "BsScriptParticleEmitterStaticMeshShape.generated.h"
+#include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
+#include "BsScriptBloomSettings.generated.h"
 #include "../../../Foundation/bsfCore/Animation/BsMorphShapes.h"
 #include "BsScriptMorphShapes.generated.h"
-#include "../../../Foundation/bsfCore/Animation/BsSkeleton.h"
-#include "BsScriptSkeleton.generated.h"
 #include "../../../Foundation/bsfCore/Text/BsFont.h"
 #include "BsScriptFontBitmap.generated.h"
-#include "../../../Foundation/bsfCore/Particles/BsParticleEvolver.h"
-#include "BsScriptParticleGravity.generated.h"
 #include "../../../Foundation/bsfCore/Animation/BsMorphShapes.h"
 #include "BsScriptMorphShape.generated.h"
 #include "../../../Foundation/bsfCore/Animation/BsMorphShapes.h"
 #include "BsScriptMorphChannel.generated.h"
+#include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
+#include "BsScriptTemporalAASettings.generated.h"
 #if !BS_IS_BANSHEE3D
 #include "../../../Foundation/bsfCore/Audio/BsAudioClipImportOptions.h"
 #endif
 #include "BsScriptAudioClipImportOptions.generated.h"
-#include "../../../Foundation/bsfCore/Particles/BsParticleEmitter.h"
-#include "BsScriptParticleEmitterStaticMeshShape.generated.h"
 #include "../../../Foundation/bsfCore/Image/BsPixelData.h"
 #include "BsScriptPixelData.generated.h"
 #include "../../../Foundation/bsfCore/RenderAPI/BsViewport.h"
 #include "BsScriptViewport.generated.h"
 #include "../../../Foundation/bsfCore/RenderAPI/BsRenderTarget.h"
 #include "BsScriptRenderTarget.generated.h"
+#include "../../../Foundation/bsfCore/Particles/BsParticleEvolver.h"
+#include "BsScriptParticleGravity.generated.h"
+#include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
+#include "BsScriptScreenSpaceLensFlareSettings.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
 #include "BsScriptAutoExposureSettings.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
@@ -56,10 +64,16 @@
 #include "BsScriptScriptCodeImportOptions.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
 #include "BsScriptDepthOfFieldSettings.generated.h"
+#if !BS_IS_BANSHEE3D
+#include "../../../Foundation/bsfCore/Importer/BsMeshImportOptions.h"
+#endif
+#include "BsScriptImportedAnimationEvents.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
 #include "BsScriptScreenSpaceReflectionsSettings.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
-#include "BsScriptBloomSettings.generated.h"
+#include "BsScriptChromaticAberrationSettings.generated.h"
+#include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
+#include "BsScriptFilmGrainSettings.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
 #include "BsScriptShadowSettings.generated.h"
 #include "../../../Foundation/bsfCore/Renderer/BsRenderSettings.h"
@@ -115,10 +129,6 @@
 #if !BS_IS_BANSHEE3D
 #include "../../../Foundation/bsfCore/Importer/BsMeshImportOptions.h"
 #endif
-#include "BsScriptImportedAnimationEvents.generated.h"
-#if !BS_IS_BANSHEE3D
-#include "../../../Foundation/bsfCore/Importer/BsMeshImportOptions.h"
-#endif
 #include "BsScriptMeshImportOptions.generated.h"
 #if !BS_IS_BANSHEE3D
 #include "../../../Foundation/bsfCore/Resources/BsResourceManifest.h"
@@ -128,6 +138,8 @@
 #include "../../../Foundation/bsfCore/Importer/BsTextureImportOptions.h"
 #endif
 #include "BsScriptTextureImportOptions.generated.h"
+#include "../../../Foundation/bsfCore/Material/BsShaderVariation.h"
+#include "BsScriptShaderVariation.generated.h"
 #if !BS_IS_BANSHEE3D
 #include "../../../Foundation/bsfCore/Text/BsFontImportOptions.h"
 #endif
@@ -138,25 +150,29 @@
 namespace bs
 {
 	LOOKUP_BEGIN(BuiltinReflectableTypes)
+		ADD_ENTRY(Skeleton, ScriptSkeleton)
+		ADD_ENTRY(MotionBlurSettings, ScriptMotionBlurSettings)
 		ADD_ENTRY(AmbientOcclusionSettings, ScriptAmbientOcclusionSettings)
 		ADD_ENTRY(ParticleEvolver, ScriptParticleEvolver)
 		ADD_ENTRY(RenderTexture, ScriptRenderTexture)
 #if !BS_IS_BANSHEE3D
 		ADD_ENTRY(ImportOptions, ScriptImportOptions)
 #endif
+		ADD_ENTRY(ParticleEmitterStaticMeshShape, ScriptParticleEmitterStaticMeshShape)
+		ADD_ENTRY(BloomSettings, ScriptBloomSettings)
 		ADD_ENTRY(MorphShapes, ScriptMorphShapes)
-		ADD_ENTRY(Skeleton, ScriptSkeleton)
 		ADD_ENTRY(FontBitmap, ScriptFontBitmap)
-		ADD_ENTRY(ParticleGravity, ScriptParticleGravity)
 		ADD_ENTRY(MorphShape, ScriptMorphShape)
 		ADD_ENTRY(MorphChannel, ScriptMorphChannel)
+		ADD_ENTRY(TemporalAASettings, ScriptTemporalAASettings)
 #if !BS_IS_BANSHEE3D
 		ADD_ENTRY(AudioClipImportOptions, ScriptAudioClipImportOptions)
 #endif
-		ADD_ENTRY(ParticleEmitterStaticMeshShape, ScriptParticleEmitterStaticMeshShape)
 		ADD_ENTRY(PixelData, ScriptPixelData)
 		ADD_ENTRY(Viewport, ScriptViewport)
 		ADD_ENTRY(RenderTarget, ScriptRenderTarget)
+		ADD_ENTRY(ParticleGravity, ScriptParticleGravity)
+		ADD_ENTRY(ScreenSpaceLensFlareSettings, ScriptScreenSpaceLensFlareSettings)
 		ADD_ENTRY(AutoExposureSettings, ScriptAutoExposureSettings)
 		ADD_ENTRY(TonemappingSettings, ScriptTonemappingSettings)
 		ADD_ENTRY(WhiteBalanceSettings, ScriptWhiteBalanceSettings)
@@ -168,8 +184,12 @@ namespace bs
 		ADD_ENTRY(ScriptCodeImportOptions, ScriptScriptCodeImportOptions)
 #endif
 		ADD_ENTRY(DepthOfFieldSettings, ScriptDepthOfFieldSettings)
+#if !BS_IS_BANSHEE3D
+		ADD_ENTRY(ImportedAnimationEvents, ScriptImportedAnimationEvents)
+#endif
 		ADD_ENTRY(ScreenSpaceReflectionsSettings, ScriptScreenSpaceReflectionsSettings)
-		ADD_ENTRY(BloomSettings, ScriptBloomSettings)
+		ADD_ENTRY(ChromaticAberrationSettings, ScriptChromaticAberrationSettings)
+		ADD_ENTRY(FilmGrainSettings, ScriptFilmGrainSettings)
 		ADD_ENTRY(ShadowSettings, ScriptShadowSettings)
 		ADD_ENTRY(RenderSettings, ScriptRenderSettings)
 		ADD_ENTRY(ParticleForce, ScriptParticleForce)
@@ -198,9 +218,6 @@ namespace bs
 		ADD_ENTRY(AnimationSplitInfo, ScriptAnimationSplitInfo)
 #endif
 #if !BS_IS_BANSHEE3D
-		ADD_ENTRY(ImportedAnimationEvents, ScriptImportedAnimationEvents)
-#endif
-#if !BS_IS_BANSHEE3D
 		ADD_ENTRY(MeshImportOptions, ScriptMeshImportOptions)
 #endif
 #if !BS_IS_BANSHEE3D
@@ -209,6 +226,7 @@ namespace bs
 #if !BS_IS_BANSHEE3D
 		ADD_ENTRY(TextureImportOptions, ScriptTextureImportOptions)
 #endif
+		ADD_ENTRY(ShaderVariation, ScriptShaderVariation)
 #if !BS_IS_BANSHEE3D
 		ADD_ENTRY(FontImportOptions, ScriptFontImportOptions)
 #endif

@@ -57,13 +57,13 @@ namespace bs { namespace ct
 		return _getParticleShaderVariation<false, FWD>(orient, lockY, gpu);
 	}
 	
-	const ShaderVariation& getParticleShaderVariation(ParticleOrientation orient, bool lockY, bool gpu, 
+	const ShaderVariation& getParticleShaderVariation(ParticleOrientation orient, bool lockY, bool gpu,
 		bool is3D, ParticleForwardLightingType forwardLighting)
 	{
 		switch(forwardLighting)
 		{
 		default:
-		case ParticleForwardLightingType::None: 
+		case ParticleForwardLightingType::None:
 			return _getParticleShaderVariation<ParticleForwardLightingType::None>(orient, lockY, gpu, is3D);
 		case ParticleForwardLightingType::Clustered:
 			return _getParticleShaderVariation<ParticleForwardLightingType::Clustered>(orient, lockY, gpu, is3D);
@@ -104,6 +104,22 @@ namespace bs { namespace ct
 			else
 				ParticleRenderer::instance().drawBillboards(numParticles);
 		}
+	}
+
+	void RendererParticles::updatePerObjectBuffer()
+	{
+		const ParticleSystemSettings& settings = particleSystem->getSettings();
+		const UINT32 layer = Bitwise::mostSignificantBit(particleSystem->getLayer());
+		Matrix4 localToWorldNoScale;
+		if (settings.simulationSpace == ParticleSimulationSpace::Local)
+		{
+			const Transform& tfrm = particleSystem->getTransform();
+			localToWorldNoScale = Matrix4::TRS(tfrm.getPosition(), tfrm.getRotation(), Vector3::ONE);
+		}
+		else
+			localToWorldNoScale = Matrix4::IDENTITY;
+
+		PerObjectBuffer::update(perObjectParamBuffer, localToWorld, localToWorldNoScale, prevLocalToWorld, layer);
 	}
 
 	void RendererParticles::bindCPUSimulatedInputs(const ParticleRenderData* renderData, const RendererView& view) const
@@ -412,7 +428,7 @@ namespace bs { namespace ct
 		rapi.draw(0, 4, count);
 	}
 
-	void ParticleRenderer::sortByDistance(const Vector3& refPoint, const PixelData& positions, UINT32 numParticles, 
+	void ParticleRenderer::sortByDistance(const Vector3& refPoint, const PixelData& positions, UINT32 numParticles,
 		UINT32 stride, Vector<UINT32>& indices)
 	{
 		struct ParticleSortData

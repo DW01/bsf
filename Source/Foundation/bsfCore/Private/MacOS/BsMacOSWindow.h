@@ -15,6 +15,7 @@
 @class BSWindowListener;
 @class BSView;
 @class BSWindow;
+@class CALayer;
 #endif
 
 namespace bs
@@ -58,6 +59,7 @@ namespace bs
 			BSView* view = nil;
 			BSWindowListener* responder = nil;
 			BSWindowDelegate* delegate = nil;
+            CALayer* layer = nil;
 			UINT32 numDropTargets = 0;
 			bool isModal = false;
 			NSUInteger style = 0;
@@ -153,6 +155,12 @@ namespace bs
 
 		/** Lets the window know that the provided OpenGL context will be rendering to it. */
 		void _registerGLContext(void* context);
+
+		/** Assigns a CALayer to the windows' view, and enables layer backing on the view. */
+		void _setLayer(void* layer);
+
+		/** Returns the assigned CALayer to the window view. */
+		void* _getLayer() const;
 
 		/** Returns internal private data for use by friends. */
 		Pimpl* _getPrivateData() const { return m; }

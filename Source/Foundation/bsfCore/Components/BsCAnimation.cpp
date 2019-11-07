@@ -168,7 +168,7 @@ namespace bs
 				{
 					AABox bounds = mBounds;
 
-					bounds.transformAffine(SO()->getWorldMatrix()); 
+					bounds.transformAffine(SO()->getWorldMatrix());
 					mInternal->setBounds(bounds);
 				}
 			}
@@ -252,7 +252,8 @@ namespace bs
 					{
 						for (auto& entry : mMappingInfos)
 						{
-							if(!entry.isMappedToBone)
+							// We allow a null bone for the root bone mapping, should be non-null for everything else
+							if(!entry.isMappedToBone || entry.bone == nullptr)
 								continue;
 
 							const UINT32 numBones = skeleton->getNumBones();
@@ -367,7 +368,7 @@ namespace bs
 			{
 				// Make sure not to re-enable preview mode if already enabled because it rebuilds the internal Animation
 				// component, changing its ID. If animation evaluation is async then the new ID will not have any animation
-				// attached for one frame. This can look weird when sampling the animation for preview purposes 
+				// attached for one frame. This can look weird when sampling the animation for preview purposes
 				// (e.g. scrubbing in editor), in which case animation will reset to T pose for a single frame before
 				// settling on the chosen frame.
 				restoreInternal(true);

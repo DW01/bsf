@@ -1,7 +1,9 @@
 ﻿{
+    "BicubicUpsample.bsl": null,
     "Blit.bsl": null,
     "Clear.bsl": null,
     "ClearLoadStore.bsl": null,
+    "Composite.bsl": null,
     "DebugDraw.bsl": null,
     "Decal.bsl": [
         {
@@ -365,7 +367,48 @@
             "Path": "ColorSpace.bslinc"
         }
     ],
+    "PPBokehDOF.bsl": [
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "DepthOfFieldCommon.bslinc"
+        }
+    ],
+    "PPBokehDOFCombine.bsl": [
+        {
+            "Path": "DepthInput.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "PPBase.bslinc"
+        },
+        {
+            "Path": "DepthOfFieldCommon.bslinc"
+        }
+    ],
+    "PPBokehDOFPrepare.bsl": [
+        {
+            "Path": "DepthInput.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "PPBase.bslinc"
+        },
+        {
+            "Path": "DepthOfFieldCommon.bslinc"
+        }
+    ],
     "PPBuildHiZ.bsl": [
+        {
+            "Path": "PPBase.bslinc"
+        }
+    ],
+    "PPChromaticAberration.bsl": [
         {
             "Path": "PPBase.bslinc"
         }
@@ -429,7 +472,15 @@
             "Path": "PPBase.bslinc"
         }
     ],
+    "PPFilmGrain.bsl": [
+        {
+            "Path": "PPBase.bslinc"
+        }
+    ],
     "PPGaussianBlur.bsl": [
+        {
+            "Path": "PPGaussianBlurCommon.bslinc"
+        },
         {
             "Path": "PPBase.bslinc"
         }
@@ -448,6 +499,17 @@
     "PPGaussianDOFSeparate.bsl": [
         {
             "Path": "PPGaussianDOFCommon.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "PPBase.bslinc"
+        }
+    ],
+    "PPMotionBlur.bsl": [
+        {
+            "Path": "DepthInput.bslinc"
         },
         {
             "Path": "PerCameraData.bslinc"
@@ -486,6 +548,9 @@
         },
         {
             "Path": "TemporalResolve.bslinc"
+        },
+        {
+            "Path": "SurfaceData.bslinc"
         },
         {
             "Path": "ColorSpace.bslinc"
@@ -538,6 +603,14 @@
         },
         {
             "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "PPBase.bslinc"
+        }
+    ],
+    "PPScreenSpaceLensFlare.bsl": [
+        {
+            "Path": "ColorSpace.bslinc"
         },
         {
             "Path": "PPBase.bslinc"
@@ -750,19 +823,47 @@
             "Path": "PerCameraData.bslinc"
         }
     ],
-    "SpriteImage.bsl": null,
-    "SpriteImageAlpha.bsl": [
+    "SpriteImage.bsl": [
         {
-            "Path": "SpriteImage.bslinc"
+            "Path": "SpriteCommon.bslinc"
         }
     ],
-    "SpriteImageNoAlpha.bsl": [
+    "SpriteLine.bsl": [
         {
-            "Path": "SpriteImage.bslinc"
+            "Path": "SpriteCommon.bslinc"
         }
     ],
-    "SpriteLine.bsl": null,
-    "SpriteText.bsl": null,
+    "SpriteText.bsl": [
+        {
+            "Path": "SpriteCommon.bslinc"
+        }
+    ],
+    "TemporalFiltering.bsl": [
+        {
+            "Path": "PPBase.bslinc"
+        },
+        {
+            "Path": "TemporalResolve.bslinc"
+        },
+        {
+            "Path": "SurfaceData.bslinc"
+        },
+        {
+            "Path": "ColorSpace.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "GBufferInput.bslinc"
+        },
+        {
+            "Path": "PerCameraData.bslinc"
+        },
+        {
+            "Path": "SurfaceData.bslinc"
+        }
+    ],
     "TetrahedraRender.bsl": [
         {
             "Path": "PerCameraData.bslinc"

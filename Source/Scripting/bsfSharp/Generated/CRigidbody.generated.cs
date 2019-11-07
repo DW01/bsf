@@ -12,10 +12,10 @@ namespace bs
 
 	/// <summary>
 	/// Rigidbody is a dynamic physics object that can be moved using forces (or directly). It will interact with other static 
-	/// and dynamic physics objects in the scene accordingly (it will push other non-kinematic rigidbodies,  and collide with 
+	/// and dynamic physics objects in the scene accordingly (it will push other non-kinematic rigidbodies, and collide with 
 	/// static objects).
 	///
-	/// The shape and mass of a rigidbody is governed by its colliders. You must attach at least one collider for the  
+	/// The shape and mass of a rigidbody is governed by its colliders. You must attach at least one collider for the 
 	/// rigidbody to be valid.
 	/// </summary>
 	[ShowInInspector]
@@ -25,7 +25,7 @@ namespace bs
 		protected Rigidbody() { }
 
 		/// <summary>
-		/// Determines the mass of the object and all of its collider shapes. Only relevant if RigidbodyFlag::AutoMass or  
+		/// Determines the mass of the object and all of its collider shapes. Only relevant if RigidbodyFlag::AutoMass or 
 		/// RigidbodyFlag::AutoTensors is turned off. Value of zero means the object is immovable (but can be rotated).
 		/// </summary>
 		[ShowInInspector]
@@ -50,8 +50,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Checks if the body is sleeping. Objects that aren't moved/rotated for a while are put to sleep to reduce load on the 
-		/// physics system.
+		/// Checks if the body is sleeping. Objects that aren&apos;t moved/rotated for a while are put to sleep to reduce load on 
+		/// the physics system.
 		/// </summary>
 		[NativeWrapper]
 		public bool IsSleeping
@@ -62,7 +62,6 @@ namespace bs
 		/// <summary>
 		/// Determines a threshold of force and torque under which the object will be considered to be put to sleep.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public float SleepThreshold
 		{
@@ -80,7 +79,6 @@ namespace bs
 		}
 
 		/// <summary>Determines the linear velocity of the body.</summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public Vector3 Velocity
 		{
@@ -94,7 +92,6 @@ namespace bs
 		}
 
 		/// <summary>Determines the angular velocity of the body.</summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public Vector3 AngularVelocity
 		{
@@ -131,10 +128,9 @@ namespace bs
 
 		/// <summary>
 		/// Determines the inertia tensor in local mass space. Inertia tensor determines how difficult is to rotate the object. 
-		/// Values of zero in the inertia tensor mean the object will be unable to rotate around a specific axis.  Only relevant 
+		/// Values of zero in the inertia tensor mean the object will be unable to rotate around a specific axis. Only relevant 
 		/// if RigidbodyFlag::AutoTensors is turned off.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public Vector3 InertiaTensor
 		{
@@ -148,7 +144,6 @@ namespace bs
 		}
 
 		/// <summary>Determines the maximum angular velocity of the rigidbody. Velocity will be clamped to this value.</summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public float MaxAngularVelocity
 		{
@@ -157,9 +152,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the rigidbody's center of mass position. Only relevant if RigibodyFlag::AutoTensors is turned off.
+		/// Determines the rigidbody&apos;s center of mass position. Only relevant if RigibodyFlag::AutoTensors is turned off.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public Vector3 CenterOfMassPosition
 		{
@@ -173,9 +167,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the rigidbody's center of mass rotation. Only relevant if RigibodyFlag::AutoTensors is turned off.
+		/// Determines the rigidbody&apos;s center of mass rotation. Only relevant if RigibodyFlag::AutoTensors is turned off.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public Quaternion CenterOfMassRotation
 		{
@@ -189,10 +182,9 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the number of iterations to use when solving for position. Higher values can improve precision and  
+		/// Determines the number of iterations to use when solving for position. Higher values can improve precision and 
 		/// numerical stability of the simulation.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public int PositionSolverCount
 		{
@@ -201,10 +193,9 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines the number of iterations to use when solving for velocity. Higher values can improve precision and  
+		/// Determines the number of iterations to use when solving for velocity. Higher values can improve precision and 
 		/// numerical stability of the simulation.
 		/// </summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public int VelocitySolverCount
 		{
@@ -222,7 +213,6 @@ namespace bs
 		}
 
 		/// <summary>Flags that control the behaviour of the rigidbody.</summary>
-		[ShowInInspector]
 		[NativeWrapper]
 		public RigidbodyFlag Flags
 		{
@@ -249,7 +239,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Rotates the rigidbody. This method will ensure physically correct rotation, meaning the body will collide with  other 
+		/// Rotates the rigidbody. This method will ensure physically correct rotation, meaning the body will collide with other 
 		/// objects along the way.
 		/// </summary>
 		public void Rotate(Quaternion rotation)

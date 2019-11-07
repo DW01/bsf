@@ -10,7 +10,7 @@
 namespace bs
 {
 	OAAudioClip::OAAudioClip(const SPtr<DataStream>& samples, UINT32 streamSize, UINT32 numSamples, const AUDIO_CLIP_DESC& desc)
-		:AudioClip(samples, streamSize, numSamples, desc), mNeedsDecompression(false), mBufferId((UINT32)-1), mSourceStreamSize(0)
+		:AudioClip(samples, streamSize, numSamples, desc)
 	{ }
 
 	OAAudioClip::~OAAudioClip()
@@ -36,16 +36,16 @@ namespace bs
 			{
 				mStreamData->seek(mStreamOffset);
 
-				UINT8* sampleBuffer = (UINT8*)bs_alloc(mStreamSize);
-				mStreamData->read(sampleBuffer, mStreamSize);
-
-				mSourceStreamData = bs_shared_ptr_new<MemoryDataStream>(sampleBuffer, mStreamSize);
+				auto memStream = bs_shared_ptr_new<MemoryDataStream>(mStreamSize);
+				mSourceStreamData = memStream;
+				
+				mStreamData->read(memStream->data(), mStreamSize);
 				mSourceStreamSize = mStreamSize;
 			}
 
 			// Load decompressed data into a sound buffer
-			bool loadDecompressed = 
-				mDesc.readMode == AudioReadMode::LoadDecompressed || 
+			bool loadDecompressed =
+				mDesc.readMode == AudioReadMode::LoadDecompressed ||
 				(mDesc.readMode == AudioReadMode::LoadCompressed && mDesc.format == AudioFormat::PCM);
 
 			if(loadDecompressed)
@@ -71,7 +71,7 @@ namespace bs
 					if (reader.open(stream, info, offset))
 						reader.read(sampleBuffer, info.numSamples);
 					else
-						LOGERR("Failed decompressing AudioClip stream.");
+						BS_LOG(Error, Audio, "Failed decompressing AudioClip stream.");
 				}
 				// Load directly
 				else
@@ -93,18 +93,18 @@ namespace bs
 			else if(mDesc.readMode == AudioReadMode::LoadCompressed)
 			{
 				// If reading from file, make a copy of data in memory, otherwise just take ownership of the existing buffer
-				if (mStreamData->isFile()) 
+				if (mStreamData->isFile())
 				{
 					if (mSourceStreamData != nullptr) // If it's already loaded in memory, use it directly
 						mStreamData = mSourceStreamData;
 					else
 					{
-						UINT8* data = (UINT8*)bs_alloc(mStreamSize);
+						auto memStream = bs_shared_ptr_new<MemoryDataStream>(mStreamSize);
 
 						mStreamData->seek(mStreamOffset);
-						mStreamData->read(data, mStreamSize);
+						mStreamData->read(memStream->data(), mStreamSize);
 
-						mStreamData = bs_shared_ptr_new<MemoryDataStream>(data, mStreamSize);
+						mStreamData = memStream;
 					}
 
 					mStreamOffset = 0;
@@ -123,7 +123,7 @@ namespace bs
 				if (mStreamData != nullptr)
 				{
 					if (!mVorbisReader.open(mStreamData, info, mStreamOffset))
-						LOGERR("Failed decompressing AudioClip stream.");
+						BS_LOG(Error, Audio, "Failed decompressing AudioClip stream.");
 				}
 			}
 		}
@@ -160,7 +160,7 @@ namespace bs
 		{
 			assert(!mNeedsDecompression); // Normal stream must exist if decompressing
 
-			UINT32 bytesPerSample = mDesc.bitDepth / 8;
+			const UINT32 bytesPerSample = mDesc.bitDepth / 8;
 			UINT32 size = count * bytesPerSample;
 			UINT32 streamOffset = offset * bytesPerSample;
 
@@ -169,7 +169,7 @@ namespace bs
 			return;
 		}
 
-		LOGWRN("Attempting to read samples while sample data is not available.");
+		BS_LOG(Warning, RenderBackend, "Attempting to read samples while sample data is not available.");
 	}
 
 	SPtr<DataStream> OAAudioClip::getSourceStream(UINT32& size)

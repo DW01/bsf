@@ -4,7 +4,11 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Private/RTTI/BsGpuProgramRTTI.h"
+#include "Private/RTTI/BsBlendStateRTTI.h"
+#include "Private/RTTI/BsRasterizerStateRTTI.h"
+#include "Private/RTTI/BsDepthStencilStateRTTI.h"
 #include "Material/BsPass.h"
 
 namespace bs
@@ -99,7 +103,7 @@ namespace bs
 			obj->mData.vertexProgramDesc = val;
 		}
 
-		SerializedGpuProgramData& getFragmentProgramDesc(Pass* obj) 
+		SerializedGpuProgramData& getFragmentProgramDesc(Pass* obj)
 		{
 			return mFragmentProgramDesc;
 		}

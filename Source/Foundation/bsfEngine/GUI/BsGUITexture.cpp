@@ -14,7 +14,7 @@ namespace bs
 		return name;
 	}
 
-	GUITexture::GUITexture(const String& styleName, const HSpriteTexture& texture, 
+	GUITexture::GUITexture(const String& styleName, const HSpriteTexture& texture,
 		TextureScaleMode scale, bool transparent, const GUIDimensions& dimensions)
 		:GUIElement(styleName, dimensions), mScaleMode(scale), mTransparent(transparent), mUsingStyleTexture(false)
 	{
@@ -56,24 +56,24 @@ namespace bs
 			texture, scale, transparent, GUIDimensions::create());
 	}
 
-	GUITexture* GUITexture::create(const HSpriteTexture& texture, TextureScaleMode scale, 
+	GUITexture* GUITexture::create(const HSpriteTexture& texture, TextureScaleMode scale,
 		const GUIOptions& options, const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			texture, scale, true, GUIDimensions::create(options));
 	}
 
-	GUITexture* GUITexture::create(const HSpriteTexture& texture, TextureScaleMode scale, 
+	GUITexture* GUITexture::create(const HSpriteTexture& texture, TextureScaleMode scale,
 		const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			texture, scale, true, GUIDimensions::create());
 	}
 
-	GUITexture* GUITexture::create(const HSpriteTexture& texture, 
+	GUITexture* GUITexture::create(const HSpriteTexture& texture,
 		const GUIOptions& options, const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			texture, TextureScaleMode::StretchToFit, true, GUIDimensions::create(options));
 	}
 
@@ -85,25 +85,25 @@ namespace bs
 
 	GUITexture* GUITexture::create(TextureScaleMode scale, const GUIOptions& options, const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			HSpriteTexture(), scale, true, GUIDimensions::create(options));
 	}
 
 	GUITexture* GUITexture::create(TextureScaleMode scale, const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			HSpriteTexture(), scale, true, GUIDimensions::create());
 	}
 
 	GUITexture* GUITexture::create(const GUIOptions& options, const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			HSpriteTexture(), TextureScaleMode::StretchToFit, true, GUIDimensions::create(options));
 	}
 
 	GUITexture* GUITexture::create(const String& styleName)
 	{
-		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName), 
+		return new (bs_alloc<GUITexture>()) GUITexture(getStyleName<GUITexture>(styleName),
 			HSpriteTexture(), TextureScaleMode::StretchToFit, true, GUIDimensions::create());
 	}
 
@@ -125,25 +125,6 @@ namespace bs
 			_markLayoutAsDirty();
 		else
 			_markContentAsDirty();
-	}
-
-	UINT32 GUITexture::_getNumRenderElements() const
-	{
-		return mImageSprite->getNumRenderElements();
-	}
-
-	const SpriteMaterialInfo& GUITexture::_getMaterial(UINT32 renderElementIdx, SpriteMaterial** material) const
-	{
-		*material = mImageSprite->getMaterial(renderElementIdx);
-		return mImageSprite->getMaterialInfo(renderElementIdx);
-	}
-
-	void GUITexture::_getMeshInfo(UINT32 renderElementIdx, UINT32& numVertices, UINT32& numIndices, GUIMeshType& type) const
-	{
-		UINT32 numQuads = mImageSprite->getNumQuads(renderElementIdx);
-		numVertices = numQuads * 4;
-		numIndices = numQuads * 6;
-		type = GUIMeshType::Triangle;
 	}
 
 	void GUITexture::updateRenderElementsInternal()
@@ -202,6 +183,12 @@ namespace bs
 			mDesc.uvScale = Vector2::ONE;
 		
 		mImageSprite->update(mDesc, (UINT64)_getParentWidget());
+
+		// Populate GUI render elements from the sprites
+		{
+			using T = impl::GUIRenderElementHelper;
+			T::populate({ T::SpriteInfo(mImageSprite) }, mRenderElements);
+		}
 		
 		GUIElement::updateRenderElementsInternal();
 	}
@@ -251,16 +238,22 @@ namespace bs
 		return optimalSize;
 	}
 
-	void GUITexture::_fillBuffer(UINT8* vertices, UINT32* indices, UINT32 vertexOffset, UINT32 indexOffset,
-		UINT32 maxNumVerts, UINT32 maxNumIndices, UINT32 renderElementIdx) const
+	void GUITexture::_fillBuffer(
+		UINT8* vertices,
+		UINT32* indices,
+		UINT32 vertexOffset,
+		UINT32 indexOffset,
+		const Vector2I& offset,
+		UINT32 maxNumVerts,
+		UINT32 maxNumIndices,
+		UINT32 renderElementIdx) const
 	{
 		UINT8* uvs = vertices + sizeof(Vector2);
 		UINT32 vertexStride = sizeof(Vector2) * 2;
 		UINT32 indexStride = sizeof(UINT32);
 
-		Vector2I offset(mLayoutData.area.x, mLayoutData.area.y);
-		offset += mImageSpriteOffset;
+		Vector2I layoutOffset = Vector2I(mLayoutData.area.x, mLayoutData.area.y) + mImageSpriteOffset + offset;
 		mImageSprite->fillBuffer(vertices, uvs, indices, vertexOffset, indexOffset, maxNumVerts, maxNumIndices,
-			vertexStride, indexStride, renderElementIdx, offset, mLayoutData.getLocalClipRect());
+			vertexStride, indexStride, renderElementIdx, layoutOffset, mLayoutData.getLocalClipRect());
 	}
 }

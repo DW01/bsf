@@ -6,7 +6,8 @@
 #include "Error/BsException.h"
 #include "Debug/BsDebug.h"
 #include "Private/RTTI/BsSceneObjectRTTI.h"
-#include "Serialization/BsMemorySerializer.h"
+#include "Serialization/BsBinarySerializer.h"
+#include "FileSystem/BsDataStream.h"
 #include "Scene/BsGameObjectManager.h"
 #include "Scene/BsPrefabUtility.h"
 #include "Math/BsMatrix3.h"
@@ -24,7 +25,7 @@ namespace bs
 	{
 		if(!mThisHandle.isDestroyed())
 		{
-			LOGWRN("Object is being deleted without being destroyed first? " + mName);
+			BS_LOG(Warning, Scene, "Object is being deleted without being destroyed first? {0}", mName);
 			destroyInternal(mThisHandle, true);
 		}
 	}
@@ -86,7 +87,7 @@ namespace bs
 			mChildren.clear();
 
 			// It's important to remove the elements from the array as soon as they're destroyed, as OnDestroy callbacks
-			// for components might query the SO's components, and we want to only return live ones 
+			// for components might query the SO's components, and we want to only return live ones
 			while (!mComponents.empty())
 			{
 				HComponent component = mComponents.back();
@@ -300,11 +301,11 @@ namespace bs
 	}
 
 	const Transform& SceneObject::getTransform() const
-	{ 
+	{
 		if (!isCachedWorldTfrmUpToDate())
 			updateWorldTfrm();
 
-		return mWorldTfrm; 
+		return mWorldTfrm;
 	}
 
 	void SceneObject::lookAt(const Vector3& location, const Vector3& up)
@@ -557,7 +558,8 @@ namespace bs
 		if(mParentScene)
 			return mParentScene;
 
-		LOGWRN("Attempting to access a scene of a SceneObject with no scene, returning main scene instead.");
+		BS_LOG(Warning, Scene,
+			"Attempting to access a scene of a SceneObject with no scene, returning main scene instead.");
 		return gSceneManager().getMainScene();
 		
 	}
@@ -596,7 +598,7 @@ namespace bs
 
 	void SceneObject::addChild(const HSceneObject& object)
 	{
-		mChildren.push_back(object); 
+		mChildren.push_back(object);
 
 		object->_setFlags(mFlags);
 	}
@@ -609,7 +611,7 @@ namespace bs
 			mChildren.erase(result);
 		else
 		{
-			BS_EXCEPT(InternalErrorException, 
+			BS_EXCEPT(InternalErrorException,
 				"Trying to remove a child but it's not a child of the transform.");
 		}
 	}
@@ -673,7 +675,7 @@ namespace bs
 
 	Vector<HSceneObject> SceneObject::findChildren(const String& name, bool recursive)
 	{
-		std::function<void(const HSceneObject&, Vector<HSceneObject>&)> findChildrenInternal = 
+		std::function<void(const HSceneObject&, Vector<HSceneObject>&)> findChildrenInternal =
 			[&](const HSceneObject& so, Vector<HSceneObject>& output)
 		{
 			for (auto& child : so->mChildren)
@@ -701,8 +703,8 @@ namespace bs
 		setActiveHierarchy(active);
 	}
 
-	void SceneObject::setActiveHierarchy(bool active, bool triggerEvents) 
-	{ 
+	void SceneObject::setActiveHierarchy(bool active, bool triggerEvents)
+	{
 		bool activeHierarchy = active && mActiveSelf;
 
 		if (mActiveHierarchy != activeHierarchy)
@@ -761,10 +763,9 @@ namespace bs
 		else
 			_unsetFlags(SOF_DontInstantiate);
 
-		UINT32 bufferSize = 0;
-
-		MemorySerializer serializer;
-		UINT8* buffer = serializer.encode(this, bufferSize, (void*(*)(size_t))&bs_alloc);
+		SPtr<MemoryDataStream> stream = bs_shared_ptr_new<MemoryDataStream>();
+		BinarySerializer serializer;
+		serializer.encode(this, stream);
 
 		int flags = GODM_RestoreExternal | GODM_UseNewIds;
 		if(!preserveUUIDs)
@@ -773,9 +774,9 @@ namespace bs
 		CoreSerializationContext serzContext;
 		serzContext.goState = bs_shared_ptr_new<GameObjectDeserializationState>(flags);
 
+		stream->seek(0);
 		SPtr<SceneObject> cloneObj = std::static_pointer_cast<SceneObject>(
-			serializer.decode(buffer, bufferSize, &serzContext));
-		bs_free(buffer);
+			serializer.decode(stream, (UINT32)stream->size(), BinarySerializerFlag::None, &serzContext));
 
 		if(isInstantiated)
 			_unsetFlags(SOF_DontInstantiate);
@@ -787,10 +788,13 @@ namespace bs
 
 	HComponent SceneObject::getComponent(RTTITypeBase* type) const
 	{
-		for(auto& entry : mComponents)
+		if(type != Component::getRTTIStatic())
 		{
-			if(entry->getRTTI()->isDerivedFrom(type))
-				return entry;
+			for (auto& entry : mComponents)
+			{
+				if (entry->getRTTI()->isDerivedFrom(type))
+					return entry;
+			}
 		}
 
 		return HComponent();
@@ -800,7 +804,7 @@ namespace bs
 	{
 		if(component == nullptr)
 		{
-			LOGDBG("Trying to remove a null component");
+			BS_LOG(Warning, Scene, "Trying to remove a null component");
 			return;
 		}
 
@@ -817,14 +821,14 @@ namespace bs
 			mComponents.erase(iter);
 		}
 		else
-			LOGDBG("Trying to remove a component that doesn't exist on this SceneObject.");
+			BS_LOG(Warning, Scene, "Trying to remove a component that doesn't exist on this SceneObject.");
 	}
 
 	void SceneObject::destroyComponent(Component* component, bool immediate)
 	{
-		auto iterFind = std::find_if(mComponents.begin(), mComponents.end(), 
-			[component](const HComponent& x) 
-		{ 
+		auto iterFind = std::find_if(mComponents.begin(), mComponents.end(),
+			[component](const HComponent& x)
+		{
 			if(x.isDestroyed())
 				return false;
 
@@ -843,7 +847,7 @@ namespace bs
 
 		if(!rtti_is_subclass<Component>(newObj.get()))
 		{
-			LOGERR("Specified type is not a valid Component.");
+			BS_LOG(Error, Scene, "Specified type is not a valid Component.");
 			return HComponent();
 		}
 

@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Image/BsTexture.h"
 #include "Math/BsMath.h"
 #include "CoreThread/BsCoreThread.h"
@@ -17,6 +18,8 @@ namespace bs
 	/** @addtogroup RTTI-Impl-Core
 	 *  @{
 	 */
+
+	BS_ALLOW_MEMCPY_SERIALIZATION(TextureSurface);
 
 	class BS_CORE_EXPORT TextureRTTI : public RTTIType<Texture, Resource, TextureRTTI>
 	{
@@ -34,8 +37,8 @@ namespace bs
 		BS_END_RTTI_MEMBERS
 
 		INT32& getUsage(Texture* obj) { return obj->mProperties.mDesc.usage; }
-		void setUsage(Texture* obj, INT32& val) 
-		{ 
+		void setUsage(Texture* obj, INT32& val)
+		{
 			// Render target and depth stencil texture formats are for in-memory use only
 			// and don't make sense when serialized
 			if ((val & (TU_DEPTHSTENCIL | TU_RENDERTARGET)) != 0)
@@ -80,8 +83,8 @@ namespace bs
 		{
 			addPlainField("mUsage", 11, &TextureRTTI::getUsage, &TextureRTTI::setUsage);
 
-			addReflectablePtrArrayField("mPixelData", 12, &TextureRTTI::getPixelData, &TextureRTTI::getPixelDataArraySize, 
-				&TextureRTTI::setPixelData, &TextureRTTI::setPixelDataArraySize, RTTI_Flag_SkipInReferenceSearch);
+			addReflectablePtrArrayField("mPixelData", 12, &TextureRTTI::getPixelData, &TextureRTTI::getPixelDataArraySize,
+				&TextureRTTI::setPixelData, &TextureRTTI::setPixelDataArraySize, RTTIFieldInfo(RTTIFieldFlag::SkipInReferenceSearch));
 		}
 
 		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override

@@ -4,6 +4,8 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringIDRTTI.h"
+#include "RTTI/BsStdRTTI.h"
 #include "Material/BsShaderVariation.h"
 
 namespace bs
@@ -19,49 +21,49 @@ namespace bs
 		enum { id = TID_ShaderVariationParam }; enum { hasDynamicSize = 1 };
 
 		/** @copydoc RTTIPlainType::toMemory */
-		static void toMemory(const ShaderVariation::Param& data, char* memory)
+		static BitLength toMemory(const ShaderVariation::Param& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = sizeof(UINT32);
-			char* memoryStart = memory;
-			memory += sizeof(UINT32);
+			static constexpr uint8_t VERSION = 0;
 
-			UINT8 version = 0;
-			memory = rttiWriteElem(version, memory, size);
-			memory = rttiWriteElem(data.name, memory, size);
-			memory = rttiWriteElem(data.type, memory, size);
-			memory = rttiWriteElem(data.i, memory, size);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+			{
+				BitLength size = 0;
+				size += rtti_write(VERSION, stream);
+				size += rtti_write(data.name, stream);
+				size += rtti_write(data.type, stream);
+				size += rtti_write(data.i, stream);
 
-			memcpy(memoryStart, &size, sizeof(UINT32));
+				return size;
+			});
 		}
 
 		/** @copydoc RTTIPlainType::fromMemory */
-		static UINT32 fromMemory(ShaderVariation::Param& data, char* memory)
+		static BitLength fromMemory(ShaderVariation::Param& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = 0;
-			memory = rttiReadElem(size, memory);
+			BitLength size;
+			rtti_read_size_header(stream, compress, size);
 
-			UINT8 version;
-			memory = rttiReadElem(version, memory);
+			uint8_t version;
+			rtti_read(version, stream);
 			assert(version == 0);
 
-			memory = rttiReadElem(data.name, memory);
-			memory = rttiReadElem(data.type, memory);
-			memory = rttiReadElem(data.i, memory);
+			rtti_read(data.name, stream);
+			rtti_read(data.type, stream);
+			rtti_read(data.i, stream);
 
 			return size;
 		}
 
-		/** @copydoc RTTIPlainType::getDynamicSize */
-		static UINT32 getDynamicSize(const ShaderVariation::Param& data)
+		/** @copydoc RTTIPlainType::getSize */
+		static BitLength getSize(const ShaderVariation::Param& data, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT64 dataSize = sizeof(UINT8) + sizeof(UINT32);
-			dataSize += rttiGetElemSize(data.name);
-			dataSize += rttiGetElemSize(data.type);
-			dataSize += rttiGetElemSize(data.i);
+			BitLength dataSize = sizeof(uint8_t);
+			dataSize += rtti_size(data.name);
+			dataSize += rtti_size(data.type);
+			dataSize += rtti_size(data.i);
 
-			assert(dataSize <= std::numeric_limits<UINT32>::max());
-
-			return (UINT32)dataSize;
+			rtti_add_header_size(dataSize, compress);
+			return dataSize;
 		}
 	};
 

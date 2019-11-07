@@ -25,9 +25,10 @@ namespace bs
 		metaData.scriptClass->addInternalCall("Internal_CreateInstance", (void*)&ScriptSceneObject::internal_createInstance);
 		metaData.scriptClass->addInternalCall("Internal_GetName", (void*)&ScriptSceneObject::internal_getName);
 		metaData.scriptClass->addInternalCall("Internal_SetName", (void*)&ScriptSceneObject::internal_setName);
-		metaData.scriptClass->addInternalCall("Internal_GetUUID", (void*)&ScriptSceneObject::internal_getUUID);
 		metaData.scriptClass->addInternalCall("Internal_GetActive", (void*)&ScriptSceneObject::internal_getActive);
 		metaData.scriptClass->addInternalCall("Internal_SetActive", (void*)&ScriptSceneObject::internal_setActive);
+		metaData.scriptClass->addInternalCall("Internal_HasFlag", (void*)&ScriptSceneObject::internal_hasFlag);
+
 		metaData.scriptClass->addInternalCall("Internal_GetMobility", (void*)&ScriptSceneObject::internal_getMobility);
 		metaData.scriptClass->addInternalCall("Internal_SetMobility", (void*)&ScriptSceneObject::internal_setMobility);
 		metaData.scriptClass->addInternalCall("Internal_GetParent", (void*)&ScriptSceneObject::internal_getParent);
@@ -93,17 +94,6 @@ namespace bs
 		return MonoUtil::stringToMono(name);
 	}
 
-	void ScriptSceneObject::internal_getUUID(ScriptSceneObject* nativeInstance, UUID* uuid)
-	{
-		if (checkIfDestroyed(nativeInstance))
-		{
-			*uuid = UUID::EMPTY;
-			return;
-		}
-
-		*uuid = nativeInstance->mSceneObject->getUUID();
-	}
-
 	void ScriptSceneObject::internal_setActive(ScriptSceneObject* nativeInstance, bool value)
 	{
 		if (checkIfDestroyed(nativeInstance))
@@ -118,6 +108,14 @@ namespace bs
 			return false;
 
 		return nativeInstance->mSceneObject->getActive(true);
+	}
+
+	bool ScriptSceneObject::internal_hasFlag(ScriptSceneObject* nativeInstance, bs::UINT32 flag)
+	{
+		if (checkIfDestroyed(nativeInstance))
+			return false;
+
+		return nativeInstance->mSceneObject->hasFlag(flag);
 	}
 
 	void ScriptSceneObject::internal_setMobility(ScriptSceneObject* nativeInstance, int value)
@@ -185,8 +183,8 @@ namespace bs
 		UINT32 numChildren = nativeInstance->mSceneObject->getNumChildren();
 		if(idx >= numChildren)
 		{
-			LOGWRN("Attempting to access an out of range SceneObject child. Provided index: \"" + toString(idx)
-				+ "\". Valid range: [0 .. " + toString(numChildren) + ")");
+			BS_LOG(Warning, Scene, "Attempting to access an out of range SceneObject child. Provided index: \"{0}\". "
+				"Valid range: [0, {1})", idx, numChildren);
 			return nullptr;
 		}
 
@@ -412,7 +410,8 @@ namespace bs
 	{
 		if (nativeInstance->mSceneObject.isDestroyed())
 		{
-			LOGWRN("Trying to access a destroyed SceneObject with instance ID: " + toString(nativeInstance->mSceneObject.getInstanceId()));
+			BS_LOG(Warning, Scene, "Trying to access a destroyed SceneObject with instance ID: {0}", +
+				nativeInstance->mSceneObject.getInstanceId());
 			return true;
 		}
 

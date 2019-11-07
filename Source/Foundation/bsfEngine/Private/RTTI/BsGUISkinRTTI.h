@@ -4,6 +4,7 @@
 
 #include "BsPrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringRTTI.h"
 #include "GUI/BsGUISkin.h"
 
 namespace bs
@@ -16,7 +17,7 @@ namespace bs
 	class BS_EXPORT GUISkinEntry : public IReflectable
 	{
 	public:
-		GUISkinEntry() { }
+		GUISkinEntry() = default;
 		GUISkinEntry(const String& name, const GUIElementStyle& style);
 
 		String name;
@@ -64,8 +65,8 @@ namespace bs
 	class BS_EXPORT GUISkinRTTI : public RTTIType <GUISkin, Resource, GUISkinRTTI>
 	{
 	private:
-		GUISkinEntry& getStyle(GUISkin* obj, UINT32 idx) 
-		{ 
+		GUISkinEntry& getStyle(GUISkin* obj, UINT32 idx)
+		{
 			return mStyles[idx];
 		}
 

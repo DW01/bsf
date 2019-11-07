@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "RenderAPI/BsRasterizerState.h"
 #include "Managers/BsRenderStateManager.h"
 
@@ -14,11 +15,13 @@ namespace bs
 	 *  @{
 	 */
 
+	BS_ALLOW_MEMCPY_SERIALIZATION(RASTERIZER_STATE_DESC);
+
 	class BS_CORE_EXPORT RasterizerStateRTTI : public RTTIType<RasterizerState, IReflectable, RasterizerStateRTTI>
 	{
 	private:
 		RASTERIZER_STATE_DESC& getData(RasterizerState* obj) { return obj->mProperties.mData; }
-		void setData(RasterizerState* obj, RASTERIZER_STATE_DESC& val) { obj->mProperties.mData = val; } 
+		void setData(RasterizerState* obj, RASTERIZER_STATE_DESC& val) { obj->mProperties.mData = val; }
 
 	public:
 		RasterizerStateRTTI()

@@ -12,7 +12,7 @@ namespace bs
      */
 
     /// <summary>
-    /// Allows you to transparently retrieve and set values of an entry, whether that entry is an object field or 
+    /// Allows you to transparently retrieve and set values of an entry, whether that entry is an object field or
     /// an array/list/dictionary entry.
     /// </summary>
     public sealed class SerializableProperty : ScriptObject
@@ -44,7 +44,8 @@ namespace bs
             Quaternion,
             Enum,
             Vector2Distribution,
-            Vector3Distribution
+            Vector3Distribution,
+            ColorGradientHDR
         }
 
         public delegate object Getter();
@@ -109,7 +110,7 @@ namespace bs
         /// this property's setter will be called with the new modified version of the object. This is useful for
         /// value-types, for reference types being passed by copy, or for situations where changes to an object must be
         /// explicitly applied by re-assigning the object.</param>
-        public SerializableProperty(FieldType type, Type internalType, Getter getter, Setter setter, 
+        public SerializableProperty(FieldType type, Type internalType, Getter getter, Setter setter,
             bool applyOnChildChanges = false)
         {
             this.type = type;
@@ -133,7 +134,7 @@ namespace bs
         /// this property's setter will be called with the new modified version of the object. This is useful for
         /// value-types, for reference types being passed by copy, or for situations where changes to an object must be
         /// explicitly applied by re-assigning the object.</param>
-        internal void Construct(FieldType type, Type internalType, Getter getter, Setter setter, 
+        internal void Construct(FieldType type, Type internalType, Getter getter, Setter setter,
             bool applyOnChildChanges = false)
         {
             this.type = type;
@@ -141,6 +142,21 @@ namespace bs
             this.getter = getter;
             this.setter = setter;
             this.applyOnChildChanges = applyOnChildChanges;
+        }
+
+        /// <summary>
+        /// Creates a serializable property with a custom getter and setter callbacks.
+        /// </summary>
+        /// <typeparam name="T">Type returned/set by getter/setter.</typeparam>
+        /// <param name="getter">Callback that returns the current value of the property.</param>
+        /// <param name="setter">Callback that assigns a new value to the properly.</param>
+        /// <returns>New property instance with the specified callbacks.</returns>
+        public static SerializableProperty Create<T>(Func<T> getter, Action<T> setter)
+        {
+            var output = new SerializableProperty(
+                DetermineFieldType(typeof(T)), typeof(T), () => getter(), x => setter((T)x));
+
+            return output;
         }
 
         /// <summary>
@@ -274,7 +290,7 @@ namespace bs
         /// </summary>
         /// <param name="lengths">Size of each dimension of the array. Number of dimensions must match the number
         ///                       of dimensions in the array wrapped by this property.</param>
-        /// <returns>A new array containing the same element type as the array wrapped by this property, of 
+        /// <returns>A new array containing the same element type as the array wrapped by this property, of
         ///          <paramref name="lengths"/> sizes.</returns>
         public Array CreateArrayInstance(int[] lengths)
         {
@@ -299,7 +315,7 @@ namespace bs
         }
 
         /// <summary>
-        /// Creates a new instance of the dictionary wrapped by this property. Caller must ensure this property contains 
+        /// Creates a new instance of the dictionary wrapped by this property. Caller must ensure this property contains
         /// a dictionary.
         /// </summary>
         /// <returns>A new dictionary containing the same key/value types as the dictionary wrapped by this property.
@@ -318,7 +334,7 @@ namespace bs
         /// </summary>
         /// <param name="pathElements">Path elements representing field names and keys to look for.</param>
         /// <param name="elementIdx">Index in the <paramref name="pathElements"/> array to start the search at.</param>
-        /// <returns>Property representing the final path element, or null if not found (array index is out of range, or 
+        /// <returns>Property representing the final path element, or null if not found (array index is out of range, or
         ///          property with that path doesn't exist).</returns>
         internal SerializableProperty FindProperty(PropertyPathElement[] pathElements, int elementIdx)
         {
@@ -431,6 +447,8 @@ namespace bs
                     return FieldType.Color;
                 else if (internalType == typeof(ColorGradient))
                     return FieldType.ColorGradient;
+                else if (internalType == typeof(ColorGradientHDR))
+                    return FieldType.ColorGradientHDR;
                 else if (internalType == typeof(AnimationCurve))
                     return FieldType.Curve;
                 else if (internalType == typeof(FloatDistribution))

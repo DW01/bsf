@@ -29,15 +29,25 @@ namespace bs
 	};
 
 	/** Contains information about a single sprite render element, including its geometry and material. */
-	struct SpriteRenderElement
+	struct SpriteRenderElementData
 	{
-		SpriteRenderElement() = default;
+		SpriteRenderElementData() = default;
 
 		Vector2* vertices = nullptr;
 		Vector2* uvs = nullptr;
 		UINT32* indexes = nullptr;
 		UINT32 numQuads = 0;
 		SpriteMaterialInfo matInfo;
+		SpriteMaterial* material = nullptr;
+	};
+
+	/** Contains information about a single sprite render elements mesh and material */
+	struct SpriteRenderElement
+	{
+		UINT32 numIndices = 0;
+		UINT32 numVertices = 0;
+
+		SpriteMaterialInfo* matInfo = nullptr;
 		SpriteMaterial* material = nullptr;
 	};
 
@@ -52,7 +62,7 @@ namespace bs
 		 * Returns clipped bounds of the sprite.
 		 *
 		 * @param[in]	offset		Offset that will be added to the returned bounds.
-		 * @param[in]	clipRect	Local clip rect that is used for clipping the sprite bounds. (Clipping is done before 
+		 * @param[in]	clipRect	Local clip rect that is used for clipping the sprite bounds. (Clipping is done before
 		 *							the offset is applied). If clip rect width or height is zero, no clipping is done.
 		 *
 		 * @return				Clipped sprite bounds.
@@ -60,40 +70,24 @@ namespace bs
 		Rect2I getBounds(const Vector2I& offset, const Rect2I& clipRect) const;
 
 		/**
-		 * Returns the number of separate render elements in the sprite. Normally this is 1, but some sprites may consist 
+		 * Returns the number of separate render elements in the sprite. Normally this is 1, but some sprites may consist
 		 * of multiple materials, in which case each will require its own mesh (render element)
 		 * 			
 		 * @return	The number render elements.
 		 */
-		UINT32 getNumRenderElements() const;
+		UINT32 getNumRenderElements() const { return (UINT32)mCachedRenderElements.size(); }
 
 		/**
-		 * Gets material information required for rendering the element at the specified index.
+		 * Returns information about the number of vertices and indices the required render element requires, as well
+		 * as information about the material that it should be rendered with. Vertex/index counts are required
+		 * when creating the buffers before calling fillBuffer().
 		 *
-		 * @see		getNumRenderElements()
-		 */
-		const SpriteMaterialInfo& getMaterialInfo(UINT32 renderElementIdx) const;
-
-		/**
-		 * Gets the material that will be used for rendering the element at the specified index.
+		 * Returned data is valid until the next call to update() or until the sprite is destroyed.
 		 *
-		 * @see		getNumRenderElements()
+		 * @param[in]		idx			Index of the render element to return the information for.
+		 * @param[out]		info		Information about the render element.
 		 */
-		SpriteMaterial* getMaterial(UINT32 renderElementIdx) const;
-
-		/**
-		 * Returns the number of quads that the specified render element will use. You will need this value when creating
-		 * the buffers before calling fillBuffer().
-		 * 			
-		 * @return	Number of quads for the specified render element. 
-		 *	
-		 * @note	Number of vertices = Number of quads * 4
-		 *			Number of indices = Number of quads * 6
-		 *			
-		 * @see		getNumRenderElements()
-		 * @see		fillBuffer()
-		 */
-		UINT32 getNumQuads(UINT32 renderElementIdx) const;
+		void getRenderElementInfo(UINT32 idx, SpriteRenderElement& info) const;
 
 		/**
 		 * Fill the pre-allocated vertex, uv and index buffers with the mesh data for the specified render element.
@@ -103,7 +97,7 @@ namespace bs
 		 * @param[out]	indices				Previously allocated buffer where to store the indices.
 		 * @param[in]	vertexOffset		At which vertex should the method start filling the buffer.
 		 * @param[in]	indexOffset			At which index should the method start filling the buffer.
-		 * @param[in]	maxNumVerts			Total number of vertices the buffers were allocated for. Used only for memory 
+		 * @param[in]	maxNumVerts			Total number of vertices the buffers were allocated for. Used only for memory
 		 *									safety.
 		 * @param[in]	maxNumIndices		Total number of indices the buffers were allocated for. Used only for memory
 		 *									safety.
@@ -111,14 +105,14 @@ namespace bs
 		 * @param[in]	indexStride			Number of bytes between two indexes in the provided index data.
 		 * @param[in]	renderElementIdx	Zero-based index of the render element.
 		 * @param[in]	offset				Position offset to apply to all vertices, after clipping.
-		 * @param[in]	clipRect			Rectangle to clip the vertices to. 
+		 * @param[in]	clipRect			Rectangle to clip the vertices to.
 		 * @param[in]	clip				Should the vertices be clipped to the provided @p clipRect.
 		 *
 		 * @see		getNumRenderElements()
 		 * @see		getNumQuads()
 		 */
 		UINT32 fillBuffer(UINT8* vertices, UINT8* uv, UINT32* indices, UINT32 vertexOffset, UINT32 indexOffset,
-			UINT32 maxNumVerts, UINT32 maxNumIndices, UINT32 vertexStride, UINT32 indexStride, UINT32 renderElementIdx, 
+			UINT32 maxNumVerts, UINT32 maxNumIndices, UINT32 vertexStride, UINT32 indexStride, UINT32 renderElementIdx,
 			const Vector2I& offset, const Rect2I& clipRect, bool clip = true) const;
 
 		/**
@@ -128,7 +122,7 @@ namespace bs
 		 * @param[in, out]	uv			Pointer to the start of the buffer containing UV coordinates.
 		 * @param[in]		numQuads	Number of quads in the provided buffer pointers.
 		 * @param[in]		vertStride	Number of bytes to skip when going to the next vertex. This assumes both position
-		 *								and uv coordinates have the same stride (as they are likely pointing to the same 
+		 *								and uv coordinates have the same stride (as they are likely pointing to the same
 		 *								buffer).
 		 * @param[in]		clipRect	Rectangle to clip the geometry to.
 		 */
@@ -149,7 +143,7 @@ namespace bs
 		 *								generated and need to be stored. Vertices are always generate in tuples of three,
 		 *								forming a single triangle.
 		 */
-		static void clipTrianglesToRect(UINT8* vertices, UINT8* uv, UINT32 numTris, UINT32 vertStride, 
+		static void clipTrianglesToRect(UINT8* vertices, UINT8* uv, UINT32 numTris, UINT32 vertStride,
 			const Rect2I& clipRect, const std::function<void(Vector2*, Vector2*, UINT32)>& writeCallback);
 	protected:
 		/**	Returns the offset needed to move the sprite in order for it to respect the provided anchor. */
@@ -159,8 +153,18 @@ namespace bs
 		void updateBounds() const;
 
 		mutable Rect2I mBounds;
-		mutable Vector<SpriteRenderElement> mCachedRenderElements;
+		mutable Vector<SpriteRenderElementData> mCachedRenderElements;
 	};
+
+	inline void Sprite::getRenderElementInfo(UINT32 idx, SpriteRenderElement& info) const
+	{
+		SpriteRenderElementData& renderElement = mCachedRenderElements[idx];
+		
+		info.numVertices = renderElement.numQuads * 4;
+		info.numIndices = renderElement.numQuads * 6;
+		info.matInfo = &renderElement.matInfo;
+		info.material = renderElement.material;
+	}
 
 	/** @} */
 }

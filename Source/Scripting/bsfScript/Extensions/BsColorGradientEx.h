@@ -20,7 +20,17 @@ namespace bs
 		/** @copydoc ColorGradient::evaluate */
 		BS_SCRIPT_EXPORT(e:ColorGradient)
 		static Color evaluate(const SPtr<ColorGradient>& thisPtr, float t);
-	}; 
+	};
+
+	
+	/** Extension class for ColorGradientHDr, for adding additional functionality for the script interface. */
+	class BS_SCRIPT_EXPORT(e:ColorGradientHDR) ColorGradientHDREx
+	{
+	public:
+		/** @copydoc ColorGradientHDR::evaluate */
+		BS_SCRIPT_EXPORT(e:ColorGradientHDR)
+		static Color evaluate(const SPtr<ColorGradientHDR>& thisPtr, float t);
+	};
 
 	/** @endcond */
 	/** @} */

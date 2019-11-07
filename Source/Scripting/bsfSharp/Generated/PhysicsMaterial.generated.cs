@@ -30,8 +30,8 @@ namespace bs
 		/// (for example how quickly does an object slow down when sliding along another object).
 		/// </param>
 		/// <param name="restitution">
-		/// Controls "bounciness" of an object during a collision. Value of 1 means the collision is elastic, and value of 0 
-		/// means the value is inelastic. Must be in [0, 1] range.
+		/// Controls &quot;bounciness&quot; of an object during a collision. Value of 1 means the collision is elastic, and value 
+		/// of 0 means the value is inelastic. Must be in [0, 1] range.
 		/// </param>
 		public PhysicsMaterial(float staticFriction = 0f, float dynamicFriction = 0f, float restitution = 0f)
 		{
@@ -45,7 +45,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Controls friction when two in-contact objects are not moving lateral to each other (for example how difficult  it is 
+		/// Controls friction when two in-contact objects are not moving lateral to each other (for example how difficult it is 
 		/// to get an object moving from a static state while it is in contact with other object(s)).
 		/// </summary>
 		[ShowInInspector]
@@ -69,8 +69,8 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Controls "bounciness" of an object during a collision. Value of 1 means the collision is elastic, and value of 0  
-		/// means the value is inelastic. Must be in [0, 1] range.
+		/// Controls &quot;bounciness&quot; of an object during a collision. Value of 1 means the collision is elastic, and value 
+		/// of 0 means the value is inelastic. Must be in [0, 1] range.
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -82,7 +82,12 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<PhysicsMaterial>(PhysicsMaterial x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<PhysicsMaterial> Internal_GetRef(IntPtr thisPtr);

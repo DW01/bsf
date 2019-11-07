@@ -21,7 +21,7 @@ namespace bs
 			Internal_AmbientOcclusionSettings(this);
 		}
 
-		/// <summary>Enables or disabled the screen space ambient occlusion effect.</summary>
+		/// <summary>Enables or disables the screen space ambient occlusion effect.</summary>
 		[ShowInInspector]
 		[NativeWrapper]
 		public bool Enabled
@@ -37,6 +37,7 @@ namespace bs
 		/// 5.0].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0.05f, 5f, true)]
 		[NativeWrapper]
 		public float Radius
 		{
@@ -46,10 +47,11 @@ namespace bs
 
 		/// <summary>
 		/// Bias used to reduce false occlusion artifacts. Higher values reduce the amount of artifacts but will cause details to 
-		/// be lost in areas where occlusion isn't high. Value is in millimeters. Usually best to keep at a few dozen 
+		/// be lost in areas where occlusion isn&apos;t high. Value is in millimeters. Usually best to keep at a few dozen 
 		/// millimeters, valid range is roughly [0, 200].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 200f, true)]
 		[NativeWrapper]
 		public float Bias
 		{
@@ -86,6 +88,7 @@ namespace bs
 		/// versa. Valid range is roughly [0.2, 2].
 		/// </summary>
 		[ShowInInspector]
+		[Range(0.2f, 2f, true)]
 		[NativeWrapper]
 		public float Intensity
 		{
@@ -99,6 +102,7 @@ namespace bs
 		/// darkening will occur.
 		/// </summary>
 		[ShowInInspector]
+		[Range(1f, 4f, true)]
 		[NativeWrapper]
 		public float Power
 		{
@@ -111,6 +115,7 @@ namespace bs
 		/// performance.
 		/// </summary>
 		[ShowInInspector]
+		[Range(0f, 4f, true)]
 		[NativeWrapper]
 		public int Quality
 		{

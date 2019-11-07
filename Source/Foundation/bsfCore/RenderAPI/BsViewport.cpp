@@ -8,7 +8,7 @@
 #include "RenderAPI/BsRenderAPI.h"
 #include "CoreThread/BsCoreObjectSync.h"
 
-namespace bs 
+namespace bs
 {
 	const Color ViewportBase::DEFAULT_CLEAR_COLOR = Color(0.0f, 0.3685f, 0.7969f);
 
@@ -96,7 +96,7 @@ namespace bs
 
 	void Viewport::setTarget(const SPtr<RenderTarget>& target)
 	{
-		mTarget = target; 
+		mTarget = target;
 		
 		markDependenciesDirty();
 		_markCoreDirty();
@@ -145,12 +145,12 @@ namespace bs
 
 	CoreSyncData Viewport::syncToCore(FrameAlloc* allocator)
 	{
-		UINT32 size = coreSyncGetElemSize(*this);
+		UINT32 size = csync_size(*this);
 
 		UINT8* buffer = allocator->alloc(size);
+		Bitstream stream(buffer, size);
 
-		char* dataPtr = (char*)buffer;
-		dataPtr = coreSyncWriteElem(*this, dataPtr);
+		csync_write(*this, stream);
 
 		return CoreSyncData(buffer, size);
 	}
@@ -225,8 +225,8 @@ namespace bs
 
 	void Viewport::syncToCore(const CoreSyncData& data)
 	{
-		char* dataPtr = (char*)data.getBuffer();
-		coreSyncReadElem(*this, dataPtr);
+		Bitstream stream(data.getBuffer(), data.getBufferSize());
+		csync_read(*this, stream);
 	}
 	}
 }

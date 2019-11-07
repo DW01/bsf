@@ -4,6 +4,7 @@
 #include "Resources/BsResources.h"
 #include "Resources/BsBuiltinResources.h"
 #include "Importer/BsImporter.h"
+#include "FileSystem/BsFileSystem.h"
 
 namespace bs
 {
@@ -16,11 +17,23 @@ namespace bs
 
 		if (name.size() >= 8)
 		{
-			if (name.substr(0, 8) == "$ENGINE$")
+			if (name.substr(0, 8) == "$ENGINE$" || name.substr(0, 8) == "$EDITOR$")
 				return static_resource_cast<ShaderInclude>(Resources::instance().load(path));
 		}
 
-		path = Paths::findPath(name);
+		for(auto& folder : mSearchPaths)
+		{
+			Path entry = folder;
+			entry.append(name);
+
+			if(FileSystem::exists(entry))
+			{
+				path = entry;
+				break;
+			}
+		}
+
+		path = Paths::findPath(path);
 		return Importer::instance().import<ShaderInclude>(path);
 	}
 
@@ -39,11 +52,22 @@ namespace bs
 				return fullPath;
 			}
 		}
-		else
+#ifdef BS_IS_ASSET_TOOL
+		else if (name.substr(0, 8) == "$EDITOR$")
 		{
-			return name;
-		}
+			if (name.size() > 8)
+			{
+				Path fullPath = BuiltinResources::getEditorShaderIncludeFolder();
+				Path includePath = name.substr(9, name.size() - 9);
 
-		return Path::BLANK;
+				fullPath.append(includePath);
+				fullPath.setFilename(includePath.getFilename() + ".asset");
+
+				return fullPath;
+			}
+		}
+#endif
+
+		return name;
 	}
 }

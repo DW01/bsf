@@ -23,8 +23,8 @@ namespace bs
 
 		/// <summary>
 		/// Maximum distance that directional light shadows are allowed to render at. Decreasing the distance can yield higher 
-		/// quality shadows nearer to the viewer, as the shadow map resolution isn't being used up on far away portions of the 
-		/// scene. In world units (meters).
+		/// quality shadows nearer to the viewer, as the shadow map resolution isn&apos;t being used up on far away portions of 
+		/// the scene. In world units (meters).
 		/// </summary>
 		[ShowInInspector]
 		[NativeWrapper]
@@ -40,6 +40,7 @@ namespace bs
 		/// increase in memory cost. Valid range is roughly [1, 6].
 		/// </summary>
 		[ShowInInspector]
+		[Range(1f, 6f, true)]
 		[NativeWrapper]
 		public int NumCascades
 		{
@@ -55,6 +56,7 @@ namespace bs
 		/// Valid range is roughly [1, 4].
 		/// </summary>
 		[ShowInInspector]
+		[Range(1f, 4f, true)]
 		[NativeWrapper]
 		public float CascadeDistributionExponent
 		{
@@ -67,6 +69,7 @@ namespace bs
 		/// shadows, at the cost of performance. Valid range is [1, 4].
 		/// </summary>
 		[ShowInInspector]
+		[Range(1f, 4f, true)]
 		[NativeWrapper]
 		public int ShadowFilteringQuality
 		{

@@ -4,6 +4,7 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsColorRTTI.h"
 #include "Renderer/BsRenderSettings.h"
 
 namespace bs
@@ -141,6 +142,16 @@ namespace bs
 			BS_RTTI_MEMBER_PLAIN(farTransitionRange, 4)
 			BS_RTTI_MEMBER_PLAIN(nearBlurAmount, 5)
 			BS_RTTI_MEMBER_PLAIN(farBlurAmount, 6)
+			BS_RTTI_MEMBER_PLAIN(type, 7)
+			BS_RTTI_MEMBER_PLAIN(maxBokehSize, 8)
+			BS_RTTI_MEMBER_REFL(bokehShape, 9)
+			BS_RTTI_MEMBER_PLAIN(adaptiveColorThreshold, 10)
+			BS_RTTI_MEMBER_PLAIN(adaptiveRadiusThreshold, 11)
+			BS_RTTI_MEMBER_PLAIN(apertureSize, 12)
+			BS_RTTI_MEMBER_PLAIN(focalLength, 13)
+			BS_RTTI_MEMBER_PLAIN(sensorSize, 14)
+			BS_RTTI_MEMBER_PLAIN(bokehOcclusion, 15)
+			BS_RTTI_MEMBER_PLAIN(occlusionDepthRange, 16)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -192,6 +203,62 @@ namespace bs
 			return bs_shared_ptr_new<AmbientOcclusionSettings>();
 		}
 	};
+	
+	class BS_CORE_EXPORT MotionBlurSettingsRTTI : public RTTIType <MotionBlurSettings, IReflectable, MotionBlurSettingsRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN(enabled, 0)
+			BS_RTTI_MEMBER_PLAIN(domain, 1)
+			BS_RTTI_MEMBER_PLAIN(filter, 2)
+			BS_RTTI_MEMBER_PLAIN(quality, 3)
+			BS_RTTI_MEMBER_PLAIN(maximumRadius, 4)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "MotionBlurSettings";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_MotionBlurSettings;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<MotionBlurSettings>();
+		}
+	};
+
+	class BS_CORE_EXPORT TemporalAASettingsRTTI : public RTTIType <TemporalAASettings, IReflectable, TemporalAASettingsRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN(enabled, 0)
+			BS_RTTI_MEMBER_PLAIN(jitteredPositionCount, 1)
+			BS_RTTI_MEMBER_PLAIN(sharpness, 2)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "TemporalAASettings";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_TemporalAASettings;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<TemporalAASettings>();
+		}
+	};
 
 	class BS_CORE_EXPORT ScreenSpaceReflectionsSettingsRTTI : public RTTIType <ScreenSpaceReflectionsSettings, IReflectable, ScreenSpaceReflectionsSettingsRTTI>
 	{
@@ -230,6 +297,7 @@ namespace bs
 			BS_RTTI_MEMBER_PLAIN(threshold, 2)
 			BS_RTTI_MEMBER_PLAIN(intensity, 3)
 			BS_RTTI_MEMBER_PLAIN(tint, 4)
+			BS_RTTI_MEMBER_PLAIN(filterSize, 5)
 		BS_END_RTTI_MEMBERS
 
 	public:
@@ -247,6 +315,101 @@ namespace bs
 		SPtr<IReflectable> newRTTIObject() override
 		{
 			return bs_shared_ptr_new<BloomSettings>();
+		}
+	};
+
+	class BS_CORE_EXPORT ScreenSpaceLensFlareSettingsRTTI :
+	public RTTIType <ScreenSpaceLensFlareSettings, IReflectable, ScreenSpaceLensFlareSettingsRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN(enabled, 0)
+			BS_RTTI_MEMBER_PLAIN(downsampleCount, 1)
+			BS_RTTI_MEMBER_PLAIN(threshold, 2)
+			BS_RTTI_MEMBER_PLAIN(ghostCount, 3)
+			BS_RTTI_MEMBER_PLAIN(ghostSpacing, 4)
+			BS_RTTI_MEMBER_PLAIN(brightness, 5)
+			BS_RTTI_MEMBER_PLAIN(filterSize, 6)
+			BS_RTTI_MEMBER_PLAIN(halo, 7)
+			BS_RTTI_MEMBER_PLAIN(haloAspectRatio, 8)
+			BS_RTTI_MEMBER_PLAIN(haloRadius, 9)
+			BS_RTTI_MEMBER_PLAIN(haloThickness, 10)
+			BS_RTTI_MEMBER_PLAIN(haloThreshold, 11)
+			BS_RTTI_MEMBER_PLAIN(chromaticAberration, 12)
+			BS_RTTI_MEMBER_PLAIN(chromaticAberrationOffset, 13)
+			BS_RTTI_MEMBER_PLAIN(bicubicUpsampling, 14)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "ScreenSpaceLensFlareSettings";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_ScreenSpaceLensFlareSettings;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<ScreenSpaceLensFlareSettings>();
+		}
+	};
+	
+	class BS_CORE_EXPORT ChromaticAberrationSettingsRTTI : public RTTIType <ChromaticAberrationSettings, IReflectable, ChromaticAberrationSettingsRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN(enabled, 0)
+			BS_RTTI_MEMBER_PLAIN(type, 1)
+			BS_RTTI_MEMBER_PLAIN(shiftAmount, 2)
+			BS_RTTI_MEMBER_REFL(fringeTexture, 3)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "ChromaticAberrationSettings";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_ChromaticAberrationSettings;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<ChromaticAberrationSettings>();
+		}
+	};
+
+	class BS_CORE_EXPORT FilmGrainSettingsRTTI : public RTTIType <FilmGrainSettings, IReflectable, FilmGrainSettingsRTTI>
+	{
+	private:
+		BS_BEGIN_RTTI_MEMBERS
+			BS_RTTI_MEMBER_PLAIN(enabled, 0)
+			BS_RTTI_MEMBER_PLAIN(intensity, 1)
+			BS_RTTI_MEMBER_PLAIN(speed, 2)
+		BS_END_RTTI_MEMBERS
+
+	public:
+		const String& getRTTIName() override
+		{
+			static String name = "FilmGrainSettings";
+			return name;
+		}
+
+		UINT32 getRTTIId() override
+		{
+			return TID_FilmGrainSettings;
+		}
+
+		SPtr<IReflectable> newRTTIObject() override
+		{
+			return bs_shared_ptr_new<FilmGrainSettings>();
 		}
 	};
 
@@ -302,6 +465,12 @@ namespace bs
 			BS_RTTI_MEMBER_REFL(shadowSettings, 17)
 			BS_RTTI_MEMBER_PLAIN(enableSkybox, 18)
 			BS_RTTI_MEMBER_REFL(bloom, 19)
+			BS_RTTI_MEMBER_REFL(screenSpaceLensFlare, 20)
+			BS_RTTI_MEMBER_REFL(motionBlur, 21)
+			BS_RTTI_MEMBER_REFL(filmGrain, 22)
+			BS_RTTI_MEMBER_REFL(chromaticAberration, 23)
+			BS_RTTI_MEMBER_REFL(temporalAA, 24)
+			BS_RTTI_MEMBER_PLAIN(enableVelocityBuffer, 25)
 		BS_END_RTTI_MEMBERS
 
 	public:

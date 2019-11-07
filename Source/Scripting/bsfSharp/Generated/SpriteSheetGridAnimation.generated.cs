@@ -11,7 +11,7 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Descriptor that describes a simple sprite sheet animation. The parent texture is split into a grid of  <see 
+	/// Descriptor that describes a simple sprite sheet animation. The parent texture is split into a grid of <see 
 	/// cref="numRows"/> x <see cref="numColumns"/>, each representing one frame of the animation. Every frame is of equal 
 	/// size. Frames are sequentially evaluated starting from the top-most row, iterating over all columns in a row and then 
 	/// moving to next row, up to <see cref="count"/> frames. Frames in rows/colums past <see cref="count"/>. <see 
@@ -41,13 +41,13 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Number of rows to divide the parent's texture area. Determines height of the individual frame (depends on  parent 
+		/// Number of rows to divide the parent&apos;s texture area. Determines height of the individual frame (depends on parent 
 		/// texture size).
 		/// </summary>
 		public int numRows;
 		/// <summary>
-		/// Number of columns to divide the parent's texture area. Determines column of the individual frame (depends on  parent 
-		/// texture size).
+		/// Number of columns to divide the parent&apos;s texture area. Determines column of the individual frame (depends on 
+		/// parent texture size).
 		/// </summary>
 		public int numColumns;
 		/// <summary>

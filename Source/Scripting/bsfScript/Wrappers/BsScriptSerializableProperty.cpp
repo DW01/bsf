@@ -17,7 +17,6 @@
 #include "Serialization/BsManagedSerializableList.h"
 #include "Serialization/BsManagedSerializableDictionary.h"
 #include "Serialization/BsManagedSerializableField.h"
-#include "Serialization/BsMemorySerializer.h"
 
 namespace bs
 {
@@ -59,15 +58,15 @@ namespace bs
 		SPtr<ManagedSerializableTypeInfo> typeInfo = ScriptAssemblyManager::instance().getTypeInfo(engineClass);
 		if (typeInfo == nullptr)
 		{
-			LOGWRN("Cannot create an instance of type \"" +
-				engineClass->getFullName() + "\", it is not marked as serializable.");
+			BS_LOG(Warning, Script, "Cannot create an instance of type \"{0}\", it is not marked as serializable.",
+				engineClass->getFullName());
 			return;
 		}
 
 		new (bs_alloc<ScriptSerializableProperty>()) ScriptSerializableProperty(instance, typeInfo);
 	}
 
-	MonoObject* ScriptSerializableProperty::internal_createObject(ScriptSerializableProperty* nativeInstance, 
+	MonoObject* ScriptSerializableProperty::internal_createObject(ScriptSerializableProperty* nativeInstance,
 		MonoObject* managedInstance, MonoReflectionType* reflType)
 	{
 		return ScriptSerializableObject::create(nativeInstance, managedInstance, reflType);

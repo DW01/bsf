@@ -2,11 +2,13 @@
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "BsRendererTextures.h"
 #include "Math/BsVector2.h"
+#include "Math/BsVector3.h"
 #include "Image/BsColor.h"
 #include "Math/BsMath.h"
 #include "Image/BsTexture.h"
 #include "Image/BsPixelData.h"
 #include "Renderer/BsIBLUtility.h"
+#include "Image/BsColorGradient.h"
 
 namespace bs { namespace ct
 {
@@ -235,21 +237,66 @@ namespace bs { namespace ct
 		return irradiance;
 	}
 
+	SPtr<Texture> generateLensFlareGradientTint()
+	{
+		Vector<ColorGradientKey> keys =
+			{
+				ColorGradientKey(Color(1.0f, 1.0f, 1.0f), 0.0f),
+				ColorGradientKey(Color(0.631f, 1.0f, 0.792f), 0.066f),
+				ColorGradientKey(Color(0.203f, 0.913f, 0.266f), 0.2f),
+				ColorGradientKey(Color(0.65f, 0.76f, 0.07f), 0.266f),
+				ColorGradientKey(Color(0.843f, 0.56f, 0.0f), 0.333f),
+				ColorGradientKey(Color(0.631f, 0.082f, 0.058f), 0.533f),
+				ColorGradientKey(Color(0.0f, 0.0f, 0.0f), 1.0f)
+			};
+
+		ColorGradient gradient(keys);
+
+		SPtr<PixelData> pixels = PixelData::create(32, 1, 1, PF_RGBA8);
+		for(UINT32 i = 0; i < 16; i++)
+			pixels->setColorAt(Color::fromRGBA(gradient.evaluate(i/16.0f)), i, 0);
+
+		// We keep the second half of the texture empty, to avoid a mul in shader
+		for(UINT32 i = 16; i < 32; i++)
+			pixels->setColorAt(Color::Black, i, 0);
+
+		return Texture::create(pixels);
+	}
+
+	SPtr<Texture> generateChromaticAberrationFringe()
+	{
+		SPtr<PixelData> pixels = PixelData::create(3, 1, 1, PF_RGBA8);
+		pixels->setColorAt(Color(1.0f, 0.0f, 0.0f, 1.0f), 0, 0);
+		pixels->setColorAt(Color(0.0f, 1.0f, 0.0f, 1.0f), 1, 0);
+		pixels->setColorAt(Color(0.0f, 0.0f, 1.0f, 1.0f), 2, 0);
+
+		return Texture::create(pixels);
+	}
+
 	SPtr<Texture> RendererTextures::preintegratedEnvGF;
 	SPtr<Texture> RendererTextures::ssaoRandomization4x4;
 	SPtr<Texture> RendererTextures::defaultIndirect;
+	SPtr<Texture> RendererTextures::lensFlareGradient;
+	SPtr<Texture> RendererTextures::bokehFlare;
+	SPtr<Texture> RendererTextures::chromaticAberrationFringe;
 
-	void RendererTextures::startUp()
+	void RendererTextures::startUp(const LoadedRendererTextures& textures)
 	{
 		preintegratedEnvGF = generatePreintegratedEnvBRDF();
 		ssaoRandomization4x4 = generate4x4RandomizationTexture();
 		defaultIndirect = generateDefaultIndirect();
+		lensFlareGradient = generateLensFlareGradientTint();
+		bokehFlare = textures.bokehFlare;
+		chromaticAberrationFringe = generateChromaticAberrationFringe();
 	}
 
 	void RendererTextures::shutDown()
 	{
 		preintegratedEnvGF = nullptr;
 		ssaoRandomization4x4 = nullptr;
-		defaultIndirect = nullptr;		
+		defaultIndirect = nullptr;
+		lensFlareGradient = nullptr;
+		bokehFlare = nullptr;
+		chromaticAberrationFringe = nullptr;
 	}
 }}

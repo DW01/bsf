@@ -4,14 +4,15 @@
 
 #include "BsScriptEnginePrerequisites.h"
 #include "Wrappers/BsScriptResource.h"
+#include "../../../Foundation/bsfCore/Material/BsShader.h"
 #include "../Extensions/BsShaderEx.h"
 
+namespace bs { class Shader; }
+namespace bs { class ShaderEx; }
+namespace bs { struct __ShaderVariationParamInfoInterop; }
+namespace bs { struct __ShaderParameterInterop; }
 namespace bs
 {
-	class Shader;
-	class ShaderEx;
-	struct __ShaderParameterInterop;
-
 	class BS_SCR_BE_EXPORT ScriptShader : public TScriptResource<ScriptShader, Shader>
 	{
 	public:
@@ -24,6 +25,7 @@ namespace bs
 	private:
 		static MonoObject* Internal_getRef(ScriptShader* thisPtr);
 
+		static MonoArray* Internal_getVariationParams(ScriptShader* thisPtr);
 		static MonoArray* Internal_getParameters(ScriptShader* thisPtr);
 	};
 }

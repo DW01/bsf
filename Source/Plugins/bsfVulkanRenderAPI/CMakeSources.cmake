@@ -26,6 +26,8 @@ set(BS_VULKANRENDERAPI_INC_NOFILTER
 	"BsVulkanDescriptorSet.h"
 	"BsVulkanSamplerState.h"
 	"BsVulkanGpuPipelineParamInfo.h"
+	"BsVulkanGLSLToSPIRV.h"
+	"BsVulkanRenderPass.h"
 )
 
 set(BS_VULKANRENDERAPI_INC_MANAGERS
@@ -69,6 +71,8 @@ set(BS_VULKANRENDERAPI_SRC_NOFILTER
 	"BsVulkanDescriptorSet.cpp"
 	"BsVulkanSamplerState.cpp"
 	"BsVulkanGpuPipelineParamInfo.cpp"
+	"BsVulkanGLSLToSPIRV.cpp"
+	"BsVulkanRenderPass.cpp"
 )
 
 set(BS_VULKANRENDERAPI_SRC_MANAGERS
@@ -105,6 +109,16 @@ set(BS_VULKANRENDERAPI_SRC_LINUX
 	"Linux/BsLinuxRenderWindow.cpp"
 )
 
+set(BS_VULKANRENDERAPI_INC_MACOS
+	"../Shared/MacOS/BsMacOSVideoModeInfo.h"
+	"MacOS/BsMacOSRenderWindow.h"
+)
+
+set(BS_VULKANRENDERAPI_SRC_MACOS
+	"../Shared/MacOS/BsMacOSVideoModeInfo.cpp"
+	"MacOS/BsMacOSRenderWindow.mm"
+)
+
 source_group("" FILES ${BS_VULKANRENDERAPI_INC_NOFILTER} ${BS_VULKANRENDERAPI_SRC_NOFILTER})
 source_group("Managers" FILES ${BS_VULKANRENDERAPI_INC_MANAGERS} ${BS_VULKANRENDERAPI_SRC_MANAGERS})
 source_group("Win32" FILES ${BS_VULKANRENDERAPI_INC_WIN32} ${BS_VULKANRENDERAPI_SRC_WIN32})
@@ -126,4 +140,9 @@ elseif(LINUX)
 		${BS_VULKANRENDERAPI_INC_LINUX}
 		${BS_VULKANRENDERAPI_SRC_LINUX}
 	)
+elseif(APPLE)
+	list(APPEND BS_VULKANRENDERAPI_SRC
+		${BS_VULKANRENDERAPI_INC_MACOS}
+		${BS_VULKANRENDERAPI_SRC_MACOS}
+		)
 endif()

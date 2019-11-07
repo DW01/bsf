@@ -171,6 +171,10 @@ RBA				{ yylval->intValue = 0xD; return TOKEN_COLORMASK; }
 GBA				{ yylval->intValue = 0xE; return TOKEN_COLORMASK; }
 RGBA			{ yylval->intValue = 0xF; return TOKEN_COLORMASK; }
 
+	/* Attribute keywords */
+name			{ return TOKEN_NAME; }
+show			{ return TOKEN_SHOW; }
+
 	/* Preprocessor */
 #include				{ BEGIN(INCLUDE); }
 

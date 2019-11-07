@@ -11,7 +11,7 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Contains definitions of GPU programs used for rendering, as well as a set of global parameters to control those  
+	/// Contains definitions of GPU programs used for rendering, as well as a set of global parameters to control those 
 	/// programs.
 	/// </summary>
 	[ShowInInspector]
@@ -26,6 +26,16 @@ namespace bs
 			get { return Internal_GetRef(mCachedPtr); }
 		}
 
+		/// <summary>
+		/// Returns the list of all variation parameters supported by this shader, possible values of each parameter and other 
+		/// meta-data.
+		/// </summary>
+		[NativeWrapper]
+		public ShaderVariationParamInfo[] VariationParams
+		{
+			get { return Internal_getVariationParams(mCachedPtr); }
+		}
+
 		/// <summary>Returns information about all parameters available in the shader.</summary>
 		[NativeWrapper]
 		public ShaderParameter[] Parameters
@@ -35,10 +45,17 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<Shader>(Shader x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<Shader> Internal_GetRef(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern ShaderVariationParamInfo[] Internal_getVariationParams(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern ShaderParameter[] Internal_getParameters(IntPtr thisPtr);
 	}

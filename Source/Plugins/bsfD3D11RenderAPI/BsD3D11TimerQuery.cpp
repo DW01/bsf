@@ -10,8 +10,6 @@
 namespace bs { namespace ct
 {
 	D3D11TimerQuery::D3D11TimerQuery(UINT32 deviceIdx)
-		:mFinalized(false), mContext(nullptr), mBeginQuery(nullptr), 
-		mEndQuery(nullptr), mDisjointQuery(nullptr), mTimeDelta(0.0f), mQueryEndCalled(false)
 	{
 		assert(deviceIdx == 0 && "Multiple GPUs not supported natively on DirectX 11.");
 
@@ -137,10 +135,8 @@ namespace bs { namespace ct
 
 			UINT64 delta = timeEnd - timeStart;
 			mTimeDelta = (delta / (float)frequency) * 1000.0f;
-		}       
-		else
-		{
-			LOGWRN_VERBOSE("Unrealiable GPU timer query detected.");
 		}
+		else
+			BS_LOG(Verbose, RenderBackend, "Unrealiable GPU timer query detected.");
 	}
 }}

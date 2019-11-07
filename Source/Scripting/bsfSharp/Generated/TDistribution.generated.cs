@@ -54,7 +54,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Returns the constant value of the distribution, or the minimal value of a constant range. Undefined if  the 
+		/// Returns the constant value of the distribution, or the minimal value of a constant range. Undefined if the 
 		/// distribution is represented by a curve.
 		/// </summary>
 		public float GetMinConstant()
@@ -193,7 +193,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Returns the constant value of the distribution, or the minimal value of a constant range. Undefined if  the 
+		/// Returns the constant value of the distribution, or the minimal value of a constant range. Undefined if the 
 		/// distribution is represented by a curve.
 		/// </summary>
 		public Vector3 GetMinConstant()
@@ -340,7 +340,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Returns the constant value of the distribution, or the minimal value of a constant range. Undefined if  the 
+		/// Returns the constant value of the distribution, or the minimal value of a constant range. Undefined if the 
 		/// distribution is represented by a curve.
 		/// </summary>
 		public Vector2 GetMinConstant()

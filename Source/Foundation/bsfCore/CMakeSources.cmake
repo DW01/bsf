@@ -54,7 +54,6 @@ set(BS_CORE_INC_PHYSICS
 )
 
 set(BS_CORE_INC_CORETHREAD
-	"bsfCore/CoreThread/BsCoreThreadQueue.h"
 	"bsfCore/CoreThread/BsCoreThread.h"
 	"bsfCore/CoreThread/BsCoreObjectManager.h"
 	"bsfCore/CoreThread/BsCoreObject.h"
@@ -184,7 +183,6 @@ set(BS_CORE_SRC_CORETHREAD
 	"bsfCore/CoreThread/BsCoreObject.cpp"
 	"bsfCore/CoreThread/BsCoreObjectManager.cpp"
 	"bsfCore/CoreThread/BsCoreThread.cpp"
-	"bsfCore/CoreThread/BsCoreThreadQueue.cpp"
 	"bsfCore/CoreThread/BsCoreObjectCore.cpp"
 )
 
@@ -390,6 +388,7 @@ set(BS_CORE_INC_RTTI
 	"bsfCore/Private/RTTI/BsDecalRTTI.h"
 	"bsfCore/Private/RTTI/BsCDecalRTTI.h"
 	"bsfCore/Private/RTTI/BsRenderTargetRTTI.h"
+	"bsfCore/Private/RTTI/BsCharDescRTTI.h"
 )
 
 set(BS_CORE_SRC_RENDERER

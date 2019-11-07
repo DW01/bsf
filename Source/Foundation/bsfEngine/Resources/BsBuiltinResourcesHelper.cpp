@@ -25,7 +25,7 @@ using json = nlohmann::json;
 
 namespace bs
 {
-	void BuiltinResourcesHelper::importAssets(const nlohmann::json& entries, const Vector<bool>& importFlags, 
+	void BuiltinResourcesHelper::importAssets(const nlohmann::json& entries, const Vector<bool>& importFlags,
 		const Path& inputFolder, const Path& outputFolder, const SPtr<ResourceManifest>& manifest, AssetType mode,
 		nlohmann::json* dependencies, bool compress, bool mipmap)
 	{
@@ -42,11 +42,11 @@ namespace bs
 
 		struct QueuedImportOp
 		{
-			QueuedImportOp(const AsyncOp& op, const Path& outputPath, const nlohmann::json& jsonEntry)
+			QueuedImportOp(const TAsyncOp<HResource>& op, const Path& outputPath, const nlohmann::json& jsonEntry)
 				:op(op), outputPath(outputPath), jsonEntry(jsonEntry)
 			{ }
 
-			AsyncOp op;
+			TAsyncOp<HResource> op;
 			Path outputPath;
 			const nlohmann::json& jsonEntry;
 		};
@@ -76,7 +76,7 @@ namespace bs
 			{
 				if (rtti_is_of_type<TextureImportOptions>(importOptions))
 				{
-					SPtr<TextureImportOptions> texImportOptions = 
+					SPtr<TextureImportOptions> texImportOptions =
 						std::static_pointer_cast<TextureImportOptions>(importOptions);
 
 					texImportOptions->generateMips = mipmap;
@@ -85,7 +85,7 @@ namespace bs
 				{
 					ShaderDefines defines = RendererMaterialManager::_getDefines(relativePath);
 
-					SPtr<ShaderImportOptions> shaderImportOptions = 
+					SPtr<ShaderImportOptions> shaderImportOptions =
 						std::static_pointer_cast<ShaderImportOptions>(importOptions);
 
 					UnorderedMap<String, String> allDefines = defines.getAll();
@@ -96,7 +96,7 @@ namespace bs
 
 			Path outputPath = outputFolder + relativeAssetPath;
 
-			AsyncOp op = gImporter().importAsync(filePath, importOptions, UUID);
+			TAsyncOp<HResource> op = gImporter().importAsync(filePath, importOptions, UUID);
 			queuedOps.emplace_back(op, outputPath, entry);
 		};
 
@@ -114,7 +114,7 @@ namespace bs
 			manifest->registerResource(spriteTex.getUUID(), outputPath);
 		};
 
-		auto generateAnimatedSprite = [&](const HTexture& texture, const String& fileName, const UUID& UUID, 
+		auto generateAnimatedSprite = [&](const HTexture& texture, const String& fileName, const UUID& UUID,
 			SpriteAnimationPlayback playback, const SpriteSheetGridAnimation& animation)
 		{
 			Path relativePath = fileName;
@@ -167,7 +167,7 @@ namespace bs
 					continue;
 				}
 
-				HResource outputRes = importOp.op.getReturnValue<HResource>();
+				HResource outputRes = importOp.op.getReturnValue();
 				if (outputRes != nullptr)
 				{
 					Resources::instance().save(outputRes, importOp.outputPath, true, compress);
@@ -237,7 +237,7 @@ namespace bs
 							animation.count = jsonAnimation["Count"].get<UINT32>();
 							animation.fps = jsonAnimation["FPS"].get<UINT32>();
 
-							generateAnimatedSprite(tex, name.c_str(), UUID(spriteUUID.c_str()), 
+							generateAnimatedSprite(tex, name.c_str(), UUID(spriteUUID.c_str()),
 								SpriteAnimationPlayback::Loop, animation);
 						}
 						else
@@ -445,9 +445,9 @@ namespace bs
 				{
 					String uuid = UUIDGenerator::generateRandom().toString();
 					nlohmann::json newEntry =
-					{ 
+					{
 						{ "Path", relativePath.toString().c_str() },
-						{ "UUID", uuid.c_str() } 
+						{ "UUID", uuid.c_str() }
 					};
 
 					entries.push_back(newEntry);
@@ -456,8 +456,8 @@ namespace bs
 				{
 					String texUuid = UUIDGenerator::generateRandom().toString();
 					String spriteUuid = UUIDGenerator::generateRandom().toString();
-					nlohmann::json newEntry = 
-					{ 
+					nlohmann::json newEntry =
+					{
 						{ "Path", relativePath.toString().c_str() },
 						{ "SpriteUUID", spriteUuid.c_str() },
 						{ "TextureUUID", texUuid.c_str() }
@@ -494,7 +494,7 @@ namespace bs
 		return foundChanges;
 	}
 
-	void BuiltinResourcesHelper::updateManifest(const Path& folder, const nlohmann::json& entries, 
+	void BuiltinResourcesHelper::updateManifest(const Path& folder, const nlohmann::json& entries,
 		const SPtr<ResourceManifest>& manifest, AssetType type)
 	{
 		for (auto& entry : entries)
@@ -589,7 +589,7 @@ namespace bs
 		fileStream->close();
 	}
 
-	UINT32 BuiltinResourcesHelper::checkForModifications(const Path& folder, const Path& timeStampFile, 
+	UINT32 BuiltinResourcesHelper::checkForModifications(const Path& folder, const Path& timeStampFile,
 		time_t& lastUpdateTime)
 	{
 		lastUpdateTime = 0;
@@ -628,7 +628,7 @@ namespace bs
 #if BS_DEBUG_MODE
 			BS_EXCEPT(InvalidStateException, "Error occured while compiling a shader. Check earlier log messages for exact error.");
 #else
-			LOGERR("Error occured while compiling a shader. Check earlier log messages for exact error.")
+			BS_LOG(Error, Importer, "Error occured while compiling a shader. Check earlier log messages for exact error.");
 #endif
 			return false;
 		}
@@ -667,13 +667,13 @@ namespace bs
 					program->blockUntilCoreInitialized();
 					if(!program->isCompiled())
 					{
-						String errMsg = "Error occured while compiling a shader \"" + shader->getName() 
+						String errMsg = "Error occured while compiling a shader \"" + shader->getName()
 							+ "\". Error message: " + program->getCompileErrorMessage();
 
 #if BS_DEBUG_MODE
 						BS_EXCEPT(InvalidStateException, errMsg);
 #else
-						LOGERR(errMsg)
+						BS_LOG(Error, Importer, errMsg);
 #endif
 						return false;
 					}
@@ -729,7 +729,7 @@ namespace bs
 		gResources().save(shader, path, true, true);
 	}
 
-	GUIElementStyle BuiltinResourcesHelper::loadGUIStyleFromJSON(const nlohmann::json& entry, 
+	GUIElementStyle BuiltinResourcesHelper::loadGUIStyleFromJSON(const nlohmann::json& entry,
 		const GUIElementStyleLoader& loader)
 	{
 		GUIElementStyle style;

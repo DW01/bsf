@@ -4,6 +4,9 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
+#include "RTTI/BsStdRTTI.h"
+#include "RTTI/BsMathRTTI.h"
 #include "Renderer/BsLightProbeVolume.h"
 #include "Renderer/BsRenderer.h"
 #include "CoreThread/BsCoreThread.h"
@@ -28,57 +31,51 @@ namespace bs
 	template<> struct RTTIPlainType<SavedLightProbeInfo>
 	{
 		enum { id = TID_SavedLightProbeInfo }; enum { hasDynamicSize = 1 };
+		static constexpr UINT32 VERSION = 0;
 
-		static void toMemory(const SavedLightProbeInfo& data, char* memory)
+		static BitLength toMemory(const SavedLightProbeInfo& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size = getDynamicSize(data);
+			return rtti_write_with_size_header(stream, data, compress, [&data, &stream]()
+			{
+				BitLength size = 0;
 
-			UINT32 curSize = sizeof(UINT32);
-			memcpy(memory, &size, curSize);
-			memory += curSize;
+				uint32_t version;
+				size += rtti_write(version, stream);
+				size += rtti_write(data.positions, stream);
+				size += rtti_write(data.coefficients, stream);
 
-			UINT32 version = 0;
-
-			memory = rttiWriteElem(version, memory);
-			memory = rttiWriteElem(data.positions, memory);
-			rttiWriteElem(data.coefficients, memory);
+				return size;
+			});
 		}
 
-		static UINT32 fromMemory(SavedLightProbeInfo& data, char* memory)
+		static BitLength fromMemory(SavedLightProbeInfo& data, Bitstream& stream, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT32 size;
-			memcpy(&size, memory, sizeof(UINT32));
-			memory += sizeof(UINT32);
+			BitLength size;
+			rtti_read_size_header(stream, compress, size);
 
-			UINT32 version;
-			memory = rttiReadElem(version, memory);
+			uint32_t version;
+			rtti_read(version, stream);
 
 			switch(version)
 			{
 			case 0:
-				memory = rttiReadElem(data.positions, memory);
-				memory = rttiReadElem(data.coefficients, memory);
+				rtti_read(data.positions, stream);
+				rtti_read(data.coefficients, stream);
 				break;
 			default:
-				LOGERR("Unknown version of SavedLightProbeInfo data. Unable to deserialize.");
+				BS_LOG(Error, RTTI, "Unknown version of SavedLightProbeInfo data. Unable to deserialize.");
 				break;
 			}
 
 			return size;
 		}
 
-		static UINT32 getDynamicSize(const SavedLightProbeInfo& data)
+		static BitLength getSize(const SavedLightProbeInfo& data, const RTTIFieldInfo& fieldInfo, bool compress)
 		{
-			UINT64 dataSize = rttiGetElemSize(data.positions) + rttiGetElemSize(data.coefficients) + sizeof(UINT32) * 2;
+			BitLength dataSize = rtti_size(data.positions) + rtti_size(data.coefficients) + sizeof(uint32_t);
 
-#if BS_DEBUG_MODE
-			if(dataSize > std::numeric_limits<UINT32>::max())
-			{
-				BS_EXCEPT(InternalErrorException, "Data overflow! Size doesn't fit into 32 bits.");
-			}
-#endif
-
-			return (UINT32)dataSize;
+			rtti_add_header_size(dataSize, compress);
+			return dataSize;
 		}
 	};
 
@@ -134,7 +131,7 @@ namespace bs
 		LightProbeVolumeRTTI()
 		{
 			addPlainField("mProbeInfo", 5, &LightProbeVolumeRTTI::getProbeInfo, &LightProbeVolumeRTTI::setProbeInfo,
-				RTTI_Flag_SkipInReferenceSearch);
+				RTTIFieldInfo(RTTIFieldFlag::SkipInReferenceSearch));
 		}
 
 		void onDeserializationEnded(IReflectable* obj, SerializationContext* context) override

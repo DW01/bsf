@@ -7,7 +7,7 @@
 #include "FileSystem/BsFileSystem.h"
 #include "FileSystem/BsDataStream.h"
 
-namespace bs 
+namespace bs
 {
 	namespace detail
 	{
@@ -19,7 +19,7 @@ namespace bs
 		:TVectorField(desc)
 	{
 		if(mDesc.countX == 0 || mDesc.countY == 0 || mDesc.countZ == 0)
-			LOGWRN("Vector field count cannot be zero.");
+			BS_LOG(Warning, Particles, "Vector field count cannot be zero.");
 
 		mDesc.countX = std::max(1U, mDesc.countX);
 		mDesc.countY = std::max(1U, mDesc.countY);
@@ -28,8 +28,8 @@ namespace bs
 		const UINT32 count = mDesc.countX * mDesc.countY * mDesc.countZ;
 		if(count != (UINT32)values.size())
 		{
-			LOGWRN(StringUtil::format("Number of values provided to the vector field does not match the expected number. \
-				Expected: {0}. Got: {1}.", count, values.size()));
+			BS_LOG(Warning, Particles, "Number of values provided to the vector field does not match the expected number. "
+				"Expected: {0}. Got: {1}.", count, (UINT32)values.size());
 		}
 
 		const UINT32 valuesToCopy = std::min(count, (UINT32)values.size());
@@ -41,12 +41,12 @@ namespace bs
 		for(UINT32 z = 0; z < (UINT32)mDesc.countZ; z++)
 		{
 			const UINT32 zArrayIdx = z * mDesc.countY * mDesc.countX;
-			const UINT32 zDataIdx = z * pixelData->getSlicePitch() * pixelSize;
+			const UINT32 zDataIdx = z * pixelData->getSlicePitch();
 
 			for(UINT32 y = 0; y < (UINT32)mDesc.countY; y++)
 			{
 				const UINT32 yArrayIdx = y * mDesc.countX;
-				const UINT32 yDataIdx = y * pixelData->getRowPitch() * pixelSize;
+				const UINT32 yDataIdx = y * pixelData->getRowPitch();
 
 				for(UINT32 x = 0; x < (UINT32)mDesc.countX; x++)
 				{
@@ -208,7 +208,7 @@ namespace bs
 
 		if(size.x < 0 || size.y < 0 || size.z < 0)
 		{
-			LOGERR("Invalid dimensions.");
+			BS_LOG(Error, Particles, "Invalid dimensions.");
 			return nullptr;
 		}
 
@@ -218,7 +218,7 @@ namespace bs
 		
 		if(*readPos == '\0')
 		{
-			LOGERR("Unexpected end of file.");
+			BS_LOG(Error, Particles, "Unexpected end of file.");
 			return nullptr;
 		}
 		
@@ -232,7 +232,7 @@ namespace bs
 
 		if(*readPos == '\0')
 		{
-			LOGERR("Unexpected end of file.");
+			BS_LOG(Error, Particles, "Unexpected end of file.");
 			return nullptr;
 		}
 
@@ -250,14 +250,15 @@ namespace bs
 
 			if ((i != (count - 1)) && *readPos == '\0')
 			{
-				LOGERR("Unexpected end of file.");
+				BS_LOG(Error, Particles, "Unexpected end of file.");
 				return nullptr;
 			}
 		}
 
 		if(*readPos != '\0')
 		{
-			LOGWRN("Unexpected excess data. This might indicate corrupt data. Remaining data will be truncated.");
+			BS_LOG(Warning, Particles,
+				"Unexpected excess data. This might indicate corrupt data. Remaining data will be truncated.");
 		}
 
 		const String fileName = filePath.getFilename(false);

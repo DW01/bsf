@@ -4,6 +4,10 @@
 
 #include "BsPrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringRTTI.h"
+#include "RTTI/BsStdRTTI.h"
+#include "RTTI/BsColorRTTI.h"
+#include "RTTI/BsRectOffsetRTTI.h"
 #include "GUI/BsGUIElementStyle.h"
 
 namespace bs

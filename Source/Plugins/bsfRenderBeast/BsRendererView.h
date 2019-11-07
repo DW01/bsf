@@ -10,11 +10,11 @@
 #include "Math/BsConvexVolume.h"
 #include "Shading/BsLightGrid.h"
 #include "Shading/BsShadowRendering.h"
-#include "BsRendererView.h"
 #include "BsRendererRenderable.h"
 #include "BsRenderCompositor.h"
 #include "BsRendererParticles.h"
 #include "BsRendererDecal.h"
+#include "Renderer/BsRenderer.h"
 
 namespace bs { namespace ct
 {
@@ -33,6 +33,7 @@ namespace bs { namespace ct
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatProj)
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatInvProj)
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatInvViewProj)
+		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatPrevViewProj)
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gMatScreenToWorld)
 		BS_PARAM_BLOCK_ENTRY(Matrix4, gNDCToPrevNDC)
 		BS_PARAM_BLOCK_ENTRY(Vector2, gDeviceZToWorldZ)
@@ -75,9 +76,9 @@ namespace bs { namespace ct
 		/** Binds the material for rendering and sets up any parameters. */
 		void bind(const SPtr<GpuParamBlockBuffer>& perCamera, const SPtr<Texture>& texture, const Color& solidColor);
 
-		/** 
+		/**
 		 * Returns the material variation matching the provided parameters.
-		 * 
+		 *
 		 * @param[in]	color	When true the material will use a solid color to render a skybox. When false a user
 		 *						provided texture will be used instead.
 		 */
@@ -101,14 +102,14 @@ namespace bs { namespace ct
 		float farPlane;
 		ProjectionType projType;
 
-		/** 
+		/**
 		 * Determines does this view output to the final render target. If false the view is usually used for some
 		 * sort of helper rendering.
 		 */
 		bool mainView;
 
-		/** 
-		 * When enabled, renderer extension callbacks will be triggered, allowing other systems to inject their own 
+		/**
+		 * When enabled, renderer extension callbacks will be triggered, allowing other systems to inject their own
 		 * render operations into the view.
 		 */
 		bool triggerCallbacks : 1;
@@ -116,29 +117,32 @@ namespace bs { namespace ct
 		/** When enabled, post-processing effects (like tonemapping) will be executed. */
 		bool runPostProcessing : 1;
 
-		/** 
+		/**
 		 * Determines if the view is currently rendering reflection probes. This ensures the systems can disable refl.
 		 * probe reads in order to prevent incorrect rendering (since probes won't yet have any data).
 		 */
 		bool capturingReflections : 1;
 
-		/** 
-		 * When enabled the alpha channel of the final render target will be populated with an encoded depth value. 
+		/**
+		 * When enabled the alpha channel of the final render target will be populated with an encoded depth value.
 		 * Parameters @p depthEncodeNear and @p depthEncodeFar control which range of the depth buffer to encode.
 		 */
 		bool encodeDepth : 1;
+
+		/** If true the view will only be rendered when requested, otherwise it will be rendered every frame. */
+		bool onDemand : 1;
 
 		/**
 		 * Controls at which position to start encoding depth, in view space. Only relevant with @p encodeDepth is enabled.
 		 * Depth will be linearly interpolated between this value and @p depthEncodeFar.
 		 */
-		float depthEncodeNear;
+		float depthEncodeNear = 0.0f;
 
 		/**
 		 * Controls at which position to stop encoding depth, in view space. Only relevant with @p encodeDepth is enabled.
 		 * Depth will be linearly interpolated between @p depthEncodeNear and this value.
 		 */
-		float depthEncodeFar;
+		float depthEncodeFar = 0.0f;
 
 		UINT64 visibleLayers;
 		ConvexVolume cullFrustum;
@@ -182,6 +186,8 @@ namespace bs { namespace ct
 
 		Matrix4 viewProjTransform;
 		Matrix4 prevViewProjTransform;
+		Matrix4 projTransformNoAA;
+		Vector2 temporalJitter { BsZero };
 		UINT32 frameIdx;
 
 		RendererViewTargetData target;
@@ -217,6 +223,22 @@ namespace bs { namespace ct
 		Vector<Camera*> cameras;
 	};
 
+	/** Returns the reason why is a RendererView being redrawn. */
+	enum class RendererViewRedrawReason
+	{
+		/** This particular view isn't on-demand and is redrawn every frame. */
+		PerFrame,
+
+		/** Draws on demand and on-demand drawing was triggered this frame. */
+		OnDemandThisFrame,
+
+		/**
+		 * Draws on demand and on-demand drawing was triggered during an earlier frame but a multi-frame effect is
+		 * requiring the view to get redrawn in later frames.
+		 */
+		OnDemandLingering
+	};
+
 	/** Contains information about a single view into the scene, used by the renderer. */
 	class RendererView
 	{
@@ -244,36 +266,36 @@ namespace bs { namespace ct
 		Camera* getSceneCamera() const { return mCamera; }
 
 		/** Prepares render targets for rendering. When done call endFrame(). */
-		void beginFrame();
+		void beginFrame(const FrameInfo& frameInfo);
 
 		/** Ends rendering and frees any acquired resources. */
 		void endFrame();
 
-		/** 
-		 * Returns a render queue containing all opaque objects for the specified pipeline. Make sure to call 
+		/**
+		 * Returns a render queue containing all opaque objects for the specified pipeline. Make sure to call
 		 * determineVisible() beforehand if view or object transforms changed since the last time it was called. If @p
 		 * forward is true then opaque objects using the forward pipeline are returned, otherwise deferred pipeline objects
 		 * are returned.
 		 */
 		const SPtr<RenderQueue>& getOpaqueQueue(bool forward) const { return forward ? mForwardOpaqueQueue : mDeferredOpaqueQueue; }
 		
-		/** 
-		 * Returns a render queue containing all transparent objects. Make sure to call determineVisible() beforehand if 
+		/**
+		 * Returns a render queue containing all transparent objects. Make sure to call determineVisible() beforehand if
 		 * view or object transforms changed since the last time it was called.
 		 */
 		const SPtr<RenderQueue>& getTransparentQueue() const { return mTransparentQueue; }
 
-		/** 
-		 * Returns a render queue containing all decal renderable objects. Make sure to call determineVisible() beforehand 
-		 * if view or object transforms changed since the last time it was called. 
+		/**
+		 * Returns a render queue containing all decal renderable objects. Make sure to call determineVisible() beforehand
+		 * if view or object transforms changed since the last time it was called.
 		 */
 		const SPtr<RenderQueue>& getDecalQueue() const { return mDecalQueue; }
 		
 		/** Returns the compositor in charge of rendering for this view. */
 		const RenderCompositor& getCompositor() const { return mCompositor; }
-
+		
 		/**
-		 * Populates view render queues by determining visible renderable objects. 
+		 * Populates view render queues by determining visible renderable objects.
 		 *
 		 * @param[in]	renderables			A set of renderable objects to iterate over and determine visibility for.
 		 * @param[in]	cullInfos			A set of world bounds & other information relevant for culling the provided
@@ -290,7 +312,7 @@ namespace bs { namespace ct
 			Vector<bool>* visibility = nullptr);
 
 		/**
-		 * Populates view render queues by determining visible particle systems. 
+		 * Populates view render queues by determining visible particle systems.
 		 *
 		 * @param[in]	particleSystems		A set of particle systems to iterate over and determine visibility for.
 		 * @param[in]	cullInfos			A set of world bounds & other information relevant for culling the provided
@@ -307,7 +329,7 @@ namespace bs { namespace ct
 			Vector<bool>* visibility = nullptr);
 
 		/**
-		 * Populates view render queues by determining visible decals. 
+		 * Populates view render queues by determining visible decals.
 		 *
 		 * @param[in]	decals				A set of decals to iterate over and determine visibility for.
 		 * @param[in]	cullInfos			A set of world bounds & other information relevant for culling the provided
@@ -325,7 +347,7 @@ namespace bs { namespace ct
 
 		/**
 		 * Calculates the visibility masks for all the lights of the provided type.
-		 * 
+		 *
 		 * @param[in]	lights				A set of lights to determine visibility for.
 		 * @param[in]	bounds				Bounding sphere for each provided light. Must be the same size as the @p lights
 		 *									array.
@@ -338,7 +360,7 @@ namespace bs { namespace ct
 		 *									As a side-effect, per-view visibility data is also calculated and can be
 		 *									retrieved by calling getVisibilityMask().
 		 */
-		void determineVisible(const Vector<RendererLight>& lights, const Vector<Sphere>& bounds, LightType type, 
+		void determineVisible(const Vector<RendererLight>& lights, const Vector<Sphere>& bounds, LightType type,
 			Vector<bool>* visibility = nullptr);
 
 		/**
@@ -362,7 +384,7 @@ namespace bs { namespace ct
 		/**
 		 * Inserts all visible renderable elements into render queues. Assumes visibility has been calculated beforehand
 		 * by calling determineVisible(). After the call render elements can be retrieved from the queues using
-		 * getOpqueQueue or getTransparentQueue() calls.
+		 * getOpaqueQueue or getTransparentQueue() calls.
 		 */
 		void queueRenderElements(const SceneInfo& sceneInfo);
 
@@ -384,7 +406,7 @@ namespace bs { namespace ct
 		/** Returns a buffer that stores per-view parameters. */
 		SPtr<GpuParamBlockBuffer> getPerViewBuffer() const { return mParamBuffer; }
 
-		/** 
+		/**
 		 * Returns information about visible lights, in the form of a light grid, used for forward rendering. Only valid
 		 * after a call to updateLightGrid().
 		 */
@@ -392,6 +414,9 @@ namespace bs { namespace ct
 
 		/** Updates the light grid used for forward rendering. */
 		void updateLightGrid(const VisibleLightData& visibleLightData, const VisibleReflProbeData& visibleReflProbeData);
+
+		/** Returns a context that reflects the state of the view as it changes during rendering. */
+		const RendererViewContext& getContext() const { return mContext; }
 
 		/**
 		 * Returns a value that can be used for transforming x, y coordinates from NDC into UV coordinates that can be used
@@ -404,13 +429,57 @@ namespace bs { namespace ct
 		/** Returns an index of this view within the parent view group. */
 		UINT32 getViewIdx() const { return mViewIdx; }
 
+		/** Determines if a view should be rendered this frame. */
+		bool shouldDraw() const;
+
+		/** Determines if view's 3D geometry should be rendered this frame. */
+		bool shouldDraw3D() const { return !mRenderSettings->overlayOnly && shouldDraw(); }
+
+		/** Returns true if the view should write to the velocity buffer. */
+		bool requiresVelocityWrites() const;
+		
+		/**
+		 * Determines if any async operations have completed executing and finalizes them. Should be called once
+		 * per frame.
+		 */
+		void updateAsyncOperations();
+
+		/**
+		 * Returns the reason that explains why is the view getting redrawn this frame. Only relevant if shouldDraw() returned
+		 * true previously during the frame.
+		 */
+		RendererViewRedrawReason getRedrawReason() const;
+
+		/**
+		 * Gets the current exposure of the view, used for transforming scene light values from HDR in a range that can be
+		 * displayed on a display device.
+		 */
+		float getCurrentExposure() const;
+
 		/** Assigns a view index to the view. To be called by the parent view group when the view is added to it. */
 		void _setViewIdx(UINT32 viewIdx) { mViewIdx = viewIdx; }
 
+		/** Lets an on-demand view know that it should be redrawn this frame. */
+		void _notifyNeedsRedraw();
+		
+		/**
+		 * Notifies the view that the render target the compositor is rendering to has changed. Note that this does not
+		 * mean the final render target, rather the current intermediate target as set by the renderer during the
+		 * rendering of a single frame. This should be set to null if the renderer is not currently rendering the
+		 * view.
+		 */
+		void _notifyCompositorTargetChanged(const SPtr<RenderTarget>& target) const { mContext.currentTarget = target; }
+
+		/**
+		 * Notifies the view that a new average luminance is being calculated on the provided command buffer. The results
+		 * will be read from the provided texture when the command buffer finishes executing.
+		 */
+		void _notifyLuminanceUpdated(UINT64 frameIdx, SPtr<CommandBuffer> cb, SPtr<PooledRenderTexture> texture) const;
+		
 		/**
 		 * Extracts the necessary values from the projection matrix that allow you to transform device Z value (range [0, 1]
 		 * into view Z value.
-		 * 
+		 *
 		 * @param[in]	projMatrix	Projection matrix that was used to create the device Z value to transform.
 		 * @return					Returns two values that can be used to transform device z to view z using this formula:
 		 * 							z = (deviceZ + y) * x.
@@ -420,20 +489,32 @@ namespace bs { namespace ct
 		/**
 		 * Extracts the necessary values from the projection matrix that allow you to transform NDC Z value (range depending
 		 * on render API) into view Z value.
-		 * 
+		 *
 		 * @param[in]	projMatrix	Projection matrix that was used to create the NDC Z value to transform.
 		 * @return					Returns two values that can be used to transform NDC z to view z using this formula:
 		 * 							z = (NDCZ + y) * x.
 		 */
 		static Vector2 getNDCZToViewZ(const Matrix4& projMatrix);
 
-		/** 
-		 * Returns a value that can be used for tranforming a depth value in NDC, to a depth value in device Z ([0, 1] 
-		 * range using this formula: (NDCZ + y) * x. 
+		/**
+		 * Returns a value that can be used for tranforming a depth value in NDC, to a depth value in device Z ([0, 1]
+		 * range using this formula: (NDCZ + y) * x.
 		 */
 		static Vector2 getNDCZToDeviceZ();
 	private:
+		struct LuminanceUpdate
+		{
+			LuminanceUpdate(UINT64 frameIdx, SPtr<CommandBuffer> commandBuffer, SPtr<PooledRenderTexture> outputTexture)
+				: frameIdx(frameIdx), commandBuffer(std::move(commandBuffer)), outputTexture(std::move(outputTexture))
+			{ }
+
+			UINT64 frameIdx;
+			SPtr<CommandBuffer> commandBuffer;
+			SPtr<PooledRenderTexture> outputTexture;
+		};
+		
 		RendererViewProperties mProperties;
+		mutable RendererViewContext mContext;
 		Camera* mCamera;
 
 		SPtr<RenderQueue> mDeferredOpaqueQueue;
@@ -449,6 +530,24 @@ namespace bs { namespace ct
 		VisibilityInfo mVisibility;
 		LightGrid mLightGrid;
 		UINT32 mViewIdx;
+
+		// Temporal anti-aliasing
+		UINT32 mTemporalPositionIdx;
+
+		// On-demand drawing
+		bool mRedrawThisFrame = false;
+		float mRedrawForSeconds = 0.0f;
+		UINT32 mRedrawForFrames = 0;
+		UINT64 mWaitingOnAutoExposureFrame = std::numeric_limits<UINT64>::max();
+		mutable Vector<LuminanceUpdate> mLuminanceUpdates;
+
+		// Exposure
+		float mPreviousEyeAdaptation = 0.0f;
+		float mCurrentEyeAdaptation = 0.0f;
+
+		// Current frame info
+		FrameTimings mFrameTimings;
+		bool mAsyncAnim = false;
 	};
 
 	/** Contains one or multiple RendererView%s that are in some way related. */
@@ -457,7 +556,7 @@ namespace bs { namespace ct
 	public:
 		RendererViewGroup(RendererView** views, UINT32 numViews, bool mainPass, UINT32 shadowMapSize = 2048);
 
-		/** 
+		/**
 		 * Updates the internal list of views. This is more efficient than always constructing a new instance of this class
 		 * when views change, as internal buffers don't need to be re-allocated.
 		 */
@@ -472,21 +571,21 @@ namespace bs { namespace ct
 		/** Determines is this the primary rendering pass for this frame. There can only be one primary pass per frame. */
 		bool isMainPass() const { return mIsMainPass; }
 
-		/** 
-		 * Returns information about visibility of various scene objects, from the perspective of all the views in the 
+		/**
+		 * Returns information about visibility of various scene objects, from the perspective of all the views in the
 		 * group (visibility will be true if the object is visible from any of the views. determineVisibility() must be
-		 * called whenever the scene or view information changes (usually every frame). 
+		 * called whenever the scene or view information changes (usually every frame).
 		 */
 		const VisibilityInfo& getVisibilityInfo() const { return mVisibility; }
 
 		/**
-		 * Returns information about lights visible from this group of views. Only valid after a call to 
+		 * Returns information about lights visible from this group of views. Only valid after a call to
 		 * determineVisibility().
 		 */
 		const VisibleLightData& getVisibleLightData() const { return mVisibleLightData; }
 
 		/**
-		 * Returns information about refl. probes visible from this group of views. Only valid after a call to 
+		 * Returns information about refl. probes visible from this group of views. Only valid after a call to
 		 * determineVisibility().
 		 */
 		const VisibleReflProbeData& getVisibleReflProbeData() const { return mVisibleReflProbeData; }
@@ -497,7 +596,7 @@ namespace bs { namespace ct
 		/** Returns the object responsible for rendering shadows for this view group. */
 		const ShadowRendering& getShadowRenderer() const { return mShadowRenderer; }
 
-		/** 
+		/**
 		 * Updates visibility information for the provided scene objects, from the perspective of all views in this group,
 		 * and updates the render queues of each individual view. Use getVisibilityInfo() to retrieve the calculated
 		 * visibility information.
@@ -514,7 +613,7 @@ namespace bs { namespace ct
 
 		// Note: Ideally we would want to keep this global, so all views share it. This way each view group renders its
 		// own set of shadows, but there might be shadows that are shared, and therefore we could avoid rendering them
-		// multiple times. Since non-primary view groups are used for pre-processing tasks exclusively (at the moment) 
+		// multiple times. Since non-primary view groups are used for pre-processing tasks exclusively (at the moment)
 		// this isn't an issue right now.
 		ShadowRendering mShadowRenderer;
 	};

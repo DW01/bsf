@@ -19,8 +19,7 @@ namespace bs
 	private:
 
 	public:
-		CGUIWidgetRTTI()
-		{ }
+		CGUIWidgetRTTI() = default;
 
 		const String& getRTTIName() override
 		{
@@ -35,7 +34,7 @@ namespace bs
 
 		SPtr<IReflectable> newRTTIObject() override
 		{
-			return GameObjectRTTI::createGameObject<CGUIWidget>();
+			return SceneObject::createEmptyComponent<CGUIWidget>();
 		}
 	};
 

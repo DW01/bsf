@@ -36,7 +36,7 @@ namespace bs { namespace ct
 
 	const char* bs_get_gl_error_string(GLenum errorCode)
 	{
-		switch (errorCode) 
+		switch (errorCode)
 		{
 			case GL_INVALID_OPERATION: return "INVALID_OPERATION";
 			case GL_INVALID_ENUM: return "INVALID_ENUM";
@@ -65,7 +65,7 @@ namespace bs { namespace ct
 				errorCode = glGetError();
 			}
 
-			gDebug().logWarning(errorOutput.str());
+			BS_LOG(Warning, RenderBackend, errorOutput.str());
 		}
 	}
 
@@ -83,7 +83,8 @@ namespace bs { namespace ct
 		// Get our GLSupport
 		mGLSupport = ct::getGLSupport();
 
-		mColorWrite[0] = mColorWrite[1] = mColorWrite[2] = mColorWrite[3] = true;
+		for(UINT32 i = 0; i < BS_MAX_MULTIPLE_RENDER_TARGETS; i++)
+			mColorWrite[i][0] = mColorWrite[i][1] = mColorWrite[i][2] = mColorWrite[i][3] = true;
 
 		mCurrentContext = 0;
 		mMainContext = 0;
@@ -116,6 +117,9 @@ namespace bs { namespace ct
 		RenderStateManager::startUp();
 
 		QueryManager::startUp<GLQueryManager>();
+
+		// Create main command buffer
+		mMainCommandBuffer = std::static_pointer_cast<GLCommandBuffer>(CommandBuffer::create(GQT_GRAPHICS));
 
 		RenderAPI::initialize();
 	}
@@ -201,6 +205,7 @@ namespace bs { namespace ct
 		mCurrentHullProgram = nullptr;
 		mCurrentDomainProgram = nullptr;
 		mCurrentComputeProgram = nullptr;
+		mMainCommandBuffer = nullptr;
 
 		if (mGLSupport)
 			mGLSupport->stop();
@@ -283,21 +288,31 @@ namespace bs { namespace ct
 				// Alpha to coverage
 				setAlphaToCoverage(stateProps.getAlphaToCoverageEnabled());
 
-				// Blend states
-				// OpenGL doesn't allow us to specify blend state per render target, so we just use the first one.
-				if (stateProps.getBlendEnabled(0))
+				for(UINT32 i = 0; i < BS_MAX_MULTIPLE_RENDER_TARGETS; i++)
 				{
-					setSceneBlending(stateProps.getSrcBlend(0), stateProps.getDstBlend(0), stateProps.getAlphaSrcBlend(0),
-						stateProps.getAlphaDstBlend(0), stateProps.getBlendOperation(0), stateProps.getAlphaBlendOperation(0));
-				}
-				else
-				{
-					setSceneBlending(BF_ONE, BF_ZERO, BO_ADD);
+					// Blending
+					if (stateProps.getBlendEnabled(i))
+					{
+						setSceneBlending(i,
+							stateProps.getSrcBlend(i),
+							stateProps.getDstBlend(i),
+							stateProps.getAlphaSrcBlend(i),
+							stateProps.getAlphaDstBlend(i),
+							stateProps.getBlendOperation(i),
+							stateProps.getAlphaBlendOperation(i));
+					}
+					else
+						setSceneBlending(i, BF_ONE, BF_ZERO, BO_ADD);
+
+					// Color write mask
+					UINT8 writeMask = stateProps.getRenderTargetWriteMask(i);
+					setColorBufferWriteEnabled(i,
+						(writeMask & 0x1) != 0,
+						(writeMask & 0x2) != 0,
+						(writeMask & 0x4) != 0,
+						(writeMask & 0x8) != 0);
 				}
 
-				// Color write mask
-				UINT8 writeMask = stateProps.getRenderTargetWriteMask(0);
-				setColorBufferWriteEnabled((writeMask & 0x1) != 0, (writeMask & 0x2) != 0, (writeMask & 0x4) != 0, (writeMask & 0x8) != 0);
 			}
 
 			// Rasterizer state
@@ -320,11 +335,11 @@ namespace bs { namespace ct
 				// Set stencil buffer options
 				setStencilCheckEnabled(stateProps.getStencilEnable());
 
-				setStencilBufferOperations(stateProps.getStencilFrontFailOp(), stateProps.getStencilFrontZFailOp(), 
+				setStencilBufferOperations(stateProps.getStencilFrontFailOp(), stateProps.getStencilFrontZFailOp(),
 					stateProps.getStencilFrontPassOp(), true);
 				setStencilBufferFunc(stateProps.getStencilFrontCompFunc(), stateProps.getStencilReadMask(), true);
 
-				setStencilBufferOperations(stateProps.getStencilBackFailOp(), stateProps.getStencilBackZFailOp(), 
+				setStencilBufferOperations(stateProps.getStencilBackFailOp(), stateProps.getStencilBackZFailOp(),
 					stateProps.getStencilBackPassOp(), false);
 				setStencilBufferFunc(stateProps.getStencilBackCompFunc(), stateProps.getStencilReadMask(), false);
 
@@ -337,15 +352,10 @@ namespace bs { namespace ct
 			}
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(pipelineState);
-		else
-		{
-			auto execute = [=]() { executeRef(pipelineState); };
+		auto execute = [=]() { executeRef(pipelineState); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
 		BS_INC_RENDER_STAT(NumPipelineStateChanges);
 	}
@@ -367,15 +377,10 @@ namespace bs { namespace ct
 				mCurrentComputeProgram = nullptr;
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(pipelineState);
-		else
-		{
-			auto execute = [=]() { executeRef(pipelineState); };
+		auto execute = [=]() { executeRef(pipelineState); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
 		BS_INC_RENDER_STAT(NumPipelineStateChanges);
 	}
@@ -464,7 +469,7 @@ namespace bs { namespace ct
 						GLuint texId;
 						if (glTex != nullptr)
 						{
-#if BS_OPENGL_4_3 || BS_OPENGLES_3_1 
+#if BS_OPENGL_4_3 || BS_OPENGLES_3_1
 							SPtr<TextureView> texView = glTex->requestView(
 								surface.mipLevel,
 								surface.numMipLevels,
@@ -484,7 +489,8 @@ namespace bs { namespace ct
 								(surface.numMipLevels != 0 && surface.numMipLevels != props.getNumMipmaps()) ||
 								(surface.numFaces != 0 && surface.numFaces != props.getNumFaces()))
 							{
-								LOGWRN("Attempting to bind only a part of a texture, but texture views are not supported. "
+								BS_LOG(Warning, RenderBackend,
+									"Attempting to bind only a part of a texture, but texture views are not supported. "
 									"Entire texture will be bound instead.");
 							}
 
@@ -677,15 +683,15 @@ namespace bs { namespace ct
 
 							if(!bindAllLayers && surface.numFaces > 1)
 							{
-								LOGWRN("Attempting to bind multiple faces of a load-store texture. You are allowed to bind \
-									either a single face, or all the faces of the texture. Only the first face will \
-									be bound instead.");
+								BS_LOG(Warning, RenderBackend, "Attempting to bind multiple faces of a load-store texture."
+									"You are allowed to bind either a single face, or all the faces of the texture. Only "
+									"the first face will be bound instead.");
 							}
 
 							if(surface.numMipLevels > 1)
 							{
-								LOGWRN("Attempting to bind multiple mip levels of a load-store texture. This is not \
-									supported and only the first provided level will be bound.");
+								BS_LOG(Warning, RenderBackend, "Attempting to bind multiple mip levels of a load-store "
+									"texture. This is not supported and only the first provided level will be bound.");
 							}
 
 							texId = tex->getGLID();
@@ -885,15 +891,10 @@ namespace bs { namespace ct
 			activateGLTextureUnit(0);
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(gpuParams);
-		else
-		{
-			auto execute = [=]() { executeRef(gpuParams); };
+		auto execute = [=]() { executeRef(gpuParams); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
 		BS_INC_RENDER_STAT(NumGpuParamBinds);
 	}
@@ -907,15 +908,10 @@ namespace bs { namespace ct
 			setStencilRefValue(stencilRefValue);
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(stencilRefValue);
-		else
-		{
-			auto execute = [=]() { executeRef(stencilRefValue); };
+		auto execute = [=]() { executeRef(stencilRefValue); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::setViewport(const Rect2& area,
@@ -929,18 +925,13 @@ namespace bs { namespace ct
 			applyViewport();
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(area);
-		else
-		{
-			auto execute = [=]() { executeRef(area); };
+		auto execute = [=]() { executeRef(area); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
-	void GLRenderAPI::setRenderTarget(const SPtr<RenderTarget>& target, UINT32 readOnlyFlags, 
+	void GLRenderAPI::setRenderTarget(const SPtr<RenderTarget>& target, UINT32 readOnlyFlags,
 		RenderSurfaceMask loadMask, const SPtr<CommandBuffer>& commandBuffer)
 	{
 		auto executeRef = [&](const SPtr<RenderTarget>& target, UINT32 readOnlyFlags)
@@ -962,6 +953,7 @@ namespace bs { namespace ct
 
 			// This must happen after context switch to ensure previous context is still alive
 			mActiveRenderTarget = target;
+			mActiveRenderTargetModified = false;
 
 			GLFrameBufferObject* fbo = nullptr;
 
@@ -993,53 +985,44 @@ namespace bs { namespace ct
 			applyViewport();
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(target, readOnlyFlags);
-		else
-		{
-			auto execute = [=]() { executeRef(target, readOnlyFlags); };
+		auto execute = [=]() { executeRef(target, readOnlyFlags); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
 		BS_INC_RENDER_STAT(NumRenderTargetChanges);
 	}
 
-	void GLRenderAPI::setVertexBuffers(UINT32 index, SPtr<VertexBuffer>* buffers, UINT32 numBuffers, 
+	void GLRenderAPI::setVertexBuffers(UINT32 index, SPtr<VertexBuffer>* buffers, UINT32 numBuffers,
 		const SPtr<CommandBuffer>& commandBuffer)
 	{
 #if BS_DEBUG_MODE
 		UINT32 lastIdx = index + numBuffers;
 		if(lastIdx > MAX_VB_COUNT)
 		{
-			LOGERR("Provided vertex buffer slot range is invalid: " + toString(index) + " to " + 
-				toString(index + numBuffers) + ".");
+			BS_LOG(Error, RenderBackend, "Provided vertex buffer slot range is invalid: {0} to {1}.",
+				index, index + numBuffers);
 			return;
 		}
 #endif
 
-		auto executeRef = [&](UINT32 index, SPtr<VertexBuffer>* buffers, UINT32 numBuffers)
+		auto executeRef = [&](UINT32 index, const SmallVector<SPtr<VertexBuffer>, 8>& buffers, UINT32 numBuffers)
 		{
 			THROW_IF_NOT_CORE_THREAD;
 
-			std::array<SPtr<VertexBuffer>, MAX_VB_COUNT> boundBuffers;
 			for (UINT32 i = 0; i < numBuffers; i++)
-				boundBuffers[index + i] = buffers[i];
-
-			for (UINT32 i = 0; i < numBuffers; i++)
-				mBoundVertexBuffers[index + i] = boundBuffers[index + i];
+				mBoundVertexBuffers[index + i] = buffers[i];
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(index, buffers, numBuffers);
-		else
-		{
-			auto execute = [=]() { executeRef(index, buffers, numBuffers); };
+		SmallVector<SPtr<VertexBuffer>, 8> _buffers;
+		for (UINT32 i = 0; i < numBuffers; i++)
+			_buffers.add(buffers[i]);
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		auto execute = [executeRef, index, buffers = std::move(_buffers), numBuffers]()
+		{ executeRef(index, buffers, numBuffers); };
+
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::setVertexDeclaration(const SPtr<VertexDeclaration>& vertexDeclaration,
@@ -1052,15 +1035,10 @@ namespace bs { namespace ct
 			mBoundVertexDeclaration = vertexDeclaration;
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(vertexDeclaration);
-		else
-		{
-			auto execute = [=]() { executeRef(vertexDeclaration); };
+		auto execute = [=]() { executeRef(vertexDeclaration); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::setDrawOperation(DrawOperationType op, const SPtr<CommandBuffer>& commandBuffer)
@@ -1072,17 +1050,10 @@ namespace bs { namespace ct
 			mCurrentDrawOperation = op;
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(op);
-		else
-		{
-			auto execute = [=]() { executeRef(op); };
+		auto execute = [=]() { executeRef(op); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-
-			cb->mCurrentDrawOperation = op;
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::setIndexBuffer(const SPtr<IndexBuffer>& buffer, const SPtr<CommandBuffer>& commandBuffer)
@@ -1094,18 +1065,13 @@ namespace bs { namespace ct
 			mBoundIndexBuffer = buffer;
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(buffer);
-		else
-		{
-			auto execute = [=]() { executeRef(buffer); };
+		auto execute = [=]() { executeRef(buffer); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
-	void GLRenderAPI::draw(UINT32 vertexOffset, UINT32 vertexCount, UINT32 instanceCount, 
+	void GLRenderAPI::draw(UINT32 vertexOffset, UINT32 vertexCount, UINT32 instanceCount,
 		const SPtr<CommandBuffer>& commandBuffer)
 	{
 		auto executeRef = [&](UINT32 vertexOffset, UINT32 vertexCount, UINT32 instanceCount)
@@ -1130,22 +1096,12 @@ namespace bs { namespace ct
 			endDraw();
 		};
 
-		UINT32 primCount;
-		if (commandBuffer == nullptr)
-		{
-			executeRef(vertexOffset, vertexCount, instanceCount);
+		auto execute = [=]() { executeRef(vertexOffset, vertexCount, instanceCount); };
 
-			primCount = vertexCountToPrimCount(mCurrentDrawOperation, vertexCount);
-		}
-		else
-		{
-			auto execute = [=]() { executeRef(vertexOffset, vertexCount, instanceCount); };
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-
-			primCount = vertexCountToPrimCount(cb->mCurrentDrawOperation, vertexCount);
-		}
+		UINT32 primCount = vertexCountToPrimCount(mCurrentDrawOperation, vertexCount);
 
 		BS_INC_RENDER_STAT(NumDrawCalls);
 		BS_ADD_RENDER_STAT(NumVertices, vertexCount);
@@ -1162,7 +1118,7 @@ namespace bs { namespace ct
 
 			if (mBoundIndexBuffer == nullptr)
 			{
-				LOGWRN("Cannot draw indexed because index buffer is not set.");
+				BS_LOG(Warning, RenderBackend, "Cannot draw indexed because index buffer is not set.");
 				return;
 			}
 
@@ -1203,22 +1159,12 @@ namespace bs { namespace ct
 			endDraw();
 		};
 
-		UINT32 primCount;
-		if (commandBuffer == nullptr)
-		{
-			executeRef(startIndex, indexCount, vertexOffset, vertexCount, instanceCount);
+		auto execute = [=]() { executeRef(startIndex, indexCount, vertexOffset, vertexCount, instanceCount); };
 
-			primCount = vertexCountToPrimCount(mCurrentDrawOperation, vertexCount);
-		}
-		else
-		{
-			auto execute = [=]() { executeRef(startIndex, indexCount, vertexOffset, vertexCount, instanceCount); };
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-
-			primCount = vertexCountToPrimCount(cb->mCurrentDrawOperation, vertexCount);
-		}
+		UINT32 primCount = vertexCountToPrimCount(mCurrentDrawOperation, vertexCount);
 
 		BS_INC_RENDER_STAT(NumDrawCalls);
 		BS_ADD_RENDER_STAT(NumVertices, vertexCount);
@@ -1227,7 +1173,7 @@ namespace bs { namespace ct
 		BS_INC_RENDER_STAT(NumIndexBufferBinds);
 	}
 
-	void GLRenderAPI::dispatchCompute(UINT32 numGroupsX, UINT32 numGroupsY, UINT32 numGroupsZ, 
+	void GLRenderAPI::dispatchCompute(UINT32 numGroupsX, UINT32 numGroupsY, UINT32 numGroupsZ,
 		const SPtr<CommandBuffer>& commandBuffer)
 	{
 		auto executeRef = [&](UINT32 numGroupsX, UINT32 numGroupsY, UINT32 numGroupsZ)
@@ -1236,7 +1182,7 @@ namespace bs { namespace ct
 
 			if (mCurrentComputeProgram == nullptr)
 			{
-				LOGWRN("Cannot dispatch compute without a set compute program.");
+				BS_LOG(Warning, RenderBackend, "Cannot dispatch compute without a set compute program.");
 				return;
 			}
 
@@ -1249,24 +1195,19 @@ namespace bs { namespace ct
 
 			glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #else
-			LOGWRN("Compute shaders not supported on current OpenGL version.");
+			BS_LOG(Warning, RenderBackend, "Compute shaders not supported on current OpenGL version.");
 #endif
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(numGroupsX, numGroupsY, numGroupsZ);
-		else
-		{
-			auto execute = [=]() { executeRef(numGroupsX, numGroupsY, numGroupsZ); };
+		auto execute = [=]() { executeRef(numGroupsX, numGroupsY, numGroupsZ); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 
 		BS_INC_RENDER_STAT(NumComputeCalls);
 	}
 
-	void GLRenderAPI::setScissorRect(UINT32 left, UINT32 top, UINT32 right, UINT32 bottom, 
+	void GLRenderAPI::setScissorRect(UINT32 left, UINT32 top, UINT32 right, UINT32 bottom,
 		const SPtr<CommandBuffer>& commandBuffer)
 	{
 		auto executeRef = [&](UINT32 left, UINT32 top, UINT32 right, UINT32 bottom)
@@ -1277,17 +1218,15 @@ namespace bs { namespace ct
 			mScissorBottom = bottom;
 			mScissorLeft = left;
 			mScissorRight = right;
+
+			if(mScissorEnabled)
+				mScissorRectDirty = true;
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(left, top, right, bottom);
-		else
-		{
-			auto execute = [=]() { executeRef(left, top, right, bottom); };
+		auto execute = [=]() { executeRef(left, top, right, bottom); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::clearRenderTarget(UINT32 buffers, const Color& color, float depth, UINT16 stencil, UINT8 targetMask,
@@ -1304,15 +1243,10 @@ namespace bs { namespace ct
 			clearArea(buffers, color, depth, stencil, clearRect, targetMask);
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(buffers, color, depth, stencil, targetMask);
-		else
-		{
-			auto execute = [=]() { executeRef(buffers, color, depth, stencil, targetMask); };
+		auto execute = [=]() { executeRef(buffers, color, depth, stencil, targetMask); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::clearViewport(UINT32 buffers, const Color& color, float depth, UINT16 stencil, UINT8 targetMask,
@@ -1325,15 +1259,10 @@ namespace bs { namespace ct
 			clearArea(buffers, color, depth, stencil, clearRect, targetMask);
 		};
 
-		if (commandBuffer == nullptr)
-			executeRef(buffers, color, depth, stencil, targetMask);
-		else
-		{
-			auto execute = [=]() { executeRef(buffers, color, depth, stencil, targetMask); };
+		auto execute = [=]() { executeRef(buffers, color, depth, stencil, targetMask); };
 
-			SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-			cb->queueCommand(execute);
-		}
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
+		cb->queueCommand(execute);
 	}
 
 	void GLRenderAPI::swapBuffers(const SPtr<RenderTarget>& target, UINT32 syncMask)
@@ -1343,6 +1272,8 @@ namespace bs { namespace ct
 		// Switch context if different from current one
 		if(!target->getProperties().isWindow)
 			return;
+
+		submitCommandBuffer(mMainCommandBuffer, syncMask);
 
 		RenderWindow* window = static_cast<RenderWindow*>(target.get());
 
@@ -1360,23 +1291,34 @@ namespace bs { namespace ct
 
 	void GLRenderAPI::addCommands(const SPtr<CommandBuffer>& commandBuffer, const SPtr<CommandBuffer>& secondary)
 	{
-		SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-		SPtr<GLCommandBuffer> secondaryCb = std::static_pointer_cast<GLCommandBuffer>(secondary);
-
-		cb->appendSecondary(secondaryCb);
+		// We're not supporting this as we don't support command buffer command queuing at all (i.e. they are executed
+		// straight away).
+		BS_LOG(Error, RenderBackend, "Secondary command buffers not supported on OpenGL.");
 	}
 
 	void GLRenderAPI::submitCommandBuffer(const SPtr<CommandBuffer>& commandBuffer, UINT32 syncMask)
 	{
-		SPtr<GLCommandBuffer> cb = std::static_pointer_cast<GLCommandBuffer>(commandBuffer);
-		if (cb == nullptr)
-			return;
-
+		SPtr<GLCommandBuffer> cb = getCB(commandBuffer);
 		cb->executeCommands();
-		cb->clear();
+
+		if (cb == mMainCommandBuffer)
+			mMainCommandBuffer = std::static_pointer_cast<GLCommandBuffer>(CommandBuffer::create(GQT_GRAPHICS));
 	}
 
-	void GLRenderAPI::clearArea(UINT32 buffers, const Color& color, float depth, UINT16 stencil, const Rect2I& clearRect, 
+	SPtr<CommandBuffer> GLRenderAPI::getMainCommandBuffer() const
+	{
+		return mMainCommandBuffer;
+	}
+
+	SPtr<GLCommandBuffer> GLRenderAPI::getCB(const SPtr<CommandBuffer>& buffer)
+	{
+		if (buffer != nullptr)
+			return std::static_pointer_cast<GLCommandBuffer>(buffer);
+
+		return std::static_pointer_cast<GLCommandBuffer>(mMainCommandBuffer);
+	}
+
+	void GLRenderAPI::clearArea(UINT32 buffers, const Color& color, float depth, UINT16 stencil, const Rect2I& clearRect,
 		UINT8 targetMask)
 	{
 		THROW_IF_NOT_CORE_THREAD;
@@ -1384,7 +1326,21 @@ namespace bs { namespace ct
 		if(mActiveRenderTarget == nullptr)
 			return;
 
-		bool colorMask = !mColorWrite[0] || !mColorWrite[1] || !mColorWrite[2] || !mColorWrite[3]; 
+		UINT32 numColorBuffers = 1;
+		bool colorMasks[BS_MAX_MULTIPLE_RENDER_TARGETS] = { 0 };
+		if(!mActiveRenderTarget->getProperties().isWindow)
+		{
+			RenderTexture* renderTexture = static_cast<RenderTexture*>(mActiveRenderTarget.get());
+
+			for(UINT32 i = 0; i < BS_MAX_MULTIPLE_RENDER_TARGETS; i++)
+			{
+				SPtr<Texture> texture = renderTexture->getColorTexture(i);
+				if(texture)
+					colorMasks[i] = !mColorWrite[i][0] || !mColorWrite[i][1] || !mColorWrite[i][2] || !mColorWrite[i][3];
+			}
+		}
+		else
+			colorMasks[0] = !mColorWrite[0][0] || !mColorWrite[0][1] || !mColorWrite[0][2] || !mColorWrite[0][3];
 
 		// Disable scissor test as we want to clear the entire render surface
 		GLboolean scissorTestEnabled = glIsEnabled(GL_SCISSOR_TEST);
@@ -1413,10 +1369,13 @@ namespace bs { namespace ct
 		if (buffers & FBT_COLOR)
 		{
 			// Enable buffer for writing if it isn't
-			if (colorMask)
+			for(UINT32 i = 0; i < BS_MAX_MULTIPLE_RENDER_TARGETS; i++)
 			{
-				glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-				BS_CHECK_GL_ERROR();
+				if (colorMasks[i])
+				{
+					glColorMaski(i, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+					BS_CHECK_GL_ERROR();
+				}
 			}
 		}
 		if (buffers & FBT_DEPTH)
@@ -1528,10 +1487,16 @@ namespace bs { namespace ct
 			BS_CHECK_GL_ERROR();
 		}
 
-		if (colorMask && (buffers & FBT_COLOR))
+		if ((buffers & FBT_COLOR))
 		{
-			glColorMask(mColorWrite[0], mColorWrite[1], mColorWrite[2], mColorWrite[3]);
-			BS_CHECK_GL_ERROR();
+			for(UINT32 i = 0; i < BS_MAX_MULTIPLE_RENDER_TARGETS; i++)
+			{
+				if(colorMasks[i])
+				{
+					glColorMaski(i, mColorWrite[i][0], mColorWrite[i][1], mColorWrite[i][2], mColorWrite[i][3]);
+					BS_CHECK_GL_ERROR();
+				}
+			}
 		}
 
 		if (buffers & FBT_STENCIL)
@@ -1540,6 +1505,7 @@ namespace bs { namespace ct
 			BS_CHECK_GL_ERROR();
 		}
 
+		notifyRenderTargetModified();
 		BS_INC_RENDER_STAT(NumClears);
 	}
 
@@ -1581,21 +1547,21 @@ namespace bs { namespace ct
 		BS_CHECK_GL_ERROR();
 	}
 
-	void GLRenderAPI::setSceneBlending(BlendFactor sourceFactor, BlendFactor destFactor, BlendOperation op)
+	void GLRenderAPI::setSceneBlending(UINT32 target, BlendFactor sourceFactor, BlendFactor destFactor, BlendOperation op)
 	{
 		GLint sourceBlend = getBlendMode(sourceFactor);
 		GLint destBlend = getBlendMode(destFactor);
 		if(sourceFactor == BF_ONE && destFactor == BF_ZERO)
 		{
-			glDisable(GL_BLEND);
+			glDisablei(GL_BLEND, target);
 			BS_CHECK_GL_ERROR();
 		}
 		else
 		{
-			glEnable(GL_BLEND);
+			glEnablei(GL_BLEND, target);
 			BS_CHECK_GL_ERROR();
 
-			glBlendFunc(sourceBlend, destBlend);
+			glBlendFunci(target, sourceBlend, destBlend);
 			BS_CHECK_GL_ERROR();
 		}
 
@@ -1619,11 +1585,11 @@ namespace bs { namespace ct
 			break;
 		}
 
-		glBlendEquation(func);
+		glBlendEquationi(target, func);
 		BS_CHECK_GL_ERROR();
 	}
 
-	void GLRenderAPI::setSceneBlending(BlendFactor sourceFactor, BlendFactor destFactor, 
+	void GLRenderAPI::setSceneBlending(UINT32 target, BlendFactor sourceFactor, BlendFactor destFactor,
 		BlendFactor sourceFactorAlpha, BlendFactor destFactorAlpha, BlendOperation op, BlendOperation alphaOp)
 	{
 		GLint sourceBlend = getBlendMode(sourceFactor);
@@ -1633,15 +1599,15 @@ namespace bs { namespace ct
 
 		if(sourceFactor == BF_ONE && destFactor == BF_ZERO && sourceFactorAlpha == BF_ONE && destFactorAlpha == BF_ZERO)
 		{
-			glDisable(GL_BLEND);
+			glDisablei(GL_BLEND, target);
 			BS_CHECK_GL_ERROR();
 		}
 		else
 		{
-			glEnable(GL_BLEND);
+			glEnablei(GL_BLEND, target);
 			BS_CHECK_GL_ERROR();
 
-			glBlendFuncSeparate(sourceBlend, destBlend, sourceBlendAlpha, destBlendAlpha);
+			glBlendFuncSeparatei(target, sourceBlend, destBlend, sourceBlendAlpha, destBlendAlpha);
 			BS_CHECK_GL_ERROR();
 		}
 
@@ -1685,7 +1651,7 @@ namespace bs { namespace ct
 			break;
 		}
 
-		glBlendEquationSeparate(func, alphaFunc);
+		glBlendEquationSeparatei(target, func, alphaFunc);
 		BS_CHECK_GL_ERROR();
 	}
 
@@ -1737,7 +1703,7 @@ namespace bs { namespace ct
 
 			// GL requires you to reset the scissor when disabling
 			x = mViewportLeft;
-			y = rtProps.height - (mViewportTop + mViewportHeight); 
+			y = rtProps.height - (mViewportTop + mViewportHeight);
 			w = mViewportWidth;
 			h = mViewportHeight;
 
@@ -1746,6 +1712,7 @@ namespace bs { namespace ct
 		}
 
 		mScissorEnabled = enable;
+		mScissorRectDirty = false;
 	}
 
 	void GLRenderAPI::setMultisamplingEnable(bool enable)
@@ -1837,7 +1804,7 @@ namespace bs { namespace ct
 	void GLRenderAPI::setDepthBufferWriteEnabled(bool enabled)
 	{
 		GLboolean flag = enabled ? GL_TRUE : GL_FALSE;
-		glDepthMask(flag);  
+		glDepthMask(flag);
 		BS_CHECK_GL_ERROR();
 
 		mDepthWrite = enabled;
@@ -1879,15 +1846,18 @@ namespace bs { namespace ct
 		}
 	}
 
-	void GLRenderAPI::setColorBufferWriteEnabled(bool red, bool green, bool blue, bool alpha)
+	void GLRenderAPI::setColorBufferWriteEnabled(UINT32 target, bool red, bool green, bool blue, bool alpha)
 	{
-		glColorMask(red, green, blue, alpha);
+		glColorMaski(target, red, green, blue, alpha);
 		BS_CHECK_GL_ERROR();
 
-		mColorWrite[0] = red;
-		mColorWrite[1] = blue;
-		mColorWrite[2] = green;
-		mColorWrite[3] = alpha;
+		if(target < BS_MAX_MULTIPLE_RENDER_TARGETS)
+		{
+			mColorWrite[target][0] = red;
+			mColorWrite[target][1] = blue;
+			mColorWrite[target][2] = green;
+			mColorWrite[target][3] = alpha;
+		}
 	}
 
 	void GLRenderAPI::setPolygonMode(PolygonMode level)
@@ -2072,8 +2042,8 @@ namespace bs { namespace ct
 			}
 			else
 			{
-				LOGWRN("Provided texture unit index is higher than OpenGL supports. Provided: " + toString(unit) + 
-					". Supported range: 0 .. " + toString(getCapabilities(0).numCombinedTextureUnits - 1));
+				BS_LOG(Warning, RenderBackend, "Provided texture unit index is higher than OpenGL supports. Provided: {0}. "
+					"Supported range: 0 .. {1}", unit, getCapabilities(0).numCombinedTextureUnits - 1);
 				return false;
 			}
 		}
@@ -2092,17 +2062,23 @@ namespace bs { namespace ct
 
 		if(mCurrentVertexProgram == nullptr)
 		{
-			LOGWRN("Cannot render without a set vertex shader.");
+			BS_LOG(Warning, RenderBackend, "Cannot render without a set vertex shader.");
 			return;
 		}
 
 		if(mBoundVertexDeclaration == nullptr)
 		{
-			LOGWRN("Cannot render without a set vertex declaration.");
+			BS_LOG(Warning, RenderBackend, "Cannot render without a set vertex declaration.");
 			return;
 		}
 
-		const GLSLProgramPipeline* pipeline = mProgramPipelineManager->getPipeline(mCurrentVertexProgram.get(), 
+		if(mScissorRectDirty)
+		{
+			assert(mScissorEnabled);
+			setScissorTestEnable(true);
+		}
+
+		const GLSLProgramPipeline* pipeline = mProgramPipelineManager->getPipeline(mCurrentVertexProgram.get(),
 			mCurrentFragmentProgram.get(), mCurrentGeometryProgram.get(), mCurrentHullProgram.get(), mCurrentDomainProgram.get());
 
 		glUseProgram(0);
@@ -2121,7 +2097,7 @@ namespace bs { namespace ct
 			mBoundVertexDeclaration,
 			mBoundVertexBuffers);
 
-		glBindVertexArray(vao.getGLHandle()); 
+		glBindVertexArray(vao.getGLHandle());
 		BS_CHECK_GL_ERROR();
 
 		BS_INC_RENDER_STAT(NumVertexBufferBinds);
@@ -2136,6 +2112,7 @@ namespace bs { namespace ct
 		glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #endif
 
+		notifyRenderTargetModified();
 		mDrawCallInProgress = false;
 	}
 
@@ -2350,7 +2327,7 @@ namespace bs { namespace ct
 	{
 		if(caps->renderAPIName != getName())
 		{
-			BS_EXCEPT(InvalidParametersException, 
+			BS_EXCEPT(InvalidParametersException,
 				"Trying to initialize GLRenderAPI from RenderSystemCapabilities that do not support OpenGL");
 		}
 
@@ -2393,12 +2370,13 @@ namespace bs { namespace ct
 		mCurrentContext = context;
 		mCurrentContext->setCurrent(window);
 
-		// Must reset depth/colour write mask to according with user desired, otherwise, clearFrameBuffer would be wrong 
+		// Must reset depth/colour write mask to according with user desired, otherwise, clearFrameBuffer would be wrong
 		// because the value we recorded may be different from the real state stored in GL context.
 		glDepthMask(mDepthWrite);
 		BS_CHECK_GL_ERROR();
 
-		glColorMask(mColorWrite[0], mColorWrite[1], mColorWrite[2], mColorWrite[3]);
+		for(UINT32 i = 0; i < BS_MAX_MULTIPLE_RENDER_TARGETS; i++)
+			glColorMask(mColorWrite[i][0], mColorWrite[i][1], mColorWrite[i][2], mColorWrite[i][3]);
 		BS_CHECK_GL_ERROR();
 
 		glStencilMask(mStencilWriteMask);
@@ -2553,7 +2531,7 @@ namespace bs { namespace ct
 			caps.numGpuParamBlockBuffersPerStage[GPT_DOMAIN_PROGRAM] = numUniformBlocks;
 		}
 
-		if (mGLSupport->checkExtension("GL_ARB_compute_shader")) 
+		if (mGLSupport->checkExtension("GL_ARB_compute_shader"))
 		{
 #if BS_OPENGL_4_3 || BS_OPENGLES_3_1
 			caps.setCapability(RSC_COMPUTE_PROGRAM);
@@ -2666,6 +2644,15 @@ namespace bs { namespace ct
 			glScissor(mViewportLeft, mViewportTop, mViewportWidth, mViewportHeight);
 			BS_CHECK_GL_ERROR();
 		}
+	}
+
+	void GLRenderAPI::notifyRenderTargetModified()
+	{
+		if (mActiveRenderTarget == nullptr || mActiveRenderTargetModified)
+			return;
+
+		mActiveRenderTarget->_tickUpdateCount();
+		mActiveRenderTargetModified = true;
 	}
 
 	/************************************************************************/

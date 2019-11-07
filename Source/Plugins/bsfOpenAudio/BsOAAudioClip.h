@@ -19,7 +19,7 @@ namespace bs
 		OAAudioClip(const SPtr<DataStream>& samples, UINT32 streamSize, UINT32 numSamples, const AUDIO_CLIP_DESC& desc);
 		virtual ~OAAudioClip();
 
-		/** 
+		/**
 		 * Returns audio samples in PCM format, channel data interleaved. Only available if the audio data has been created
 		 * with AudioReadMode::Stream, AudioReadMode::LoadCompressed (and the format is compressed), or if @p keepSourceData
 		 * was enabled on creation.
@@ -50,13 +50,13 @@ namespace bs
 	private:
 		mutable Mutex mMutex;
 		mutable OggVorbisDecoder mVorbisReader;
-		bool mNeedsDecompression;
-		UINT32 mBufferId;
+		bool mNeedsDecompression = false;
+		UINT32 mBufferId = (UINT32)-1;
 
 		// These streams exist to save original audio data in case it's needed later (usually for saving with the editor, or
 		// manual data manipulation). In normal usage (in-game) these will be null so no memory is wasted.
 		SPtr<DataStream> mSourceStreamData;
-		UINT32 mSourceStreamSize;
+		UINT32 mSourceStreamSize = 0;
 	};
 
 	/** @} */

@@ -129,7 +129,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines a normal of the plane to orient particles towards. Only used if particle orientation mode is set to  
+		/// Determines a normal of the plane to orient particles towards. Only used if particle orientation mode is set to 
 		/// ParticleOrientation::Plane.
 		/// </summary>
 		[ShowInInspector]
@@ -147,7 +147,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Determines how (and if) are particles sorted. Sorting controls in what order are particles rendered.  If GPU 
+		/// Determines how (and if) are particles sorted. Sorting controls in what order are particles rendered. If GPU 
 		/// simulation is enabled only distance based sorting is supported.
 		/// </summary>
 		[ShowInInspector]

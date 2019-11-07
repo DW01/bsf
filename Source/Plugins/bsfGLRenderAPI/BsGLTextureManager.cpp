@@ -13,11 +13,6 @@ namespace bs
 
 	}
 
-	GLTextureManager::~GLTextureManager()
-	{
-
-	}
-
 	SPtr<RenderTexture> GLTextureManager::createRenderTextureImpl(const RENDER_TEXTURE_DESC& desc)
 	{
 		GLRenderTexture* tex = new (bs_alloc<GLRenderTexture>()) GLRenderTexture(desc);
@@ -51,7 +46,7 @@ namespace bs
 		return texPtr;
 	}
 
-	SPtr<RenderTexture> GLTextureManager::createRenderTextureInternal(const RENDER_TEXTURE_DESC& desc, 
+	SPtr<RenderTexture> GLTextureManager::createRenderTextureInternal(const RENDER_TEXTURE_DESC& desc,
 																			  UINT32 deviceIdx)
 	{
 		SPtr<GLRenderTexture> texPtr = bs_shared_ptr_new<GLRenderTexture>(desc, deviceIdx);

@@ -18,7 +18,6 @@ set(BS_UTILITY_INC_PREREQUISITES
 	"bsfUtility/Prerequisites/BsPrerequisitesUtil.h"
 	"bsfUtility/Prerequisites/BsPlatformDefines.h"
 	"bsfUtility/Prerequisites/BsFwdDeclUtil.h"
-	"bsfUtility/Prerequisites/BsRTTIPrerequisites.h"
 )
 
 set(BS_UTILITY_INC_IMAGE
@@ -51,6 +50,7 @@ set(BS_UTILITY_SRC_UTILITY
 	"bsfUtility/Utility/BsTriangulation.cpp"
 	"bsfUtility/Utility/BsUUID.cpp"
 	"bsfUtility/Utility/BsLookupTable.cpp"
+	"bsfUtility/Utility/BsBitstream.cpp"
 )
 
 set(BS_UTILITY_INC_DEBUG
@@ -81,6 +81,9 @@ set(BS_UTILITY_INC_UTILITY
 	"bsfUtility/Utility/BsAny.h"
 	"bsfUtility/Utility/BsBitfield.h"
 	"bsfUtility/Utility/BsBitwise.h"
+	"bsfUtility/Utility/BsBitstream.h"
+	"bsfUtility/Utility/BsBitLength.h"
+	"bsfUtility/Utility/BsBufferedBitstream.h"
 	"bsfUtility/Utility/BsDynLib.h"
 	"bsfUtility/Utility/BsDynLibManager.h"
 	"bsfUtility/Utility/BsEvent.h"
@@ -104,6 +107,7 @@ set(BS_UTILITY_INC_UTILITY
 	"bsfUtility/Utility/BsDynArray.h"
 	"bsfUtility/Utility/BsMinHeap.h"
 	"bsfUtility/Utility/BsDenseMap.h"
+	"bsfUtility/Utility/BsUSPtr.h"
 )
 
 set(BS_UTILITY_SRC_ALLOCATORS
@@ -116,6 +120,7 @@ set(BS_UTILITY_SRC_REFLECTION
 	"bsfUtility/Reflection/BsIReflectable.cpp"
 	"bsfUtility/Reflection/BsRTTIField.cpp"
 	"bsfUtility/Reflection/BsRTTIType.cpp"
+	"bsfUtility/Reflection/BsRTTIPlain.h"
 )
 
 set(BS_UTILITY_SRC_DEBUG
@@ -125,9 +130,22 @@ set(BS_UTILITY_SRC_DEBUG
 )
 
 set(BS_UTILITY_INC_RTTI
-	"bsfUtility/Private/RTTI/BsSerializedObjectRTTI.h"
-	"bsfUtility/Private/RTTI/BsIReflectableRTTI.h"
-	"bsfUtility/Private/RTTI/BsColorGradientRTTI.h"
+	"bsfUtility/RTTI/BsSerializedObjectRTTI.h"
+	"bsfUtility/RTTI/BsIReflectableRTTI.h"
+	"bsfUtility/RTTI/BsColorGradientRTTI.h"
+	"bsfUtility/RTTI/BsStringRTTI.h"
+	"bsfUtility/RTTI/BsSmallVectorRTTI.h"
+	"bsfUtility/RTTI/BsFlagsRTTI.h"
+	"bsfUtility/RTTI/BsStdRTTI.h"
+	"bsfUtility/RTTI/BsPathRTTI.h"
+	"bsfUtility/RTTI/BsStringIDRTTI.h"
+	"bsfUtility/RTTI/BsDataBlobRTTI.h"
+	"bsfUtility/RTTI/BsMathRTTI.h"
+	"bsfUtility/RTTI/BsRectOffsetRTTI.h"
+	"bsfUtility/RTTI/BsColorRTTI.h"
+	"bsfUtility/RTTI/BsUUIDRTTI.h"
+	"bsfUtility/RTTI/BsRTTISchemaRTTI.h"
+	"bsfUtility/RTTI/BsBitLengthRTTI.h"
 )
 
 set(BS_UTILITY_INC_ALLOCATORS
@@ -191,12 +209,13 @@ set(BS_UTILITY_SRC_TESTING
 )
 
 set(BS_UTILITY_SRC_SERIALIZATION
-	"bsfUtility/Serialization/BsMemorySerializer.cpp"
 	"bsfUtility/Serialization/BsFileSerializer.cpp"
 	"bsfUtility/Serialization/BsBinarySerializer.cpp"
 	"bsfUtility/Serialization/BsBinaryDiff.cpp"
 	"bsfUtility/Serialization/BsSerializedObject.cpp"
 	"bsfUtility/Serialization/BsBinaryCloner.cpp"
+	"bsfUtility/Serialization/BsBinaryCompare.cpp"
+	"bsfUtility/Serialization/BsIntermediateSerializer.cpp"
 )
 
 set(BS_UTILITY_INC_MATH
@@ -238,10 +257,11 @@ set(BS_UTILITY_SRC_ERROR
 set(BS_UTILITY_INC_SERIALIZATION
 	"bsfUtility/Serialization/BsBinarySerializer.h"
 	"bsfUtility/Serialization/BsFileSerializer.h"
-	"bsfUtility/Serialization/BsMemorySerializer.h"
 	"bsfUtility/Serialization/BsBinaryDiff.h"
 	"bsfUtility/Serialization/BsSerializedObject.h"
 	"bsfUtility/Serialization/BsBinaryCloner.h"
+	"bsfUtility/Serialization/BsBinaryCompare.h"
+	"bsfUtility/Serialization/BsIntermediateSerializer.h"
 )
 
 set(BS_UTILITY_SRC_STRING

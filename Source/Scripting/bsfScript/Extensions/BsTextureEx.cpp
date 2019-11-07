@@ -1,7 +1,6 @@
 //********************************* bs::framework - Copyright 2018-2019 Marko Pintera ************************************//
 //*********** Licensed under the MIT license. See LICENSE.md for full terms. This notice is not to be removed. ***********//
 #include "Extensions/BsTextureEx.h"
-#include "Extensions/BsAsyncOpEx.h"
 
 #include "Generated/BsScriptPixelData.generated.h"
 
@@ -9,7 +8,7 @@ using namespace std::placeholders;
 
 namespace bs
 {
-	HTexture TextureEx::create(PixelFormat format, UINT32 width, UINT32 height, UINT32 depth, TextureType texType, 
+	HTexture TextureEx::create(PixelFormat format, UINT32 width, UINT32 height, UINT32 depth, TextureType texType,
 		TextureUsage usage, UINT32 numSamples, bool hasMipmaps, bool gammaCorrection)
 	{
 		int numMips = 0;
@@ -88,20 +87,6 @@ namespace bs
 		return pixelData;
 	}
 
-	SPtr<AsyncOpEx> TextureEx::getGPUPixels(const HTexture& thisPtr, UINT32 face, UINT32 mipLevel)
-	{
-		SPtr<PixelData> readData = thisPtr->getProperties().allocBuffer(face, mipLevel);
-		AsyncOp asyncOp = thisPtr->readData(readData, face, mipLevel);
-
-		std::function<MonoObject*(const AsyncOp&)> asyncOpToMono =
-			[&readData](const AsyncOp& op)
-		{
-			return ScriptPixelData::create(readData);
-		};
-
-		return bs_shared_ptr_new<AsyncOpEx>(asyncOp, asyncOpToMono);
-	}
-
 	void TextureEx::setPixels(const HTexture& thisPtr, const SPtr<PixelData>& data, UINT32 face, UINT32 mipLevel)
 	{
 		if (data != nullptr)
@@ -117,11 +102,11 @@ namespace bs
 
 		if (texNumElements != numElements)
 		{
-			LOGWRN("SetPixels called with incorrect dimensions. Ignoring call.");
+			BS_LOG(Warning, Texture, "SetPixels called with incorrect dimensions. Ignoring call.");
 			return;
 		}		
 
-		SPtr<PixelData> pixelData = bs_shared_ptr_new<PixelData>(props.getWidth(), props.getHeight(), props.getDepth(), 
+		SPtr<PixelData> pixelData = bs_shared_ptr_new<PixelData>(props.getWidth(), props.getHeight(), props.getDepth(),
 			props.getFormat());
 		pixelData->allocateInternalBuffer();
 		pixelData->setColors(colors);

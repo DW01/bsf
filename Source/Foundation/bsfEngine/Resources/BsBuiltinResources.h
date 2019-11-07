@@ -25,25 +25,25 @@ namespace bs
 	/**	Types of builtin textures that are always available. */
 	enum class BuiltinTexture
 	{
-		White, Black, Normal
+		White, Black, Normal, BokehFlare
 	};
 
 	/** Types of builtin shaders that are always available. */
 	enum class BS_SCRIPT_EXPORT() BuiltinShader
 	{
-		Custom, 
+		Custom,
 		/** Physically based shader used for opaque 3D geometry. */
-		Standard, 
+		Standard,
 		/** Physically based shader used for transparent 3D geometry. */
 		Transparent,
 		/** Special shader used for rendering particles without any lighting, with support for transparency. */
 		ParticlesUnlit,
-		/** 
-		 * Special shader used for rendering particles with lighting using the forward rendering pipeline (supports 
-		 * transparency). 
+		/**
+		 * Special shader used for rendering particles with lighting using the forward rendering pipeline (supports
+		 * transparency).
 		 */
 		ParticlesLit,
-		/** 
+		/**
 		 * Special shader used for rendering particles with lighting using the deferred rendering pipeline (no support
 		 * for transparency).
 		 */
@@ -124,7 +124,7 @@ namespace bs
 
 		/**
 		 * Loads a shader at the specified path.
-		 * 
+		 *
 		 * @param[in]	path	Path relative to the default shader folder with no file extension.
 		 */
 		HShader getShader(const Path& path) const;
@@ -143,6 +143,12 @@ namespace bs
 
 		/**	Returns absolute path to the builtin icons folder. */
 		static Path getIconFolder();
+
+#if BS_IS_BANSHEE3D || defined BS_IS_ASSET_TOOL
+		/**	Returns absolute path to the editor builtin shader include folder. */
+		static Path getEditorShaderIncludeFolder();
+
+#endif
 
 		static constexpr const char* IconTextureName = "bsfIcon.png";
 		static constexpr const char* MultiLineLabelStyle = "MultiLineLabel";

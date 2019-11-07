@@ -23,7 +23,6 @@ using namespace std::placeholders;
 namespace bs
 {
 	DebugDraw::DebugDraw()
-		: mDrawHelper(nullptr)
 	{
 		mDrawHelper = bs_new<DrawHelper>();
 		mRenderer = RendererExtension::create<ct::DebugDrawRenderer>(nullptr);
@@ -94,7 +93,7 @@ namespace bs
 		mDrawHelper->wireDisc(position, normal, radius);
 	}
 
-	void DebugDraw::drawWireArc(const Vector3& position, const Vector3& normal, float radius, 
+	void DebugDraw::drawWireArc(const Vector3& position, const Vector3& normal, float radius,
 		Degree startAngle, Degree amountAngle)
 	{
 		mDrawHelper->wireArc(position, normal, radius, startAngle, amountAngle);
@@ -190,12 +189,12 @@ namespace bs
 		mMeshes = meshes;
 	}
 
-	bool DebugDrawRenderer::check(const Camera& camera)
+	RendererExtensionRequest DebugDrawRenderer::check(const Camera& camera)
 	{
-		return true;
+		return mMeshes.empty() ? RendererExtensionRequest::RenderIfTargetDirty : RendererExtensionRequest::ForceRender;
 	}
 
-	void DebugDrawRenderer::render(const Camera& camera)
+	void DebugDrawRenderer::render(const Camera& camera, const RendererViewContext& viewContext)
 	{
 		SPtr<RenderTarget> renderTarget = camera.getViewport()->getTarget();
 		if (renderTarget == nullptr)

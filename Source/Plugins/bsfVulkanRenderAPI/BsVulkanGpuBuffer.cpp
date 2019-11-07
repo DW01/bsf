@@ -23,7 +23,7 @@ namespace bs { namespace ct
 	{ }
 
 	VulkanGpuBuffer::~VulkanGpuBuffer()
-	{ 
+	{
 		if (mBuffer)
 		{
 			for (UINT32 i = 0; i < BS_MAX_DEVICES; i++)
@@ -84,7 +84,7 @@ namespace bs { namespace ct
 		updateViews();
 	}
 
-	void VulkanGpuBuffer::writeData(UINT32 offset, UINT32 length, const void* source, BufferWriteType writeFlags, 
+	void VulkanGpuBuffer::writeData(UINT32 offset, UINT32 length, const void* source, BufferWriteType writeFlags,
 		UINT32 queueIdx)
 	{
 		GpuBuffer::writeData(offset, length, source, writeFlags, queueIdx);
@@ -118,7 +118,7 @@ namespace bs { namespace ct
 			if (mCachedBuffers[i] != newBufferHandle)
 			{
 				if(newBufferHandle != VK_NULL_HANDLE)
-					mBufferViews[i] = buffer->createView(VulkanUtility::getBufferFormat(mProperties.getFormat()));
+					mBufferViews[i] = buffer->getView(VulkanUtility::getBufferFormat(mProperties.getFormat()));
 				else
 					mBufferViews[i] = VK_NULL_HANDLE;
 

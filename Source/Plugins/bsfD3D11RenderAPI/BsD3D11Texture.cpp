@@ -14,18 +14,15 @@
 
 namespace bs { namespace ct
 {
-	D3D11Texture::D3D11Texture(const TEXTURE_DESC& desc, const SPtr<PixelData>& initialData, 
+	D3D11Texture::D3D11Texture(const TEXTURE_DESC& desc, const SPtr<PixelData>& initialData,
 		GpuDeviceFlags deviceMask)
-		: Texture(desc, initialData, deviceMask),
-		m1DTex(nullptr), m2DTex(nullptr), m3DTex(nullptr), mDXGIFormat(DXGI_FORMAT_UNKNOWN), mDXGIColorFormat(DXGI_FORMAT_UNKNOWN),
-		mTex(nullptr), mInternalFormat(PF_UNKNOWN), mStagingBuffer(nullptr), mDXGIDepthStencilFormat(DXGI_FORMAT_UNKNOWN),
-		mLockedSubresourceIdx(-1), mLockedForReading(false), mStaticBuffer(nullptr)
+		: Texture(desc, initialData, deviceMask)
 	{
 		assert((deviceMask == GDF_DEFAULT || deviceMask == GDF_PRIMARY) && "Multiple GPUs not supported natively on DirectX 11.");
 	}
 
 	D3D11Texture::~D3D11Texture()
-	{ 
+	{
 		clearBufferViews();
 
 		SAFE_RELEASE(mTex);
@@ -61,7 +58,7 @@ namespace bs { namespace ct
 		Texture::initialize();
 	}
 
-	void D3D11Texture::copyImpl(const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc, 
+	void D3D11Texture::copyImpl(const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc,
 			const SPtr<CommandBuffer>& commandBuffer)
 	{
 		auto executeRef = [this](const SPtr<Texture>& target, const TEXTURE_COPY_DESC& desc)
@@ -77,8 +74,8 @@ namespace bs { namespace ct
 			bool srcHasMultisample = mProperties.getNumSamples() > 1;
 			bool destHasMultisample = target->getProperties().getNumSamples() > 1;
 
-			bool copyEntireSurface = desc.srcVolume.getWidth() == 0 || 
-				desc.srcVolume.getHeight() == 0 || 
+			bool copyEntireSurface = desc.srcVolume.getWidth() == 0 ||
+				desc.srcVolume.getHeight() == 0 ||
 				desc.srcVolume.getDepth() == 0;
 
 			if (srcHasMultisample && !destHasMultisample) // Resolving from MS to non-MS texture
@@ -178,20 +175,8 @@ namespace bs { namespace ct
 		{
 			UINT8* data = (UINT8*)mapstagingbuffer(flags, face, mipLevel, rowPitch, slicePitch);
 			lockedArea.setExternalBuffer(data);
-
-			if (PixelUtil::isCompressed(mProperties.getFormat()))
-			{
-				// Doesn't make sense to provide pitch values in pixels in this case
-				lockedArea.setRowPitch(0);
-				lockedArea.setSlicePitch(0);
-			}
-			else
-			{
-				UINT32 bytesPerPixel = PixelUtil::getNumElemBytes(mProperties.getFormat());
-
-				lockedArea.setRowPitch(rowPitch / bytesPerPixel);
-				lockedArea.setSlicePitch(slicePitch / bytesPerPixel);
-			}
+			lockedArea.setRowPitch(rowPitch);
+			lockedArea.setSlicePitch(slicePitch);
 
 			mLockedForReading = true;
 		}
@@ -199,22 +184,16 @@ namespace bs { namespace ct
 		{
 			if ((mProperties.getUsage() & TU_DYNAMIC) != 0)
 			{
+				if(flags == D3D11_MAP_WRITE)
+				{
+					BS_LOG(Error, RenderBackend, "Dynamic textures only support discard or no-overwrite writes. Falling back to no-overwrite.");
+					flags = D3D11_MAP_WRITE_DISCARD;
+				}
+
 				UINT8* data = (UINT8*)map(mTex, flags, face, mipLevel, rowPitch, slicePitch);
 				lockedArea.setExternalBuffer(data);
-
-				if (PixelUtil::isCompressed(mProperties.getFormat()))
-				{
-					// Doesn't make sense to provide pitch values in pixels in this case
-					lockedArea.setRowPitch(0);
-					lockedArea.setSlicePitch(0);
-				}
-				else
-				{
-					UINT32 bytesPerPixel = PixelUtil::getNumElemBytes(mProperties.getFormat());
-
-					lockedArea.setRowPitch(rowPitch / bytesPerPixel);
-					lockedArea.setSlicePitch(slicePitch / bytesPerPixel);
-				}
+				lockedArea.setRowPitch(rowPitch);
+				lockedArea.setSlicePitch(slicePitch);
 			}
 			else
 				lockedArea.setExternalBuffer((UINT8*)mapstaticbuffer(lockedArea, mipLevel, face));
@@ -242,7 +221,7 @@ namespace bs { namespace ct
 	{
 		if (mProperties.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return;
 		}
 
@@ -258,7 +237,7 @@ namespace bs { namespace ct
 
 		if (mProperties.getNumSamples() > 1)
 		{
-			LOGERR("Multisampled textures cannot be accessed from the CPU directly.");
+			BS_LOG(Error, RenderBackend, "Multisampled textures cannot be accessed from the CPU directly.");
 			return;
 		}
 
@@ -267,7 +246,7 @@ namespace bs { namespace ct
 
 		if (face > 0 && mProperties.getTextureType() == TEX_TYPE_3D)
 		{
-			LOGERR("3D texture arrays are not supported.");
+			BS_LOG(Error, RenderBackend, "3D texture arrays are not supported.");
 			return;
 		}
 
@@ -321,9 +300,10 @@ namespace bs { namespace ct
 
 		if (format != closestFormat)
 		{
-			LOGWRN(StringUtil::format("Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.",
-									  format, closestFormat));
+			BS_LOG(Verbose, RenderBackend,
+				"Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.", format, closestFormat);
 		}
+
 
 		mInternalFormat = closestFormat;
 		mDXGIColorFormat = d3dPF;
@@ -358,7 +338,7 @@ namespace bs { namespace ct
 			desc.MipLevels		= 1;
 			desc.Format			= D3D11Mappings::getTypelessDepthStencilPF(closestFormat);
 
-			mDXGIColorFormat = D3D11Mappings::getShaderResourceDepthStencilPF(closestFormat); 
+			mDXGIColorFormat = D3D11Mappings::getShaderResourceDepthStencilPF(closestFormat);
 			mDXGIDepthStencilFormat = d3dPF;
 		}
 		else
@@ -444,8 +424,8 @@ namespace bs { namespace ct
 
 		if (format != closestFormat)
 		{
-			LOGWRN(StringUtil::format("Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.",
-									  format, closestFormat));
+			BS_LOG(Verbose, RenderBackend,
+				"Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.", format, closestFormat);
 		}
 
 		mInternalFormat = closestFormat;
@@ -513,8 +493,8 @@ namespace bs { namespace ct
 				desc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
 			else
 			{
-				LOGWRN("Unable to create a load-store texture with multiple samples. This is not supported on DirectX 11. "
-					   "Ignoring load-store usage flag.");
+				BS_LOG(Warning, RenderBackend, "Unable to create a load-store texture with multiple samples. This is not "
+					"supported on DirectX 11. Ignoring load-store usage flag.");
 			}
 		}
 
@@ -585,9 +565,10 @@ namespace bs { namespace ct
 		
 		if (format != closestFormat)
 		{
-			LOGWRN(StringUtil::format("Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.",
-									  format, closestFormat));
+			BS_LOG(Verbose, RenderBackend,
+				"Provided pixel format is not supported by the driver: {0}. Falling back on: {1}.", format, closestFormat);
 		}
+
 
 		mInternalFormat = closestFormat;
 		mDXGIColorFormat = d3dPF;
@@ -723,12 +704,12 @@ namespace bs { namespace ct
 
 	void* D3D11Texture::mapstagingbuffer(D3D11_MAP flags, UINT32 mipLevel, UINT32 face, UINT32& rowPitch, UINT32& slicePitch)
 	{
-		// Note: I am creating and destroying a staging resource every time a texture is read. 
+		// Note: I am creating and destroying a staging resource every time a texture is read.
 		// Consider offering a flag on init that will keep this active all the time (at the cost of double memory).
 		// Reading is slow operation anyway so I don't believe doing it as we are now will influence it much.
 
 		if(!mStagingBuffer)
-			createStagingBuffer(); 
+			createStagingBuffer();
 
 		D3D11RenderAPI* rs = static_cast<D3D11RenderAPI*>(RenderAPI::instancePtr());
 		D3D11Device& device = rs->getPrimaryDevice();

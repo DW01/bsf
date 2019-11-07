@@ -19,11 +19,11 @@ namespace bs
 
 	const Path& CrashHandler::getCrashFolder()
 	{
-		static const Path path = FileSystem::getWorkingDirectoryPath() + sCrashReportFolder + 
+		static const Path path = FileSystem::getWorkingDirectoryPath() + sCrashReportFolder +
 			getCrashTimestamp();
 		
 		static bool first = true;
-		if (first) 
+		if (first)
 		{
 			FileSystem::createDir(path);
 			first = false;
@@ -40,7 +40,7 @@ namespace bs
 		errorMessage << "\n\nStack trace: \n";
 		errorMessage << stackTrace;
 
-		gDebug().logError(errorMessage.str());
+		gDebug().log(errorMessage.str(), LogVerbosity::Fatal);
 	}
 
 	void CrashHandler::logErrorAndStackTrace(const String& type, const String& description, const String& function,
@@ -56,6 +56,6 @@ namespace bs
 
 	void CrashHandler::saveCrashLog() const
 	{
-		gDebug().saveLog(getCrashFolder() + sCrashLogName);
+		gDebug().saveLog(getCrashFolder() + sCrashLogName, SavedLogType::HTML);
 	}
 }

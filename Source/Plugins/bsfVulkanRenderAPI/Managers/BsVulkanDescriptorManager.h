@@ -18,7 +18,7 @@ namespace bs { namespace ct
 		UINT32 numBindings;
 		VkDescriptorSetLayoutBinding* bindings;
 
-		VulkanDescriptorLayout* layout;
+		VulkanDescriptorLayout* layout = nullptr;
 	};
 
 	/** Used as a key in a hash map containing pipeline layouts. */
@@ -96,7 +96,7 @@ namespace bs { namespace ct
 	protected:
 		VulkanDevice& mDevice;
 
-		UnorderedSet<VulkanLayoutKey> mLayouts; 
+		UnorderedSet<VulkanLayoutKey> mLayouts;
 		UnorderedMap<VulkanPipelineLayoutKey, VkPipelineLayout> mPipelineLayouts;
 		Vector<VulkanDescriptorPool*> mPools;
 	};

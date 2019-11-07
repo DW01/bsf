@@ -45,7 +45,9 @@ namespace bs { namespace ct
 		defines.set("MAX_NUM_GROUPS", MAX_NUM_GROUPS);
 	}
 
-	/** 
+	void runSortTest();
+
+	/**
 	 * Creates a new GPU parameter block buffer according to gRadixSortParamDef definition and writes GpuSort properties
 	 * into the buffer.
 	 */
@@ -62,17 +64,17 @@ namespace bs { namespace ct
 		return buffer;
 	}
 
-	/** 
+	/**
 	 * Checks can the provided buffer be used for GPU sort operation. Returns a pointer to the error message if check failed
 	 * or nullptr if check passed.
 	 */
 	const char* checkSortBuffer(GpuBuffer& buffer)
 	{
-		static constexpr const char* INVALID_GPU_WRITE_MSG = 
+		static constexpr const char* INVALID_GPU_WRITE_MSG =
 			"All buffers provided to GpuSort must be created with GBU_LOADSTORE flags enabled.";
-		static constexpr const char* INVALID_TYPE_MSG = 
+		static constexpr const char* INVALID_TYPE_MSG =
 			"All buffers provided to GpuSort must be of GBT_STANDARD type.";
-		static constexpr const char* INVALID_FORMAT_MSG = 
+		static constexpr const char* INVALID_FORMAT_MSG =
 			"All buffers provided to GpuSort must use a 32-bit unsigned integer format.";
 
 		const GpuBufferProperties& bufferProps = buffer.getProperties();
@@ -131,7 +133,7 @@ namespace bs { namespace ct
 		initCommonDefines(defines);
 	}
 
-	void RadixSortCountMat::execute(UINT32 numGroups, const SPtr<GpuParamBlockBuffer>& params, 
+	void RadixSortCountMat::execute(UINT32 numGroups, const SPtr<GpuParamBlockBuffer>& params,
 		const SPtr<GpuBuffer>& inputKeys, const SPtr<GpuBuffer>& outputOffsets)
 	{
 		BS_RENMAT_PROFILE_BLOCK
@@ -156,7 +158,7 @@ namespace bs { namespace ct
 		initCommonDefines(defines);
 	}
 
-	void RadixSortPrefixScanMat::execute(const SPtr<GpuParamBlockBuffer>& params, const SPtr<GpuBuffer>& inputCounts, 
+	void RadixSortPrefixScanMat::execute(const SPtr<GpuParamBlockBuffer>& params, const SPtr<GpuBuffer>& inputCounts,
 		const SPtr<GpuBuffer>& outputOffsets)
 	{
 		BS_RENMAT_PROFILE_BLOCK
@@ -184,7 +186,7 @@ namespace bs { namespace ct
 		initCommonDefines(defines);
 	}
 
-	void RadixSortReorderMat::execute(UINT32 numGroups, const SPtr<GpuParamBlockBuffer>& params, 
+	void RadixSortReorderMat::execute(UINT32 numGroups, const SPtr<GpuParamBlockBuffer>& params,
 		const SPtr<GpuBuffer>& inputPrefix, const GpuSortBuffers& buffers, UINT32 inputBufferIdx)
 	{
 		BS_RENMAT_PROFILE_BLOCK
@@ -231,7 +233,7 @@ namespace bs { namespace ct
 
 		if(errorMsg)
 		{
-			LOGERR("GpuSort failed: " + String(errorMsg));
+			BS_LOG(Error, Renderer, "GpuSort failed: {0}", errorMsg);
 			return 0;
 		}
 
@@ -246,7 +248,7 @@ namespace bs { namespace ct
 
 		if (!validSize)
 		{
-			LOGERR("GpuSort failed: All sort buffers must have the same size.");
+			BS_LOG(Error, Renderer, "GpuSort failed: All sort buffers must have the same size.");
 			return 0;
 		}
 
@@ -453,6 +455,7 @@ namespace bs { namespace ct
 		// PARALLEL:
 		RadixSortClearMat::get()->execute(helperBuffers[0]);
 		RadixSortCountMat::get()->execute(gpuSortProps.numGroups, params, sortBuffers.keys[0], helperBuffers[0]);
+		RenderAPI::instance().submitCommandBuffer(nullptr);
 
 		// Compare with GPU count
 		const UINT32 helperBufferLength = helperBuffers[0]->getProperties().getElementCount();
@@ -549,6 +552,7 @@ namespace bs { namespace ct
 
 		// PARALLEL:
 		RadixSortPrefixScanMat::get()->execute(params, helperBuffers[0], helperBuffers[1]);
+		RenderAPI::instance().submitCommandBuffer(nullptr);
 
 		// Compare with GPU offsets
 		Vector<UINT32> bufferOffsets(helperBufferLength);
@@ -779,6 +783,7 @@ namespace bs { namespace ct
 
 		// PARALLEL:
 		RadixSortReorderMat::get()->execute(gpuSortProps.numGroups, params, helperBuffers[1], sortBuffers, 0);
+		RenderAPI::instance().submitCommandBuffer(nullptr);
 
 		// Compare with GPU keys
 		Vector<UINT32> bufferSortedKeys(count);

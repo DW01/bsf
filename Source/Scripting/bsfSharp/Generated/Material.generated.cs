@@ -49,9 +49,28 @@ namespace bs
 			set { Internal_setShader(mCachedPtr, value); }
 		}
 
+		/// <summary>
+		/// Set of parameters that determine which subset of techniques in the assigned shader should be used. Only the 
+		/// techniques that have the provided parameters with the provided values will match. This will control which technique 
+		/// is considered the default technique and which subset of techniques are searched during a call to findTechnique().
+		/// </summary>
+		[NotNull]
+		[PassByCopy]
+		[NativeWrapper]
+		public ShaderVariation Variation
+		{
+			get { return Internal_getVariation(mCachedPtr); }
+			set { Internal_setVariation(mCachedPtr, value); }
+		}
+
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<Material>(Material x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		/// <summary>Creates a deep copy of the material and returns the new object.</summary>
 		public RRef<Material> Clone()
@@ -90,7 +109,7 @@ namespace bs
 		///
 		/// Optionally if the parameter is an array you may provide an array index to assign the value to.
 		/// </summary>
-		public void SetColorGradient(string name, ColorGradient value, int arrayIdx = 0)
+		public void SetColorGradient(string name, ColorGradientHDR value, int arrayIdx = 0)
 		{
 			Internal_setColorGradient(mCachedPtr, name, value, arrayIdx);
 		}
@@ -189,7 +208,7 @@ namespace bs
 		///
 		/// Optionally if the parameter is an array you may provide an array index you which to retrieve.
 		/// </summary>
-		public ColorGradient GetColorGradient(string name, int arrayIdx = 0)
+		public ColorGradientHDR GetColorGradient(string name, int arrayIdx = 0)
 		{
 			return Internal_getColorGradient(mCachedPtr, name, arrayIdx);
 		}
@@ -255,7 +274,7 @@ namespace bs
 		}
 
 		/// <summary>
-		/// Checks does the data parameter with the specified name currently contains animated data. This could be  an animation 
+		/// Checks does the data parameter with the specified name currently contains animated data. This could be an animation 
 		/// curve or a color gradient.
 		/// </summary>
 		public bool IsAnimated(string name, int arrayIdx = 0)
@@ -268,9 +287,13 @@ namespace bs
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setShader(IntPtr thisPtr, RRef<Shader> shader);
 		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern void Internal_setVariation(IntPtr thisPtr, ShaderVariation variation);
+		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<Material> Internal_clone(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<Shader> Internal_getShader(IntPtr thisPtr);
+		[MethodImpl(MethodImplOptions.InternalCall)]
+		private static extern ShaderVariation Internal_getVariation(IntPtr thisPtr);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setFloat(IntPtr thisPtr, string name, float value, int arrayIdx);
 		[MethodImpl(MethodImplOptions.InternalCall)]
@@ -278,7 +301,7 @@ namespace bs
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setColor(IntPtr thisPtr, string name, ref Color value, int arrayIdx);
 		[MethodImpl(MethodImplOptions.InternalCall)]
-		private static extern void Internal_setColorGradient(IntPtr thisPtr, string name, ColorGradient value, int arrayIdx);
+		private static extern void Internal_setColorGradient(IntPtr thisPtr, string name, ColorGradientHDR value, int arrayIdx);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_setVec2(IntPtr thisPtr, string name, ref Vector2 value, int arrayIdx);
 		[MethodImpl(MethodImplOptions.InternalCall)]
@@ -296,7 +319,7 @@ namespace bs
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_getColor(IntPtr thisPtr, string name, int arrayIdx, out Color __output);
 		[MethodImpl(MethodImplOptions.InternalCall)]
-		private static extern ColorGradient Internal_getColorGradient(IntPtr thisPtr, string name, int arrayIdx);
+		private static extern ColorGradientHDR Internal_getColorGradient(IntPtr thisPtr, string name, int arrayIdx);
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern void Internal_getVec2(IntPtr thisPtr, string name, int arrayIdx, out Vector2 __output);
 		[MethodImpl(MethodImplOptions.InternalCall)]

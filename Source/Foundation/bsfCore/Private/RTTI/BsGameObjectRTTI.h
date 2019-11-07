@@ -4,6 +4,8 @@
 
 #include "BsCorePrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "RTTI/BsStringRTTI.h"
+#include "RTTI/BsUUIDRTTI.h"
 #include "Scene/BsGameObject.h"
 #include "Scene/BsSceneObject.h"
 #include "Scene/BsGameObjectManager.h"
@@ -32,8 +34,8 @@ namespace bs
 		BS_END_RTTI_MEMBERS
 
 		UINT64& getInstanceID(GameObject* obj) { return obj->mInstanceData->mInstanceId; }
-		void setInstanceID(GameObject* obj, UINT64& instanceId) 
-		{  
+		void setInstanceID(GameObject* obj, UINT64& instanceId)
+		{
 			// We record the ID for later use. Any child RTTI of GameObject must call GameObjectManager::registerObject
 			// with this ID, so we know how to map deserialized GO handles to live objects, otherwise the handle
 			// references will get broken.
@@ -41,17 +43,6 @@ namespace bs
 			GODeserializationData& deserializationData = any_cast_ref<GODeserializationData>(go->mRTTIData);
 
 			deserializationData.originalId = instanceId;
-		}
-
-	public:
-		/**	Helper method used for creating Component objects used during deserialization. */
-		template <typename T>
-		static SPtr<T> createGameObject()
-		{
-			SPtr<T> component = SceneObject::createEmptyComponent<T>();
-			component->mRTTIData = component;
-
-			return component;
 		}
 
 	public:

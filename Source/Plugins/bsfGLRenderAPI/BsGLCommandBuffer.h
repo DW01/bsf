@@ -22,24 +22,27 @@ namespace bs { namespace ct
 		/** Registers a new command in the command buffer. */
 		void queueCommand(const std::function<void()> command);
 
-		/** Appends all commands from the secondary buffer into this command buffer. */
-		void appendSecondary(const SPtr<GLCommandBuffer>& secondaryBuffer);
-
 		/** Executes all commands in the command buffer. Not supported on secondary buffer. */
 		void executeCommands();
 
-		/** Removes all commands from the command buffer. */
-		void clear();
+		/** @copydoc CommandBuffer::getState() */
+		CommandBufferState getState() const override;
 
+		/** @copydoc CommandBuffer::reset() */
+		void reset() override;
+		
 	private:
 		friend class GLCommandBufferManager;
 		friend class GLRenderAPI;
 
 		GLCommandBuffer(GpuQueueType type, UINT32 deviceIdx, UINT32 queueIdx, bool secondary);
 
-		Vector<std::function<void()>> mCommands;
+		/** Returns true if the command buffer has finished executing on the GPU. */
+		bool isComplete() const;
 
-		DrawOperationType mCurrentDrawOperation;
+		GLsync mFence = 0;
+		bool mCommandQueued = false;
+		bool mIsSubmitted = false;
 	};
 
 	/** @} */

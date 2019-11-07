@@ -22,9 +22,13 @@ namespace bs
 	CameraBase::CameraBase()
 		: mRecalcFrustum(true), mRecalcFrustumPlanes(true), mRecalcView(true)
 	{
-		mRenderSettings = bs_shared_ptr_new<RenderSettings>();
-
 		invalidateFrustum();
+	}
+
+	void CameraBase::setFlags(CameraFlags flags)
+	{
+		mCameraFlags = flags;
+		_markCoreDirty();
 	}
 
 	void CameraBase::setHorzFOV(const Radian& fov)
@@ -34,11 +38,6 @@ namespace bs
 		_markCoreDirty();
 	}
 
-	const Radian& CameraBase::getHorzFOV() const
-	{
-		return mHorzFOV;
-	}
-
 	void CameraBase::setFarClipDistance(float farPlane)
 	{
 		mFarDist = farPlane;
@@ -46,27 +45,17 @@ namespace bs
 		_markCoreDirty();
 	}
 
-	float CameraBase::getFarClipDistance() const
-	{
-		return mFarDist;
-	}
-
 	void CameraBase::setNearClipDistance(float nearPlane)
 	{
 		if (nearPlane <= 0)
 		{
-			LOGERR("Near clip distance must be greater than zero.");
+			BS_LOG(Error, Renderer, "Near clip distance must be greater than zero.");
 			return;
 		}
 
 		mNearDist = nearPlane;
 		invalidateFrustum();
 		_markCoreDirty();
-	}
-
-	float CameraBase::getNearClipDistance() const
-	{
-		return mNearDist;
 	}
 
 	const Matrix4& CameraBase::getProjectionMatrix() const
@@ -571,7 +560,12 @@ namespace bs
 
 		Vector2I screenPoint;
 		screenPoint.x = Math::roundToInt(viewport.x + ((ndcPoint.x + 1.0f) * 0.5f) * viewport.width);
-		screenPoint.y = Math::roundToInt(viewport.y + (1.0f - (ndcPoint.y + 1.0f) * 0.5f) * viewport.height);
+
+		const Conventions& rapiConventions = ct::gCaps().conventions;
+		if(rapiConventions.ndcYAxis == Conventions::Axis::Down)
+			screenPoint.y = Math::roundToInt(viewport.y + (ndcPoint.y + 1.0f) * 0.5f * viewport.height);
+		else
+			screenPoint.y = Math::roundToInt(viewport.y + (1.0f - (ndcPoint.y + 1.0f) * 0.5f) * viewport.height);
 
 		return screenPoint;
 	}
@@ -668,6 +662,12 @@ namespace bs
 	}
 
 	template <bool Core>
+	TCamera<Core>::TCamera()
+	{
+		mRenderSettings = bs_shared_ptr_new<RenderSettingsType>();
+	}
+
+	template <bool Core>
 	template <class P>
 	void TCamera<Core>::rttiEnumFields(P p)
 	{
@@ -685,7 +685,11 @@ namespace bs
 		p(mMSAA);
 		p(mMain);
 		p(*mRenderSettings);
+		p(mCameraFlags);
 	}
+
+	template class TCamera<false>;
+	template class TCamera<true>;
 
 	SPtr<ct::Camera> Camera::getCore() const
 	{
@@ -752,20 +756,28 @@ namespace bs
 	{
 		UINT32 dirtyFlag = getCoreDirtyFlags();
 
-		UINT32 size = rttiGetElemSize(dirtyFlag);
-		size += coreSyncGetElemSize((SceneActor&)*this);
+		UINT32 size = rtti_size(dirtyFlag).bytes;
+		
+		if((dirtyFlag & ~(INT32)CameraDirtyFlag::Redraw) != 0)
+		{
+			size += csync_size((SceneActor&)*this);
 
-		if (dirtyFlag != (UINT32)ActorDirtyFlag::Transform)
-			size += coreSyncGetElemSize(*this);
+			if (dirtyFlag != (UINT32)ActorDirtyFlag::Transform)
+				size += csync_size(*this);
+		}
 
 		UINT8* buffer = allocator->alloc(size);
+		Bitstream stream(buffer, size);
 
-		char* dataPtr = (char*)buffer;
-		dataPtr = rttiWriteElem(dirtyFlag, dataPtr);
-		dataPtr = coreSyncWriteElem((SceneActor&)*this, dataPtr);
+		rtti_write(dirtyFlag, stream);
 
-		if (dirtyFlag != (UINT32)ActorDirtyFlag::Transform)
-			dataPtr = coreSyncWriteElem(*this, dataPtr);
+		if ((dirtyFlag & ~(INT32)CameraDirtyFlag::Redraw) != 0)
+		{
+			csync_write((SceneActor&)* this, stream);
+
+			if (dirtyFlag != (UINT32)ActorDirtyFlag::Transform)
+				csync_write(*this, stream);
+		}
 
 		return CoreSyncData(buffer, size);
 	}
@@ -823,18 +835,22 @@ namespace bs
 
 	void Camera::syncToCore(const CoreSyncData& data)
 	{
-		char* dataPtr = (char*)data.getBuffer();
+		Bitstream stream(data.getBuffer(), data.getBufferSize());
 
 		UINT32 dirtyFlag;
-		dataPtr = rttiReadElem(dirtyFlag, dataPtr);
-		dataPtr = coreSyncReadElem((SceneActor&)*this, dataPtr);
+		rtti_read(dirtyFlag, stream);
 
-		if (dirtyFlag != (UINT32)ActorDirtyFlag::Transform)
-			dataPtr = coreSyncReadElem(*this, dataPtr);
+		if ((dirtyFlag & ~(INT32)CameraDirtyFlag::Redraw) != 0)
+		{
+			csync_read((SceneActor&)* this, stream);
 
-		mRecalcFrustum = true;
-		mRecalcFrustumPlanes = true;
-		mRecalcView = true;
+			if (dirtyFlag != (UINT32)ActorDirtyFlag::Transform)
+				csync_read(*this, stream);
+
+			mRecalcFrustum = true;
+			mRecalcFrustumPlanes = true;
+			mRecalcView = true;
+		}
 
 		RendererManager::instance().getActive()->notifyCameraUpdated(this, (UINT32)dirtyFlag);
 	}

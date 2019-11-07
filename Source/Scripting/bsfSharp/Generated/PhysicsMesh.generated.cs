@@ -44,7 +44,7 @@ namespace bs
 			get { return Internal_getType(mCachedPtr); }
 		}
 
-		/// <summary>Returns the mesh's indices and vertices.</summary>
+		/// <summary>Returns the mesh&apos;s indices and vertices.</summary>
 		[NativeWrapper]
 		public MeshData MeshData
 		{
@@ -53,7 +53,12 @@ namespace bs
 
 		/// <summary>Returns a reference wrapper for this resource.</summary>
 		public static implicit operator RRef<PhysicsMesh>(PhysicsMesh x)
-		{ return Internal_GetRef(x.mCachedPtr); }
+		{
+			if(x != null)
+				return Internal_GetRef(x.mCachedPtr);
+			else
+				return null;
+		}
 
 		[MethodImpl(MethodImplOptions.InternalCall)]
 		private static extern RRef<PhysicsMesh> Internal_GetRef(IntPtr thisPtr);

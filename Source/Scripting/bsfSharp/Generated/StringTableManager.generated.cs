@@ -11,7 +11,7 @@ namespace bs
 	 */
 
 	/// <summary>
-	/// Manages string tables used for localizing text. Allows you to add and remove different tables and change the active  
+	/// Manages string tables used for localizing text. Allows you to add and remove different tables and change the active 
 	/// language.
 	/// </summary>
 	[ShowInInspector]
@@ -29,7 +29,7 @@ namespace bs
 			set { Internal_setActiveLanguage(value); }
 		}
 
-		/// <summary>Returns the string table with the specified id. If the table doesn't exist new one is created.</summary>
+		/// <summary>Returns the string table with the specified id. If the table doesn&apos;t exist new one is created.</summary>
 		/// <param name="id">Identifier of the string table.</param>
 		/// <returns>String table with the specified identifier.</returns>
 		public static RRef<StringTable> GetTable(int id)

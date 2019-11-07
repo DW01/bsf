@@ -11,7 +11,7 @@ namespace bs
 	 *  @{
 	 */
 
-	/// <summary>Serializable class that contains UUID <-> file path mapping for resources.</summary>
+	/// <summary>Serializable class that contains UUID &lt;-&gt; file path mapping for resources.</summary>
 	[ShowInInspector]
 	public partial class ResourceManifest : ScriptObject
 	{
@@ -77,7 +77,7 @@ namespace bs
 		/// <param name="manifest">Manifest to save.</param>
 		/// <param name="path">Full pathname of the file to save the manifest in.</param>
 		/// <param name="relativePath">
-		/// If not empty, all pathnames in the manifest will be stored as if relative to this  path.
+		/// If not empty, all pathnames in the manifest will be stored as if relative to this path.
 		/// </param>
 		public static void Save(ResourceManifest manifest, string path, string relativePath)
 		{

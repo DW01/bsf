@@ -4,6 +4,7 @@
 
 #include "BsPrerequisites.h"
 #include "Reflection/BsRTTIType.h"
+#include "Reflection/BsRTTIPlain.h"
 #include "Resources/BsScriptCodeImportOptions.h"
 
 namespace bs
